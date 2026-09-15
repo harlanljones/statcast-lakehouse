@@ -25,6 +25,12 @@ export interface PitchDatum {
 
 export const FILTER_SIZE = 3;
 
+/** GPU uniform filter extension shared by all trajectory layers (filterSize=3). */
 export function dataFilterExtension() {
   return new DataFilterExtension({ filterSize: FILTER_SIZE });
+}
+
+/** Slider signal -> uniform filterRange binding for [speed, pfxX, pfxZ]. */
+export function filterRange(speed: [number, number], hBreak: [number, number], vBreak: [number, number]) {
+  return [speed, hBreak, vBreak] as const;
 }
