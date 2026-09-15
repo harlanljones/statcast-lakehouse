@@ -28,7 +28,12 @@ are implemented and tested. Everything below is future work — no stubs in code
   signals to DataFilterExtension `filterRange`.
 - Acceptance: 120 FPS scrubbing on integrated GPU; no per-frame JS filtering.
 
-## 5. Research integration
-- Fold `docs/research/` citations into README and the model card
-  (feature choices for the whiff model: which kinematics matter per the
-  literature).
+## 5. Research integration (done — fold into build decisions)
+- `docs/research/market.md` — competitor decision matrix. Headline: Savant
+  ships free per-pitcher 3D; the build verdict is corpus-scale interactive
+  GPU 3D ("Savant 3D as a query engine"), not a generic viewer. Honors the
+  positioning rules in that doc when adding features.
+- `docs/research/literature.md` — kinematics + whiff-model citations. Use
+  the 9-parameter fit validation (Nathan 2012) and swing/whiff modeling
+  refs (Powers & Yurko 2025; Yee & Deshpande 2023) when choosing xWhiff
+  features (ROADMAP item 2).
