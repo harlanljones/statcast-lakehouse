@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 
 from ingestion.export_batch import (
@@ -83,7 +84,7 @@ class TestExportDayPartition:
         assert read_table.num_rows == 20
         # Exported batch conforms to the canonical Statcast schema.
         assert read_table.schema.equals(SCHEMA, check_metadata=False)
-        assert len(read_table.filter(pa.compute.equal(read_table.column("game_date"), dt.date(2026, 9, 14)))) == 20
+        assert len(read_table.filter(pc.equal(read_table.column("game_date"), dt.date(2026, 9, 14)))) == 20
 
     def test_zstd_compresses_repeated_payload(self, tmp_path, day_table):
         # 1,000 identical rows: zstd must beat uncompressed IPC.
