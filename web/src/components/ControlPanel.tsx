@@ -1,16 +1,29 @@
-import { Show, type JSX } from "solid-js";
+import { For, Show, type JSX } from "solid-js";
+import { CAMERA_VIEWS, type CameraViewName, pitchColor } from "../lib/deck-layers";
 
 /**
- * Slider panel. onChange writes Solid signals; Visualizer rebinds Deck.gl
- * filter uniforms from those signals. No array filtering happens here.
+ * Control panel. Every control writes Solid signals; Visualizer rebinds
+ * Deck.gl filter uniforms / view state from those signals. No array
+ * filtering happens here (TDD §5.3).
  *
- * The min/max sliders clamp against each other so the GPU filterRange is
- * always well-formed, and both expose a live numeric readout.
+ * Controls:
+ * - Load button
+ * - Camera view preset buttons (Catcher / Pitcher / Overhead / Side)
+ * - Pitch count badge (active / total)
+ * - Pitch-type chips with color dots matching PITCH_COLORS; toggling a chip
+ *   updates the GPU filter's 4th channel, never the data array.
  */
 export default function ControlPanel(props: {
   speed: [number, number];
   onSpeed: (v: [number, number]) => void;
   onLoad: () => void;
+  view: CameraViewName;
+  onView: (v: CameraViewName) => void;
+  activeCount: number;
+  totalCount: number;
+  availableTypes: string[];
+  selectedTypes: ReadonlySet<string>;
+  onToggleType: (code: string) => void;
 }): JSX.Element {
   const setMin = (v: number) => {
     props.onSpeed([Math.min(v, props.speed[1]), props.speed[1]]);
@@ -18,13 +31,55 @@ export default function ControlPanel(props: {
   const setMax = (v: number) => {
     props.onSpeed([props.speed[0], Math.max(v, props.speed[0])]);
   };
+  const chipStyle = (code: string) => {
+    const [r, g, b] = pitchColor(code);
+    return { "background-color": `rgba(${r}, ${g}, ${b}, 0.18)`, border: `1px solid rgb(${r}, ${g}, ${b})` };
+  };
 
   return (
     <footer
       role="contentinfo"
-      style={{ display: "flex", "align-items": "center", gap: "16px", padding: "8px" }}
+      style={{ display: "flex", "align-items": "center", "flex-wrap": "wrap", gap: "16px", padding: "8px" }}
     >
       <button onClick={props.onLoad}>Load sample day</button>
+
+      <div role="group" aria-label="camera view presets" style={{ display: "flex", gap: "4px" }}>
+        <For each={Object.keys(CAMERA_VIEWS) as CameraViewName[]}>
+          {(name) => (
+            <button
+              aria-pressed={props.view === name}
+              style={{ "font-weight": props.view === name ? "bold" : "normal" }}
+              onClick={() => props.onView(name)}
+            >
+              {name}
+            </button>
+          )}
+        </For>
+      </div>
+
+      <span
+        role="status"
+        aria-label="pitch count"
+        title="pitches passing current filters / total loaded"
+      >
+        {props.activeCount}/{props.totalCount} pitches
+      </span>
+
+      <div role="group" aria-label="pitch types" style={{ display: "flex", gap: "4px" }}>
+        <For each={props.availableTypes}>
+          {(code) => (
+            <button
+              aria-pressed={props.selectedTypes.has(code)}
+              aria-label={`pitch type ${code}`}
+              style={chipStyle(code)}
+              onClick={() => props.onToggleType(code)}
+            >
+              {code}
+            </button>
+          )}
+        </For>
+      </div>
+
       <Show when={props.speed}>
         <label>
           min mph <strong>{Math.round(props.speed[0])}</strong>{" "}

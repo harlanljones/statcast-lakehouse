@@ -25,7 +25,7 @@ export interface PitchDatum {
   pitchType: string;
 }
 
-export const FILTER_SIZE = 3;
+export const FILTER_SIZE = 4;
 
 /**
  * Strike zone geometry (feet, Z-up). Plate front face at y = 1.417 ft;
@@ -38,19 +38,34 @@ export const STRIKE_ZONE = {
   zMax: 3.5,
 } as const;
 
+/**
+ * Camera viewpoint presets (OrbitView view states, feet / degrees).
+ * Catcher looks from behind the plate; Pitcher from the mound; Overhead is
+ * top-down; Side is the dugout line. Zoom follows deck.gl OrbitView scale.
+ */
+export const CAMERA_VIEWS = {
+  Catcher: { target: [0, 1.417, 2.5], rotationX: 12, rotationOrbit: 35, zoom: 6.2 },
+  Pitcher: { target: [0, 25, 3], rotationX: 10, rotationOrbit: 215, zoom: 5.5 },
+  Overhead: { target: [0, 27, 0], rotationX: 90, rotationOrbit: 0, zoom: 5.0 },
+  Side: { target: [0, 25, 3], rotationX: 5, rotationOrbit: 90, zoom: 5.5 },
+} as const satisfies Record<string, OrbitViewState>;
+
+export type CameraViewName = keyof typeof CAMERA_VIEWS;
+
 /** Uniform filter range that disables a channel ([.., ..] matches everything). */
 const OPEN_RANGE: [number, number] = [-Infinity, Infinity];
 
-/** Full [speed, hBreak, vBreak] filterRange triple for GPU-side filtering. */
+/** Full [speed, hBreak, vBreak, type] filterRange quadruple for GPU-side filtering. */
 export function filterRange(
   speed: [number, number],
   hBreak: [number, number] = OPEN_RANGE,
   vBreak: [number, number] = OPEN_RANGE,
-): [[number, number], [number, number], [number, number]] {
-  return [speed, hBreak, vBreak];
+  types: [number, number] = OPEN_RANGE,
+): [[number, number], [number, number], [number, number], [number, number]] {
+  return [speed, hBreak, vBreak, types];
 }
 
-/** GPU uniform filter extension shared by all trajectory layers (filterSize=3). */
+/** GPU uniform filter extension shared by all trajectory layers (filterSize=4). */
 export function dataFilterExtension() {
   return new DataFilterExtension({ filterSize: FILTER_SIZE });
 }
@@ -120,8 +135,8 @@ export function strikeZoneSegments(): WireSegment[] {
  * deck.gl's base typings don't include them, so the filtered props are cast.
  */
 type FilteredPathProps<D> = Partial<Omit<PathLayerProps<D>, "data">> & {
-  getFilterValue: AccessorFunction<D, [number, number, number]>;
-  filterRange: [[number, number], [number, number], [number, number]];
+  getFilterValue: AccessorFunction<D, [number, number, number, number]>;
+  filterRange: [[number, number], [number, number], [number, number], [number, number]];
 };
 
 export interface BuildLayersOpts {
@@ -130,19 +145,33 @@ export interface BuildLayersOpts {
   /** Optional extra channels; default open (match everything). */
   hBreakRange?: [number, number];
   vBreakRange?: [number, number];
+  /**
+   * Selected pitch-type codes. When provided (and non-empty), the 4th GPU
+   * filter channel carries set membership per datum and the type range
+   * narrows to [0.5, 1.5]. Data is still never filtered in JavaScript.
+   */
+  selectedTypes?: ReadonlySet<string> | null;
 }
 
 /**
  * Full layer set for the visualizer. Filtering is 100% GPU-side: pitch data
- * is passed unfiltered and the slider ranges land in DataFilterExtension
- * uniforms (TDD §5.3 invariant — zero per-frame JS filtering).
+ * is passed unfiltered and the slider/type selections land in
+ * DataFilterExtension uniforms (TDD §5.3 invariant — zero per-frame JS
+ * filtering).
  */
 export function buildLayers(opts: BuildLayersOpts) {
-  const { pitches, speedRange, hBreakRange, vBreakRange } = opts;
+  const { pitches, speedRange, hBreakRange, vBreakRange, selectedTypes } = opts;
   const ext = dataFilterExtension();
+  const hasSelection = !!selectedTypes && selectedTypes.size > 0;
+  const typeRange: [number, number] = hasSelection ? [0.5, 1.5] : OPEN_RANGE;
   const filteredProps: FilteredPathProps<PitchDatum> = {
-    getFilterValue: (d) => [d.releaseSpeed, d.pfxX, d.pfxZ],
-    filterRange: filterRange(speedRange, hBreakRange, vBreakRange),
+    getFilterValue: (d) => [
+      d.releaseSpeed,
+      d.pfxX,
+      d.pfxZ,
+      hasSelection ? (selectedTypes.has(d.pitchType) ? 1 : 0) : 1,
+    ],
+    filterRange: filterRange(speedRange, hBreakRange, vBreakRange, typeRange),
   };
   const layers = [
     new PathLayer<PitchDatum>({
@@ -158,7 +187,10 @@ export function buildLayers(opts: BuildLayersOpts) {
       opacity: 0.9,
       ...filteredProps,
       extensions: [ext],
-      updateTriggers: { filterRange: [speedRange, hBreakRange, vBreakRange] },
+      updateTriggers: {
+        filterRange: [speedRange, hBreakRange, vBreakRange, typeRange],
+        getFilterValue: selectedTypes ?? null,
+      },
     }),
     new PathLayer<WireSegment>({
       id: "strike-zone",

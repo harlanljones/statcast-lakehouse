@@ -1,10 +1,10 @@
 /** Arrow IPC loader: byte stream -> columnar table -> per-pitch GPU data. */
-import { tableFromIPC } from "apache-arrow";
+import { tableFromIPC, type Table } from "apache-arrow";
 import { trajectoryFlat, type PitchKinematics } from "./kinematics";
 import type { PitchDatum } from "./deck-layers";
 
 export interface PitchTable {
-  table: ReturnType<typeof tableFromIPC>;
+  table: Table;
   pitches: PitchDatum[];
 }
 
