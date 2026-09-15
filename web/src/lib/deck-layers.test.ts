@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DataFilterExtension } from "@deck.gl/extensions";
 import {
+  CAMERA_VIEWS,
   FALLBACK_COLOR,
   FILTER_SIZE,
   PITCH_COLORS,
@@ -44,24 +45,63 @@ describe("pitchColor", () => {
 });
 
 describe("filterRange", () => {
-  it("returns a 3-channel triple matching filterSize", () => {
+  it("returns a 4-channel tuple matching filterSize", () => {
     const range = filterRange([70, 105]);
-    expect(range).toEqual([[70, 105], [-Infinity, Infinity], [-Infinity, Infinity]]);
+    expect(range).toEqual([
+      [70, 105],
+      [-Infinity, Infinity],
+      [-Infinity, Infinity],
+      [-Infinity, Infinity],
+    ]);
   });
 
-  it("passes through explicit break channels", () => {
-    const range = filterRange([70, 105], [-1, 1], [0, 2]);
+  it("passes through explicit break and type channels", () => {
+    const range = filterRange([70, 105], [-1, 1], [0, 2], [0.5, 1.5]);
     expect(range[1]).toEqual([-1, 1]);
     expect(range[2]).toEqual([0, 2]);
+    expect(range[3]).toEqual([0.5, 1.5]);
   });
 });
 
 describe("dataFilterExtension", () => {
-  it("configures filterSize 3 with GPU filtering", () => {
+  it("configures filterSize 4 with GPU filtering", () => {
     const ext = dataFilterExtension() as unknown as { opts: { filterSize: number } };
     expect(ext).toBeInstanceOf(DataFilterExtension);
     expect(ext.opts.filterSize).toBe(FILTER_SIZE);
-    expect(FILTER_SIZE).toBe(3);
+    expect(FILTER_SIZE).toBe(4);
+  });
+});
+
+describe("CAMERA_VIEWS", () => {
+  it("defines the four broadcast presets with exact view states", () => {
+    expect(CAMERA_VIEWS.Catcher).toEqual({
+      target: [0, 1.417, 2.5],
+      rotationX: 12,
+      rotationOrbit: 35,
+      zoom: 6.2,
+    });
+    expect(CAMERA_VIEWS.Pitcher).toEqual({
+      target: [0, 25, 3],
+      rotationX: 10,
+      rotationOrbit: 215,
+      zoom: 5.5,
+    });
+    expect(CAMERA_VIEWS.Overhead).toEqual({
+      target: [0, 27, 0],
+      rotationX: 90,
+      rotationOrbit: 0,
+      zoom: 5.0,
+    });
+    expect(CAMERA_VIEWS.Side).toEqual({
+      target: [0, 25, 3],
+      rotationX: 5,
+      rotationOrbit: 90,
+      zoom: 5.5,
+    });
+  });
+
+  it("exposes exactly the four preset keys", () => {
+    expect(Object.keys(CAMERA_VIEWS).sort()).toEqual(["Catcher", "Overhead", "Pitcher", "Side"]);
   });
 });
 
@@ -118,20 +158,38 @@ describe("buildLayers", () => {
       [90, 105],
       [-Infinity, Infinity],
       [-Infinity, Infinity],
+      [-Infinity, Infinity],
     ]);
     expect((layer.props.getFilterValue as (d: PitchDatum) => number[])(pitches[0])).toEqual([
-      96, 0, 0,
+      96, 0, 0, 1,
     ]);
   });
 
-  it("uses the DataFilterExtension with filterSize 3", () => {
+  it("uses the DataFilterExtension with filterSize 4", () => {
     const layer = buildLayers({ pitches, speedRange: [60, 105] })[0] as unknown as {
       props: { extensions: DataFilterExtension[] };
     };
     const exts = layer.props.extensions;
     expect(exts).toHaveLength(1);
     expect(exts[0]).toBeInstanceOf(DataFilterExtension);
-    expect((exts[0] as unknown as { opts: { filterSize: number } }).opts.filterSize).toBe(3);
+    expect((exts[0] as unknown as { opts: { filterSize: number } }).opts.filterSize).toBe(4);
+  });
+
+  it("routes pitch-type selection through the 4th GPU channel, not array filtering", () => {
+    const selected = new Set(["SL"]);
+    const layer = buildLayers({ pitches, speedRange: [60, 105], selectedTypes: selected })[0] as unknown as {
+      props: {
+        data: PitchDatum[];
+        filterRange: [[number, number], [number, number], [number, number], [number, number]];
+        getFilterValue: (d: PitchDatum) => number[];
+      };
+    };
+    // The full unfiltered dataset still goes to the GPU.
+    expect(layer.props.data).toBe(pitches);
+    expect(layer.props.filterRange[3]).toEqual([0.5, 1.5]);
+    const get = layer.props.getFilterValue;
+    expect(get(pitches[0])).toEqual([96, 0, 0, 0]); // FF deselected
+    expect(get(pitches[1])).toEqual([85, 0, 0, 1]); // SL selected
   });
 
   it("colors trajectories by pitch type", () => {
