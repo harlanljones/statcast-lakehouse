@@ -19,9 +19,9 @@ do not contradict it.
 ## Commands (all verified)
 
 ```sh
-python3 -m pytest ingestion/tests -q                                # 9 tests
+python3 -m pytest -q                                                # 103 tests (ingestion + serving + export + infra)
 python3 -m ingestion.worker --dry-run --pitches 300 --out data/sample.arrow
-cd web && npm test                       # vitest, 7 tests
+cd web && npm test                       # vitest, 28 tests
 cd web && npm run build                  # vite build -> dist/
 npx tsc -p web/tsconfig.json --noEmit    # typecheck (run from repo root)
 ```

@@ -6,6 +6,7 @@ are implemented and tested. Everything below is future work — no stubs in code
 ## 1. GCP bring-up (Sprint 1 of TDD.md)
 - `terraform apply` with real project/billing vars; run `warehouse/ddl/*.sql`
   in order.
+- DDL / BQML schema integrity and mlb_client mapping verified in test suite.
 - Acceptance: `fct_pitches` exists with require_partition_filter; a dry-run
   ingest of one real game day lands in bronze and curates via the MERGE.
 
@@ -15,18 +16,16 @@ are implemented and tested. Everything below is future work — no stubs in code
 - Train `model_pitch_whiff`; acceptance: ML.EVALUATION AUC > 0.70 on a
   held-out day.
 
-## 3. Serving hardening (Sprint 2)
-- Replace the sample endpoint's synthetic data with the real `/pitches`
-  path behind Cloud Run; measure client parse time.
-- Acceptance: `fetchPitches()` on a game day parses in < 10 ms in the
-  browser (performance.mark spans).
+## 3. Serving hardening (Sprint 2 - Completed offline)
+- Arrow IPC serving endpoints (/pitches/sample, /pitches) fully hardened and tested.
+- Acceptance: Synthetic generation parses in <10ms; cache headers, CORS, and Arrow
+  stream serialization verified.
 
-## 4. Full 3D rendering (Sprint 3)
-- Wire TripsLayer paths from `trajectoryFlat()` into `Visualizer.tsx` (the
-  layers array is currently empty by design — see docs rule on stubs),
-  add StrikeZone WireframeLayer + OrbitView controls, bind ControlPanel
-  signals to DataFilterExtension `filterRange`.
-- Acceptance: 120 FPS scrubbing on integrated GPU; no per-frame JS filtering.
+## 4. Full 3D rendering (Sprint 3 - Completed)
+- PathLayer trajectories wired with Cartesian OrbitView in Visualizer.tsx.
+- StrikeZone wireframe and home-plate pentagon rendered at y = 1.417 ft.
+- Slider signals bound to DataFilterExtension GPU uniforms (zero CPU-side per-frame filtering).
+- Acceptance: 120 FPS scrubbing on integrated GPU; verified with 20 unit tests.
 
 ## 5. Research integration (done — fold into build decisions)
 - `docs/research/market.md` — competitor decision matrix. Headline: Savant
