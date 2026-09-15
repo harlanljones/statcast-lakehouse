@@ -25,6 +25,10 @@ variable "worker_image" {
   type = string
 }
 
+variable "serving_image" {
+  type = string
+}
+
 # ---- BigQuery ----
 
 resource "google_bigquery_dataset" "statcast" {
@@ -169,4 +173,72 @@ resource "google_cloud_scheduler_job" "ingest_daily" {
 
 output "dataset_id" {
   value = google_bigquery_dataset.statcast.dataset_id
+}
+
+# ---- Cloud Run service: Arrow serving API ----
+
+resource "google_service_account" "serving" {
+  account_id   = "statcast-serving"
+  display_name = "Statcast Arrow serving service"
+}
+
+# Read-only warehouse/GCS access is the minimum needed to answer queries;
+# no writer roles on the serving path.
+resource "google_project_iam_member" "serving_read" {
+  for_each = toset([
+    "roles/bigquery.dataViewer",
+    "roles/bigquery.jobUser",
+    "roles/storage.objectViewer", # historical GCS partition reading
+  ])
+  project = var.gcp_project
+  role    = each.key
+  member  = "serviceAccount:${google_service_account.serving.email}"
+}
+
+# min_instance_count = 0 keeps the free tier intact: idle requests bill nothing.
+resource "google_cloud_run_v2_service" "serving" {
+  name     = "statcast-serving"
+  location = var.gcp_region
+  ingress  = "INGRESS_TRAFFIC_ALL"
+
+  scaling {
+    min_instance_count = 0
+    max_instance_count = 5
+  }
+
+  template {
+    containers {
+      image = var.serving_image
+      ports {
+        container_port = 8080
+      }
+      env {
+        name  = "GCP_PROJECT"
+        value = var.gcp_project
+      }
+      env {
+        name  = "ALLOWED_ORIGINS"
+        value = "http://localhost:5173"
+      }
+      resources {
+        limits = {
+          memory = "1Gi"
+          cpu    = "1"
+        }
+      }
+    }
+  }
+}
+
+# Public HTTP access for the browser-based visualizer; the service itself
+# enforces CORS via ALLOWED_ORIGINS.
+resource "google_cloud_run_v2_service_iam_member" "serving_public" {
+  name     = google_cloud_run_v2_service.serving.name
+  location = google_cloud_run_v2_service.serving.location
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+output "serving_url" {
+  value = google_cloud_run_v2_service.serving.uri
 }
