@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import os
+import random
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,7 +53,9 @@ def healthz() -> dict:
 
 @app.get("/pitches/sample")
 def sample(pitches: int = 300) -> Response:
-    return _arrow_response(synth_day(dt.date(2026, 9, 14), pitches))
+    return _arrow_response(
+        synth_day(random.Random(2026), dt.date(2026, 9, 14), pitches)
+    )
 
 
 @app.get("/pitches")
