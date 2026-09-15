@@ -1,0 +1,112 @@
+# dev — entrypoint for development on the statcast-lakehouse repo under Hermes.
+#
+# Usage:
+#   ./dev              launch an interactive Hermes session (statcast profile)
+#   ./dev -q "prompt"  one-shot query (args pass straight through to hermes)
+#   ./dev setup        bootstrap only: profile, prune, project skills, trust
+#   ./dev doctor       verify the environment without launching
+#
+# Idempotent. Never modifies the default ~/.hermes profile.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROFILE="statcast"
+
+cd "$REPO_ROOT"
+
+if ! command -v hermes >/dev/null 2>&1; then
+  echo "error: hermes not on PATH (install: curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash)" >&2
+  exit 1
+fi
+
+profile_exists() {
+  hermes profile list 2>/dev/null | grep -qE "^[│┃ ]*${PROFILE}( |$)" || \
+    [ -d "$HOME/.hermes/profiles/${PROFILE}" ]
+}
+
+# Skills disabled in the statcast profile — everything not relevant to this
+# repo. Kept here so a fresh machine can rebuild the profile exactly.
+build_disabled_list() {
+  cat <<'JSON'
+["agent-reach","ai-image-generation","animate","animate-expo","animation-vocabulary","apple-design","ask-sonner","editor","emil-design-eng","find-animation-opportunities","flyai","improve-animations","pick-ui-library","review-animations","write-swift","xurl","apple-notes","apple-reminders","findmy","imessage","ascii-video","baoyu-infographic","claude-design","design-md","humanizer","manim-video","p5js","popular-web-designs","songwriting-and-ai-music","gif-search","songsee","youtube-content","obsidian","airtable","box","document-to-action-items","docx","google-workspace","maps","meeting-action-items","notion","pdf","powerpoint","product-price-monitor","teams-meeting-pipeline","weekly-review-planning","xlsx","email-inbox-triage","himalaya","ratatui-tui","rust","remotion-best-practices","remotion-captions","remotion-create","remotion-docs","remotion-interactivity","remotion-maps","remotion-markup","remotion-multimedia","remotion-render","remotion-saas","remotion-studio","remotion-upgrade"]
+JSON
+}
+
+ensure_profile() {
+  if profile_exists; then return 0; fi
+  echo "[dev] creating '${PROFILE}' profile (cloned from default)..."
+  hermes profile create "$PROFILE" --clone \
+    --description "Statcast Lakehouse repo dev: Python/pyarrow ingestion + BigQuery + SolidJS/deck.gl web" >/dev/null
+}
+
+ensure_skill_prune() {
+  if hermes --profile "$PROFILE" config get skills.disabled 2>/dev/null \
+      | grep -qvE '^(null|\[\]|\s*)?$'; then
+    return 0
+  fi
+  echo "[dev] pruning irrelevant skills from '${PROFILE}' profile..."
+  hermes -p "$PROFILE" config set skills.disabled "$(build_disabled_list)" --force >/dev/null 2>&1 || true
+}
+
+ensure_project_skills() {
+  mkdir -p .hermes/skills
+  local -a sd=(test-driven-development systematic-debugging requesting-code-review
+               simplify-code spike github codebase-inspection
+               hermes-agent-skill-authoring dockerize-web-app)
+  local -a rr=(arxiv grounded-citations)
+  local -a root_lv=(repo-scaffold market-competitor-research)
+  local s
+  for s in "${sd[@]}" "${rr[@]}" "${root_lv[@]}"; do
+    [ -e ".hermes/skills/$s/SKILL.md" ] && continue
+    local target
+    target="$(find "$HOME/.hermes/skills" -maxdepth 2 -type d -name "$s" 2>/dev/null | head -1)"
+    [ -n "$target" ] && ln -sfn "$target" ".hermes/skills/$s" || true
+  done
+}
+
+ensure_trust() {
+  hermes -p "$PROFILE" skills trust . >/dev/null 2>&1 || true
+}
+
+ensure_hooks() {
+  local -a hooks=(statcast-git-guard.sh statcast-formatter.sh
+                  statcast-evidence.sh statcast-inject-git-status.sh)
+  local h
+  for h in "${hooks[@]}"; do
+    [ -x "$HOME/.hermes/agent-hooks/$h" ] || {
+      echo "[dev] warning: hook script missing/not executable: $h" >&2
+    }
+  done
+}
+
+case "${1:-}" in
+  setup)
+    ensure_profile; ensure_skill_prune; ensure_project_skills; ensure_trust; ensure_hooks
+    echo "[dev] setup complete."
+    ;;
+  doctor)
+    fail=0
+    profile_exists || { echo "FAIL: profile '${PROFILE}' missing"; fail=1; }
+    [ -x "$HOME/.hermes/agent-hooks/statcast-git-guard.sh" ] \
+      && [ -x "$HOME/.hermes/agent-hooks/statcast-formatter.sh" ] \
+      && [ -x "$HOME/.hermes/agent-hooks/statcast-evidence.sh" ] \
+      && [ -x "$HOME/.hermes/agent-hooks/statcast-inject-git-status.sh" ] \
+      || { echo "FAIL: hook scripts missing or not executable"; fail=1; }
+    hermes -p "$PROFILE" config get hooks.pre_tool_call 2>/dev/null | grep -q statcast-git-guard \
+      || { echo "FAIL: git-guard hook not registered"; fail=1; }
+    broken=$(find .hermes/skills -maxdepth 1 -type l ! -exec test -e {} \; -print 2>/dev/null || true)
+    [ -z "$broken" ] || { echo "FAIL: broken skill links: $broken"; fail=1; }
+    n_skills=$(find .hermes/skills -maxdepth 1 -type l 2>/dev/null | wc -l)
+    echo "project skills: $n_skills"
+    hermes -p "$PROFILE" skills list 2>/dev/null | grep -c disabled | xargs -I{} echo "disabled skills: {}"
+    python3 --version >/dev/null 2>&1 || { echo "FAIL: python3 missing"; fail=1; }
+    node --version >/dev/null 2>&1 || { echo "FAIL: node missing"; fail=1; }
+    [ -d web/node_modules ] || echo "warn: web deps not installed (run: cd web && npm install)"
+    [ "$fail" -eq 0 ] && echo "doctor: OK" || exit 1
+    ;;
+  *)
+    ensure_profile; ensure_skill_prune; ensure_project_skills; ensure_trust; ensure_hooks
+    exec hermes --profile "$PROFILE" "$@"
+    ;;
+esac
