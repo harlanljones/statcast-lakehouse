@@ -1,12 +1,12 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
 import { Deck, OrbitView } from "@deck.gl/core";
 import type { PitchTable } from "../lib/arrow-loader";
-import { INITIAL_VIEW, ORBIT_TARGET } from "../lib/deck-layers";
+import { INITIAL_VIEW, ORBIT_TARGET, buildLayers } from "../lib/deck-layers";
 
 /**
  * Deck.gl canvas container. OrbitView in Cartesian space (z-up, feet).
- * The data prop is reactive; layer updates rebind GPU attributes without
- * touching CPU-side data (TDD §5.3 zero-latency filtering).
+ * The data and filter props are reactive; slider ranges rebind GPU filter
+ * uniforms only — no CPU-side data filtering ever happens (TDD §5.3).
  */
 export default function Visualizer(props: { data: PitchTable | null; filter: [number, number] }) {
   let container!: HTMLDivElement;
@@ -23,14 +23,13 @@ export default function Visualizer(props: { data: PitchTable | null; filter: [nu
     onCleanup(() => deck?.finalize());
   });
 
+  // Tracks both props.data and props.filter: a slider drag only rebinds
+  // DataFilterExtension uniforms — zero JavaScript array traversal.
   createEffect(() => {
+    if (!deck) return;
     const d = props.data;
-    if (!deck || !d) return;
     deck.setProps({
-      layers: [
-        // Trajectory layers land in Sprint 3 (docs/ROADMAP.md item 4);
-        // wiring TripsLayer here without data styling would be a stub.
-      ],
+      layers: d ? buildLayers({ pitches: d.pitches, speedRange: props.filter }) : [],
     });
   });
 
