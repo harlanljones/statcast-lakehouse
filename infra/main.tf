@@ -67,6 +67,47 @@ variable "billing_account" {
   type = string
 }
 
+# ---- Cloud Storage: historical Arrow batch exports (TDD §4.1) ----
+
+resource "google_storage_bucket" "arrow_batches" {
+  name          = "${var.gcp_project}-statcast-arrow-batches"
+  location      = "US"
+  storage_class = "STANDARD"
+
+  uniform_bucket_level_access = true
+
+  # Free-tier headroom: TDD §7 budgets ~500 MB of Arrow files against the
+  # 5 GB Standard allowance; batches tier to Nearline at 30 days and are
+  # deleted at 365, matching fct_pitches partition expiration.
+  lifecycle_rule {
+    condition {
+      age = 30
+    }
+    action {
+      type          = "SetStorageClass"
+      storage_class = "NEARLINE"
+    }
+  }
+  lifecycle_rule {
+    condition {
+      age = 365
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  versioning {
+    enabled = false
+  }
+}
+
+resource "google_storage_bucket_iam_member" "ingest_writer" {
+  bucket = google_storage_bucket.arrow_batches.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.ingest.email}"
+}
+
 # ---- Cloud Run Job: ingestion worker ----
 
 resource "google_cloud_run_v2_job" "ingest" {
