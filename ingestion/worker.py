@@ -17,6 +17,7 @@ import argparse
 import json
 import math
 import random
+import sys
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterable
 
@@ -188,14 +189,20 @@ def write_bq(rows: Iterable[dict[str, Any]], project: str, table: str) -> int:
     from google.cloud.bigquery_storage_v1 import types as bq_types
 
     write_client = BigQueryWriteClient()
-    parent = write_client.table_path(project, "statcast_analytics", table)
-    stream = f"{parent}/streams/_default"
+    # Build the default-stream name explicitly so the format is stable and
+    # testable regardless of client-library version:
+    #   projects/{project}/datasets/{dataset}/tables/{table}/streams/_default
+    stream = f"projects/{project}/datasets/statcast_analytics/tables/{table}/streams/_default"
     n = 0
     for chunk in rows_to_record_batches(rows):
         from google.cloud.bigquery_storage_v1 import pb2 as storage_pb2
 
         proto_rows = storage_pb2.ProtoRows()
-        proto_rows.serialized_rows.extend(json.dumps(r).encode() for r in chunk)
+        # default=str: datetime.date / datetime.datetime / other non-JSON
+        # scalars serialize via str() (isoformat) instead of raising TypeError.
+        proto_rows.serialized_rows.extend(
+            json.dumps(r, default=str).encode() for r in chunk
+        )
         request = bq_types.AppendRowsRequest()
         request.write_stream = stream
         request.proto_rows.serialized_rows.extend(proto_rows.serialized_rows)
@@ -214,7 +221,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--project", default=None, help="GCP project (live mode)")
     args = ap.parse_args(argv)
 
-    game_day = date.fromisoformat(args.date)
+    try:
+        game_day = date.fromisoformat(args.date)
+    except ValueError:
+        ap.error(f"invalid --date {args.date!r}: expected YYYY-MM-DD")
+    if args.live and not args.project:
+        print(
+            "error: --live requires --project (GCP project id, e.g. --project my-gcp-proj)",
+            file=sys.stderr,
+        )
+        return 2
     if args.dry_run or not args.live:
         rng = random.Random(2026)
         table = synth_day(rng, game_day, args.pitches)
