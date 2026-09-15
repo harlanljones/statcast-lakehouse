@@ -8,6 +8,7 @@ We hit the JSON statcast endpoint directly to avoid the CSV layer.
 from __future__ import annotations
 
 import datetime as dt
+import io
 from typing import Any, Iterator
 
 import httpx
@@ -50,10 +51,51 @@ def _to_float(v: Any) -> float | None:
         return None
 
 
+def _to_int(v: Any) -> int | None:
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+
+INT_FIELDS = frozenset({"game_id", "pitcher_id", "batter_id"})
+TEXT_FIELDS = frozenset({"pitch_type", "game_date", "description"})
+
+
+class _RawReader(io.RawIOBase):
+    """Adapter: httpx's streaming byte iterator -> a file-like raw reader."""
+
+    def __init__(self, chunks: Iterator[bytes]) -> None:
+        self._chunks = chunks
+        self._buf = b""
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, b: Any) -> int:
+        while not self._buf:
+            try:
+                self._buf = next(self._chunks)
+            except StopIteration:
+                return 0
+        n = min(len(b), len(self._buf))
+        b[:n] = self._buf[:n]
+        self._buf = self._buf[n:]
+        return n
+
+
 def _row(record: dict[str, Any]) -> dict[str, Any] | None:
     out: dict[str, Any] = {}
     for src, dst in COLUMN_MAP.items():
-        out[dst] = _to_float(record.get(src)) if dst not in ("pitch_type", "game_date", "description") else record.get(src)
+        if dst in TEXT_FIELDS:
+            out[dst] = record.get(src)
+        elif dst in INT_FIELDS:
+            out[dst] = _to_int(record.get(src))
+        elif dst == "pitch_id":
+            # String-only: Statcast pitch ids exceed float64 integer precision.
+            out[dst] = record.get(src)
+        else:
+            out[dst] = _to_float(record.get(src))
     if out.get("game_id") is None:
         return None
     out["is_swing"] = int(out.get("description") in ("swinging_strike", "foul", "hit_into_play", "swinging_strike_blocked"))
@@ -75,7 +117,7 @@ def fetch_game_day(day: dt.date, client: httpx.Client | None = None) -> Iterator
             import csv
             import io
 
-            text = io.TextIOWrapper(resp.iter_raw(), encoding="utf-8")  # type: ignore[arg-type]
+            text = io.TextIOWrapper(io.BufferedReader(_RawReader(resp.iter_bytes())), encoding="utf-8")
             for record in csv.DictReader(text):
                 row = _row(record)
                 if row is not None:
