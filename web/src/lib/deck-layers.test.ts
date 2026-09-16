@@ -13,6 +13,7 @@ import {
   strikeZoneSegments,
   type PitchDatum,
 } from "./deck-layers";
+import { deterministicFallbackColor } from "./pitch-type-color";
 
 function pitch(overrides: Partial<PitchDatum> = {}): PitchDatum {
   return {
@@ -33,8 +34,11 @@ describe("pitchColor", () => {
     }
   });
 
-  it("returns the fallback for unknown or empty codes", () => {
-    expect(pitchColor("XX")).toBe(FALLBACK_COLOR);
+  it("returns deterministic colors for unknown codes, gray for empty", () => {
+    // Unknown codes share the legend's deterministic mapping so the 3D
+    // trajectories and the 2D legend always agree.
+    expect(pitchColor("XX")).toEqual(deterministicFallbackColor("XX"));
+    expect(pitchColor("XX")).not.toBe(FALLBACK_COLOR);
     expect(pitchColor("")).toBe(FALLBACK_COLOR);
     expect(pitchColor(undefined as unknown as string)).toBe(FALLBACK_COLOR);
   });
@@ -192,11 +196,37 @@ describe("buildLayers", () => {
     expect(get(pitches[1])).toEqual([85, 0, 0, 1]); // SL selected
   });
 
+  it("emphasizes the picked trajectory via a per-datum GPU width accessor", () => {
+    const layer = buildLayers({
+      pitches,
+      speedRange: [60, 105],
+      picked: pitches[1],
+    })[0] as unknown as {
+      props: {
+        getWidth: (d: PitchDatum) => number;
+        updateTriggers: Record<string, unknown>;
+      };
+    };
+    const BASE = 0.08;
+    // Per-datum accessor on the GPU path — data stays unfiltered.
+    expect(layer.props.getWidth(pitches[1])).toBeCloseTo(BASE * 2.5, 9);
+    expect(layer.props.getWidth(pitches[0])).toBeCloseTo(BASE, 9);
+    // Layer re-evaluation is triggered by the picked datum reference.
+    expect(layer.props.updateTriggers.getWidth).toBe(pitches[1]);
+  });
+
+  it("uses base width everywhere when nothing is picked", () => {
+    const layer = buildLayers({ pitches, speedRange: [60, 105], picked: null })[0] as unknown as {
+      props: { getWidth: (d: PitchDatum) => number };
+    };
+    for (const p of pitches) expect(layer.props.getWidth(p)).toBeCloseTo(0.08, 9);
+  });
+
   it("colors trajectories by pitch type", () => {
     const layer = buildLayers({ pitches, speedRange: [60, 105] })[0] as unknown as {
       props: { getColor: (d: PitchDatum) => number[] };
     };
     expect(layer.props.getColor(pitches[0])).toEqual([...PITCH_COLORS.FF, 220]);
-    expect(layer.props.getColor(pitch({ pitchType: "ZZ" }))).toEqual([...FALLBACK_COLOR, 220]);
+    expect(layer.props.getColor(pitch({ pitchType: "ZZ" }))).toEqual([...deterministicFallbackColor("ZZ"), 220]);
   });
 });

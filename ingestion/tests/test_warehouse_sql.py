@@ -135,7 +135,9 @@ class TestBronzeAndCurateDay:
             for line in body.splitlines()
             if line.strip() and not line.strip().startswith("--")
         ]
-        assert ddl_cols == [f.name for f in SCHEMA]
+        # raw JSON staging column carries the unparsed API record on top of
+        # the mapped SCHEMA columns.
+        assert ddl_cols == [f.name for f in SCHEMA] + ["raw"]
 
     def test_bronze_partitioned_by_ingestion_time(self):
         sql = read(DDL / "01_bronze_pitches.sql")
@@ -226,3 +228,132 @@ class TestBqml:
         fct_cols = set(fct_columns_from_ddl())
         # Everything the model was trained on that isn't EXCEPTed must reach it.
         assert features - {"is_whiff"} <= (fct_cols - passed)
+
+
+# ----------------------------------------------------- cost-guard invariants
+# AGENTS.md free-tier rule: every scan of fct_pitches must prune on game_date
+# (require_partition_filter = TRUE), so no query may read the whole table.
+# These guards parse (regex-level) every .sql file under warehouse/ and are
+# case-insensitive / whitespace-normalized: strict on invariants, tolerant
+# of formatting.
+
+
+def norm(sql: str) -> str:
+    """Lowercase and collapse all whitespace runs to single spaces."""
+    return re.sub(r"\s+", " ", sql.lower())
+
+
+def all_warehouse_sql_files() -> list[Path]:
+    return sorted((REPO / "warehouse").rglob("*.sql"))
+
+
+FCT_TABLE_RE = re.compile(r"from\s+`[\w\-]+\.[\w\-.]*fct_pitches`")
+
+GAME_DATE_FILTER = re.compile(r"\bgame_date\s*(?:>=|<=|<>|!=|[=<>])\s*\S|game_date\s+between\b")
+
+
+def fct_scan_gaps(sql: str) -> list[str]:
+    r"""Every scan of fct_pitches must be pruned on game_date within its own
+    query scope: text from the FROM up to where the subquery's parentheses
+    close, with any nested-parenthesis content dropped so an inner scan
+    cannot vouch for an outer one (or vice versa).
+
+    Static-guard limitations (accepted): comment text inside a scope can
+    satisfy the filter regex, and a ')' inside a string literal truncates
+    the scope early — neither occurs in this repo's SQL.
+    """
+    gaps = []
+    flat = norm(sql)
+    for stmt in flat.split(";"):
+        for m in FCT_TABLE_RE.finditer(stmt):
+            depth = 0
+            scope_end = len(stmt)
+            scope_chars = []
+            for i, ch in enumerate(stmt[m.end():], m.end()):
+                if depth == 0 and ch == ")":
+                    scope_end = i  # subquery containing this FROM closes
+                    break
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                elif depth == 0:
+                    scope_chars.append(ch)
+            if not GAME_DATE_FILTER.search("".join(scope_chars)):
+                gaps.append("".join(scope_chars).strip()[:60] or "(empty scope)")
+    return gaps
+
+
+
+class TestCostGuards:
+    def test_every_warehouse_sql_file_is_discovered(self):
+        files = all_warehouse_sql_files()
+        names = {f.name for f in files}
+        expected = {
+            "01_bronze_pitches.sql",
+            "02_fct_pitches.sql",
+            "03_curate_day.sql",
+            "train_whiff_model.sql",
+            "predict_live_game.sql",
+        }
+        assert expected <= names, f"missing from warehouse/ scan: {expected - names}"
+        for f in files:
+            assert f.read_text().strip(), f"{f.name} is empty"
+
+    def test_fct_pitches_partitioned_by_game_date(self):
+        sql = norm(read(DDL / "02_fct_pitches.sql"))
+        assert re.search(r"partition by\s+game_date\b", sql)
+
+    def test_fct_pitches_clustered_by_player_and_pitch_type(self):
+        sql = norm(read(DDL / "02_fct_pitches.sql"))
+        m = re.search(r"cluster by\s+([^;()]*?)(?:\boptions\b|;|$)", sql)
+        assert m, "CLUSTER BY clause missing"
+        cols = [c.strip() for c in m.group(1).split(",")]
+        assert cols == ["pitcher_id", "batter_id", "pitch_type"], cols
+
+    def test_fct_pitches_requires_partition_filter(self):
+        sql = norm(read(DDL / "02_fct_pitches.sql"))
+        assert re.search(r"require_partition_filter\s*=\s*true\b", sql)
+
+    def test_fct_pitches_has_partition_expiration(self):
+        sql = norm(read(DDL / "02_fct_pitches.sql"))
+        assert re.search(r"partition_expiration_days\s*=\s*\d+", sql)
+
+    def test_every_fct_pitches_scan_filters_on_game_date(self):
+        """Every SELECT reading fct_pitches, in any warehouse SQL file, must
+        carry a game_date predicate (free-tier scan budget)."""
+        offenders = []
+        for f in all_warehouse_sql_files():
+            for gap in fct_scan_gaps(f.read_text()):
+                offenders.append(f"{f.name}: {gap!r}")
+        assert not offenders, f"fct_pitches scan without game_date filter: {offenders}"
+
+    def test_curate_day_scan_is_partition_filtered(self):
+        """03_curate_day reads bronze_pitches (partitioned by ingestion_time,
+        not game_date), so its guard is a partition predicate on the scan."""
+        sql = norm(read(DDL / "03_curate_day.sql"))
+        assert re.search(r"from\s+`[\w\-]+\.[\w\-.]*bronze_pitches`", sql)
+        assert re.search(r"date\s*\(\s*ingestion_time\s*\)\s*=\s*@target_date\b", sql)
+
+    def test_train_whiff_model_type(self):
+        sql = norm(read(BQML / "train_whiff_model.sql"))
+        assert re.search(r"model_type\s*=\s*'boosted_tree_classifier'", sql)
+
+    def test_train_whiff_model_trains_on_swings_only(self):
+        sql = norm(read(BQML / "train_whiff_model.sql"))
+        assert re.search(r"\bis_swing\s*=\s*1\b", sql)
+
+    def test_train_whiff_model_input_query_filters_game_date(self):
+        sql = norm(read(BQML / "train_whiff_model.sql"))
+        parts = re.split(r"\bas\s+select\b", sql, maxsplit=1)
+        assert len(parts) == 2, "model input SELECT not found"
+        assert GAME_DATE_FILTER.search(parts[1]), "input SELECT lacks game_date filter"
+
+    def test_bronze_partitioned_by_ingestion_time(self):
+        sql = norm(read(DDL / "01_bronze_pitches.sql"))
+        assert re.search(r"partition by\s+date\s*\(\s*ingestion_time\s*\)", sql)
+        assert re.search(r"require_partition_filter\s*=\s*true\b", sql)
+
+    def test_bronze_has_raw_json_staging_column(self):
+        sql = read(DDL / "01_bronze_pitches.sql")
+        assert re.search(r"\braw\s+(?:payload\s+)?json\b", sql, re.I)

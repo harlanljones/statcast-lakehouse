@@ -44,8 +44,47 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   return { table, pitches };
 }
 
+/**
+ * ETag cache for conditional revalidation: url -> { etag, parsed }.
+ *
+ * Design choice (304 seam): the cache stores the fully parsed PitchTable,
+ * not the raw bytes. On a 304 we return the cached table by identity,
+ * skipping IPC decoding, tableFromIPC, and all trajectory math — strictly
+ * cheaper than caching bytes and re-parsing. Raw bytes are never needed
+ * downstream (callers consume PitchTable only).
+ *
+ * Cache-Control is intentionally NOT read or honored client-side: expiry/
+ * freshness is a server/CDN concern. The client revalidates with
+ * If-None-Match on every load and lets the server decide 200 vs 304.
+ */
+const etagCache = new Map<string, { etag: string; parsed: PitchTable }>();
+
+/** Cached ETag for a URL, or undefined. Test/inspection helper. */
+export function getEtag(url: string): string | undefined {
+  return etagCache.get(url)?.etag;
+}
+
+/** Clear the ETag cache (test isolation). */
+export function clearEtagCache(): void {
+  etagCache.clear();
+}
+
 export async function fetchPitches(url: string): Promise<PitchTable> {
-  const res = await fetch(url);
+  const cached = etagCache.get(url);
+  const res = cached
+    ? await fetch(url, { headers: { "If-None-Match": cached.etag } })
+    : await fetch(url);
+  if (res.status === 304 && cached) {
+    return cached.parsed;
+  }
+  if (res.status === 304) {
+    // 304 without a local cache entry: server/proxy mismatch.
+    throw new Error(`fetch ${url}: 304 without cached ETag`);
+  }
   if (!res.ok) throw new Error(`fetch ${url}: ${res.status}`);
-  return loadPitchTable(await res.arrayBuffer());
+  const parsed = loadPitchTable(await res.arrayBuffer());
+  const etag = res.headers.get("ETag");
+  if (etag) etagCache.set(url, { etag, parsed });
+  else etagCache.delete(url); // keep the cache honest: no ETag, no entry
+  return parsed;
 }

@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS `statcast_analytics.bronze_pitches` (
   sz_bot FLOAT64,
   is_swing INT64,
   is_whiff INT64,
-  ingestion_time TIMESTAMP
+  ingestion_time TIMESTAMP,
+  raw JSON
 )
 PARTITION BY DATE(ingestion_time)
 OPTIONS (

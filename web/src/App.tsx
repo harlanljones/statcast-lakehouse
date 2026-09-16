@@ -3,6 +3,7 @@ import { createMemo, createSignal } from "solid-js";
 import Visualizer from "./components/Visualizer";
 import ControlPanel from "./components/ControlPanel";
 import { fetchPitches, type PitchTable } from "./lib/arrow-loader";
+import { extractGameDate, distinctPitchTypes } from "./lib/data-status";
 import { CAMERA_VIEWS, type CameraViewName } from "./lib/deck-layers";
 
 const [pitchData, setPitchData] = createSignal<PitchTable | null>(null);
@@ -12,10 +13,10 @@ const [selectedTypes, setSelectedTypes] = createSignal<ReadonlySet<string>>(new 
 
 // Display-only derived values (badge + chips). These run once per signal
 // change, never per frame; the layer data itself is never filtered in JS.
-const availableTypes = createMemo(() => {
-  const counts = new Map<string, number>();
-  for (const p of pitchData()?.pitches ?? []) counts.set(p.pitchType, (counts.get(p.pitchType) ?? 0) + 1);
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([code]) => code);
+const availableTypes = createMemo(() => distinctPitchTypes(pitchData()?.pitches ?? []));
+const gameDate = createMemo(() => {
+  const d = pitchData();
+  return d ? extractGameDate(d.table) : null;
 });
 const activeCount = createMemo(() => {
   const pitches = pitchData()?.pitches ?? [];
@@ -50,6 +51,7 @@ export default function App() {
         onView={setView}
         activeCount={activeCount()}
         totalCount={pitchData()?.pitches.length ?? 0}
+        gameDate={gameDate()}
         availableTypes={availableTypes()}
         selectedTypes={selectedTypes()}
         onToggleType={toggleType}

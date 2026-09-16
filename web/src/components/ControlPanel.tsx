@@ -1,5 +1,7 @@
 import { For, Show, type JSX } from "solid-js";
 import { CAMERA_VIEWS, type CameraViewName, pitchColor } from "../lib/deck-layers";
+import { pitchTypeColor } from "../lib/pitch-type-color";
+import { formatDataStatus } from "../lib/data-status";
 
 /**
  * Control panel. Every control writes Solid signals; Visualizer rebinds
@@ -10,8 +12,11 @@ import { CAMERA_VIEWS, type CameraViewName, pitchColor } from "../lib/deck-layer
  * - Load button
  * - Camera view preset buttons (Catcher / Pitcher / Overhead / Side)
  * - Pitch count badge (active / total)
+ * - Data-status line (row count + game_date)
  * - Pitch-type chips with color dots matching PITCH_COLORS; toggling a chip
  *   updates the GPU filter's 4th channel, never the data array.
+ * - Pitch-type legend (swatch + label per distinct type); hidden when no
+ *   data is loaded. Colors come from pitchTypeColor, deterministic per code.
  */
 export default function ControlPanel(props: {
   speed: [number, number];
@@ -21,6 +26,7 @@ export default function ControlPanel(props: {
   onView: (v: CameraViewName) => void;
   activeCount: number;
   totalCount: number;
+  gameDate: string | null;
   availableTypes: string[];
   selectedTypes: ReadonlySet<string>;
   onToggleType: (code: string) => void;
@@ -64,6 +70,33 @@ export default function ControlPanel(props: {
       >
         {props.activeCount}/{props.totalCount} pitches
       </span>
+
+      <span
+        role="status"
+        aria-label="data status"
+        title="rows loaded and game_date being viewed"
+      >
+        {formatDataStatus(props.totalCount, props.gameDate)}
+      </span>
+
+      <Show when={props.availableTypes.length > 0}>
+        <div role="group" aria-label="pitch type legend" style={{ display: "flex", gap: "8px", "align-items": "center", "flex-wrap": "wrap" }}>
+          <For each={props.availableTypes}>
+            {(code) => {
+              const [r, g, b] = pitchTypeColor(code);
+              return (
+                <span aria-label={`legend pitch type ${code}`} style={{ display: "inline-flex", "align-items": "center", gap: "4px", "font-size": "0.85em" }}>
+                  <span
+                    aria-hidden="true"
+                    style={{ width: "10px", height: "10px", "border-radius": "2px", display: "inline-block", "background-color": `rgb(${r}, ${g}, ${b})` }}
+                  />
+                  {code}
+                </span>
+              );
+            }}
+          </For>
+        </div>
+      </Show>
 
       <div role="group" aria-label="pitch types" style={{ display: "flex", gap: "4px" }}>
         <For each={props.availableTypes}>

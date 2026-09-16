@@ -4,6 +4,7 @@ Run: python -m pytest ingestion/tests/test_export_batch.py -q
 """
 import datetime as dt
 import io
+import json
 import re
 from pathlib import Path
 
@@ -15,6 +16,8 @@ from ingestion.export_batch import (
     CACHE_CONTROL,
     day_partition_query,
     export_day_partition,
+    export_day_range,
+    write_manifest,
 )
 from ingestion.worker import SCHEMA
 
@@ -158,6 +161,179 @@ class TestExportDayPartition:
         export_day_partition(dt.date(2026, 9, 14), str(out), client=client, compression="lz4")
         with pa.memory_map(str(out)) as src:
             assert pa.ipc.open_file(src).read_all().num_rows == 20
+
+
+class TestExportDayRange:
+    def test_three_day_range_produces_three_files_in_order(self, tmp_path, day_table):
+        client = FakeBigQueryClient(day_table)
+        dest = tmp_path / "batches"
+
+        paths = export_day_range(
+            dt.date(2026, 9, 12), dt.date(2026, 9, 14), str(dest), client=client
+        )
+
+        assert [Path(p).name for p in paths] == [
+            "2026-09-12.arrow",
+            "2026-09-13.arrow",
+            "2026-09-14.arrow",
+        ]
+        assert all(Path(p).exists() for p in paths)
+
+    def test_lz4_codec_flows_through_range_mode(self, tmp_path, day_table):
+        # Range mode must honor the requested codec, not fall back to zstd.
+        client = FakeBigQueryClient(day_table)
+
+        paths = export_day_range(
+            dt.date(2026, 9, 14),
+            dt.date(2026, 9, 14),
+            str(tmp_path),
+            client=client,
+            compress="lz4",
+        )
+
+        raw = Path(paths[0]).read_bytes()
+        with open(paths[0], "rb") as fh:
+            assert pa.ipc.open_file(fh).read_all().num_rows == 20
+        assert len(client.queries) == 1
+        # lz4 frame magic differs from both zstd and uncompressed IPC.
+        assert raw[:4] != b"\x28\xb5\x2f\xfd"  # not zstd
+
+    def test_each_query_carries_exact_day_filter(self, tmp_path, day_table):
+        client = FakeBigQueryClient(day_table)
+
+        export_day_range(
+            dt.date(2026, 9, 12), dt.date(2026, 9, 14), str(tmp_path), client=client
+        )
+
+        assert len(client.queries) == 3
+        for day, sql in zip(("12", "13", "14"), client.queries):
+            assert f"game_date = DATE '2026-09-{day}'" in sql
+
+    def test_start_after_end_raises_value_error(self, tmp_path, day_table):
+        client = FakeBigQueryClient(day_table)
+        with pytest.raises(ValueError):
+            export_day_range(
+                dt.date(2026, 9, 14), dt.date(2026, 9, 12), str(tmp_path), client=client
+            )
+        assert client.queries == []
+
+    def test_single_day_range_equals_direct_partition_export(
+        self, tmp_path, day_table
+    ):
+        client = FakeBigQueryClient(day_table)
+        range_path = tmp_path / "range" / "2026-09-14.arrow"
+        direct_path = tmp_path / "direct" / "2026-09-14.arrow"
+
+        paths = export_day_range(
+            dt.date(2026, 9, 14), dt.date(2026, 9, 14), str(tmp_path / "range"),
+            client=client,
+        )
+        export_day_partition(dt.date(2026, 9, 14), str(direct_path), client=client)
+
+        assert paths == [str(range_path)]
+        assert range_path.read_bytes() == direct_path.read_bytes()
+
+
+# ---- Export manifest ----
+
+
+class FakeClock:
+    """Injectable clock: returns a fixed UTC datetime."""
+
+    def __init__(self, when: dt.datetime):
+        self.when = when
+        self.calls = 0
+
+    def __call__(self) -> dt.datetime:
+        self.calls += 1
+        return self.when
+
+
+class TestExportManifest:
+    def test_manifest_rejects_gs_prefix(self):
+        with pytest.raises(ValueError, match="local directories only"):
+            write_manifest("gs://statcast-arrow-batches/prefix", [{"path": "x", "game_date": "2026-09-14", "rows": 1, "bytes": 2}])
+
+    def test_two_day_range_writes_sorted_manifest_with_counts(self, tmp_path, day_table):
+        client = FakeBigQueryClient(day_table)
+        dest = tmp_path / "batches"
+
+        paths = export_day_range(
+            dt.date(2026, 9, 12),
+            dt.date(2026, 9, 13),
+            str(dest),
+            client=client,
+            write_manifest_flag=True,
+        )
+
+        manifest_path = dest / "manifest.json"
+        assert manifest_path.exists()
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["schema_version"] == 1
+        assert manifest["generated_at"]  # ISO8601 string present
+        files = manifest["files"]
+        assert [f["game_date"] for f in files] == ["2026-09-12", "2026-09-13"]
+        assert [f["path"] for f in files] == [Path(p).name for p in paths]
+        rows = [f["rows"] for f in files]
+        sizes = [f["bytes"] for f in files]
+        assert all(isinstance(r, int) and r > 0 for r in rows)
+        assert all(isinstance(b, int) and b > 0 for b in sizes)
+        # byte counts match the files actually on disk
+        for f in files:
+            assert (dest / f["path"]).stat().st_size == f["bytes"]
+
+    def test_manifest_path_returned(self, tmp_path, day_table):
+        client = FakeBigQueryClient(day_table)
+        manifest_path = write_manifest(
+            str(tmp_path),
+            [{"path": "2026-09-14.arrow", "game_date": "2026-09-14", "rows": 5, "bytes": 100}],
+        )
+        assert manifest_path == str(tmp_path / "manifest.json")
+        assert (tmp_path / "manifest.json").exists()
+
+    def test_deterministic_generated_at_with_injected_clock(self, tmp_path, day_table):
+        client = FakeBigQueryClient(day_table)
+        clock = FakeClock(dt.datetime(2026, 9, 15, 12, 0, 0, tzinfo=dt.timezone.utc))
+
+        export_day_range(
+            dt.date(2026, 9, 12),
+            dt.date(2026, 9, 13),
+            str(tmp_path),
+            client=client,
+            write_manifest_flag=True,
+            clock=clock,
+        )
+
+        manifest = json.loads((tmp_path / "manifest.json").read_text())
+        assert manifest["generated_at"] == "2026-09-15T12:00:00+00:00"
+
+    def test_no_manifest_on_value_error(self, tmp_path, day_table):
+        client = FakeBigQueryClient(day_table)
+
+        with pytest.raises(ValueError):
+            export_day_range(
+                dt.date(2026, 9, 14),
+                dt.date(2026, 9, 12),
+                str(tmp_path),
+                client=client,
+                write_manifest_flag=True,
+            )
+
+        assert not (tmp_path / "manifest.json").exists()
+        assert not list(tmp_path.glob("*.arrow"))
+
+    def test_no_manifest_when_flag_omitted(self, tmp_path, day_table):
+        client = FakeBigQueryClient(day_table)
+
+        export_day_range(dt.date(2026, 9, 12), dt.date(2026, 9, 13), str(tmp_path), client=client)
+
+        assert not (tmp_path / "manifest.json").exists()
+        assert len(list(tmp_path.glob("*.arrow"))) == 2
+
+    def test_write_manifest_skips_empty_entries(self, tmp_path):
+        manifest_path = write_manifest(str(tmp_path), [])
+        assert manifest_path == str(tmp_path / "manifest.json")
+        assert not (tmp_path / "manifest.json").exists()
 
 
 # ---- Infra invariants (infra/main.tf) ----

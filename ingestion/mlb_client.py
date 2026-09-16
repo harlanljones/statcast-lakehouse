@@ -9,12 +9,55 @@ from __future__ import annotations
 
 import datetime as dt
 import io
-from typing import Any, Iterator
+import time
+from dataclasses import dataclass
+from typing import Any, Callable, Iterator
 
 import httpx
 
 STATCAST_URL = "https://baseballsavant.mlb.com/api/statcast/search/csv"
 GAME_DAY_FMT = "%Y-%m-%d"
+
+# Transient failures worth retrying: rate limiting and server errors.
+# 429 + the whole 5xx range are retryable; other 4xx fail fast.
+RETRYABLE_STATUS_RANGE = (500, 599)
+
+
+@dataclass(frozen=True)
+class RetryPolicy:
+    """Retry knobs for the statcast fetch. The default sleeps for real; tests
+    inject a recording callable so nothing actually sleeps."""
+
+    attempts: int = 3
+    base_delay: float = 0.5
+    sleep: Callable[[float], None] = time.sleep
+
+    def backoff(self, attempt: int) -> float:
+        """Exponential, jitterless (for testability): 0.5, 1.0, 2.0, ..."""
+        return self.base_delay * 2 ** (attempt - 1)
+
+
+class FetchRetriesExhausted(httpx.HTTPError):
+    """All retry attempts for a statcast fetch failed.
+
+    Subclasses httpx.HTTPError so existing `except httpx.HTTPError` callers
+    keep working; carries the URL, attempt count and last status/error.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        url: str,
+        attempts: int,
+        last_status: int | None = None,
+        last_error: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.url = url
+        self.attempts = attempts
+        self.last_status = last_status
+        self.last_error = last_error
 
 # Statcast CSV columns -> our warehouse columns. Kept explicit so schema
 # drift upstream fails loudly here instead of silently in BigQuery.
@@ -104,16 +147,77 @@ def _row(record: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
-def fetch_game_day(day: dt.date, client: httpx.Client | None = None) -> Iterator[dict[str, Any]]:
-    """Yield normalized rows for one game day. Paginated by the API's chunking."""
+def _retry_after_seconds(resp: httpx.Response) -> float | None:
+    """Seconds to wait from a Retry-After header; None if absent/unparseable."""
+    raw = resp.headers.get("retry-after")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def _exhausted(url: str, attempts: int, last_status: int | None, last_error: str | None) -> FetchRetriesExhausted:
+    detail = f"last status={last_status}" if last_status is not None else f"last error={last_error}"
+    return FetchRetriesExhausted(
+        f"statcast fetch failed after {attempts} attempt(s): {url} ({detail})",
+        url=url,
+        attempts=attempts,
+        last_status=last_status,
+        last_error=last_error,
+    )
+
+
+def _open_stream(client: httpx.Client, params: dict[str, str], policy: RetryPolicy) -> httpx.Response:
+    """Send the request, retrying transient failures, and return a streaming
+    response with a 2xx status. Non-retryable 4xx raises immediately via
+    raise_for_status; exhausted retries raise FetchRetriesExhausted."""
+    request = client.build_request("GET", STATCAST_URL, params=params)
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            resp = client.send(request, stream=True)
+        except httpx.HTTPError as exc:
+            if attempt >= policy.attempts:
+                raise _exhausted(STATCAST_URL, attempt, None, repr(exc)) from exc
+            policy.sleep(policy.backoff(attempt))
+            continue
+        if resp.is_success:
+            return resp
+        retryable = resp.status_code == 429 or (
+            RETRYABLE_STATUS_RANGE[0] <= resp.status_code <= RETRYABLE_STATUS_RANGE[1]
+        )
+        delay = policy.backoff(attempt)
+        if resp.status_code == 429:
+            delay = _retry_after_seconds(resp) or delay
+        resp.close()
+        if not retryable:
+            # Non-retryable 4xx: fail fast, same contract as raise_for_status.
+            resp.raise_for_status()
+        if attempt >= policy.attempts:
+            raise _exhausted(STATCAST_URL, attempt, resp.status_code, None)
+        policy.sleep(delay)
+
+
+def fetch_game_day(
+    day: dt.date,
+    client: httpx.Client | None = None,
+    retry: RetryPolicy | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Yield normalized rows for one game day. Paginated by the API's chunking.
+
+    Transient failures (transport errors, 429, 5xx) are retried per `retry`
+    (default: 3 attempts, 0.5s exponential backoff, honoring Retry-After on
+    429); other 4xx raise immediately.
+    """
+    policy = retry or RetryPolicy()
     own_client = client or httpx.Client(timeout=60)
     try:
-        with own_client.stream(
-            "GET",
-            STATCAST_URL,
-            params={"all": "true", "game_date_gt": day.isoformat(), "game_date_lt": (day + dt.timedelta(days=1)).isoformat()},
-        ) as resp:
-            resp.raise_for_status()
+        params = {"all": "true", "game_date_gt": day.isoformat(), "game_date_lt": (day + dt.timedelta(days=1)).isoformat()}
+        resp = _open_stream(own_client, params, policy)
+        try:
             import csv
             import io
 
@@ -122,6 +226,8 @@ def fetch_game_day(day: dt.date, client: httpx.Client | None = None) -> Iterator
                 row = _row(record)
                 if row is not None:
                     yield row
+        finally:
+            resp.close()
     finally:
         if client is None:
             own_client.close()

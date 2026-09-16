@@ -1,14 +1,18 @@
-import { createEffect, onCleanup, onMount } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { Deck, OrbitView } from "@deck.gl/core";
-import type { OrbitViewState } from "@deck.gl/core";
+import type { OrbitViewState, PickingInfo } from "@deck.gl/core";
 import type { PitchTable } from "../lib/arrow-loader";
-import { INITIAL_VIEW, ORBIT_TARGET, buildLayers } from "../lib/deck-layers";
+import { INITIAL_VIEW, ORBIT_TARGET, buildLayers, type PitchDatum } from "../lib/deck-layers";
+import { pitchTooltip, pitchTooltipSummary, clampTooltipPos } from "../lib/pitch-tooltip";
 
 /**
  * Deck.gl canvas container. OrbitView in Cartesian space (z-up, feet).
  * The data, filter, and camera viewState props are reactive; slider drags
  * and camera snaps rebind GPU filter uniforms / the view state only — no
  * CPU-side data filtering ever happens (TDD §5.3).
+ *
+ * Hover/click picking is deck.gl GPU picking on the trajectory layer; the
+ * picked object is pure tooltip state and never touches filter uniforms.
  */
 export default function Visualizer(props: {
   data: PitchTable | null;
@@ -18,6 +22,34 @@ export default function Visualizer(props: {
 }) {
   let container!: HTMLDivElement;
   let deck: Deck<OrbitView> | null = null;
+  const [picked, setPicked] = createSignal<PitchDatum | null>(null);
+  // Cursor-anchored tooltip position (canvas-relative px, already clamped).
+  const [tipPos, setTipPos] = createSignal({ x: 0, y: 0 });
+  // Estimated rendered card size for clamping (matches the styled card below).
+  const CARD_W = 140;
+  const CARD_H = 72;
+
+  const handlePick = (info: PickingInfo<PitchDatum>) => {
+    const obj = info.object ?? null;
+    // Identity guard: deck.gl fires onHover per pixel; only notify Solid
+    // when the picked datum actually changed, so repeated hover events on
+    // the same path never rebuild the layer (zero-JS interaction path).
+    if (obj !== picked()) {
+      setPicked(obj);
+    }
+    if (obj) {
+      setTipPos(
+        clampTooltipPos(
+          info.x ?? 0,
+          info.y ?? 0,
+          CARD_W,
+          CARD_H,
+          container.clientWidth,
+          container.clientHeight,
+        ),
+      );
+    }
+  };
 
   onMount(() => {
     deck = new Deck({
@@ -30,9 +62,10 @@ export default function Visualizer(props: {
     onCleanup(() => deck?.finalize());
   });
 
-  // Tracks props.data, props.filter, and props.selectedTypes: a slider drag
-  // or pitch-type toggle only rebinds DataFilterExtension uniforms — zero
-  // JavaScript array traversal on the interaction path.
+  // Tracks props.data, props.filter, props.selectedTypes, and picked(): a
+  // slider drag or pitch-type toggle only rebinds DataFilterExtension uniforms
+  // — zero JavaScript array traversal on the interaction path — and a pick
+  // only re-evaluates the per-datum getWidth accessor via updateTriggers.
   createEffect(() => {
     if (!deck) return;
     const d = props.data;
@@ -42,6 +75,8 @@ export default function Visualizer(props: {
             pitches: d.pitches,
             speedRange: props.filter,
             selectedTypes: props.selectedTypes ?? null,
+            picked: picked(),
+            onHover: handlePick,
           })
         : [],
     });
@@ -54,5 +89,69 @@ export default function Visualizer(props: {
     if (deck && vs) deck.setProps({ viewState: vs });
   });
 
-  return <div ref={container} style={{ flex: "1", width: "100%" }} aria-label={`orbit-target:${ORBIT_TARGET.join(",")}`} />;
+  const tooltip = () => pitchTooltip(picked());
+
+  return (
+    <div style={{ position: "relative", flex: "1", width: "100%" }}>
+      <div
+        ref={container}
+        style={{ flex: "1", width: "100%", height: "100%" }}
+        aria-label={`orbit-target:${ORBIT_TARGET.join(",")}`}
+      />
+      {/* aria-live status: announces the hovered pitch for screen readers.
+          Visually hidden via inline styles (no global CSS in this app). */}
+      <span
+        role="status"
+        aria-live="polite"
+        style={{
+          position: "absolute",
+          width: "1px",
+          height: "1px",
+          padding: "0",
+          margin: "-1px",
+          overflow: "hidden",
+          clip: "rect(0, 0, 0, 0)",
+          "white-space": "nowrap",
+          border: "0",
+        }}
+      >
+        {picked() ? pitchTooltipSummary(picked()!) : ""}
+      </span>
+      {tooltip() && (
+        <div
+          role="presentation"
+          style={{
+            position: "absolute",
+            top: `${tipPos().y}px`,
+            left: `${tipPos().x}px`,
+            width: "140px",
+            "pointer-events": "none",
+            background: "rgba(15, 15, 20, 0.85)",
+            color: "#eee",
+            padding: "6px 10px",
+            "border-radius": "6px",
+            "font-size": "12px",
+            "font-family": "monospace",
+            "white-space": "pre",
+          }}
+        >
+          <div>
+            <span
+              style={{
+                display: "inline-block",
+                width: "10px",
+                height: "10px",
+                "border-radius": "2px",
+                "margin-right": "6px",
+                background: `rgb(${tooltip()!.color.join(",")})`,
+              }}
+            />
+            {tooltip()!.pitchType}
+          </div>
+          <div>{tooltip()!.speed}</div>
+          <div>{tooltip()!.location}</div>
+        </div>
+      )}
+    </div>
+  );
 }

@@ -11,12 +11,16 @@ Usage:
   python -m ingestion.export_batch --date 2026-09-14 --out data/2026-09-14.arrow
   python -m ingestion.export_batch --date 2026-09-14 \
       --out gs://statcast-arrow-batches/game_date=2026-09-14/pitches.arrow
+  python -m ingestion.export_batch --date-range 2026-09-12 2026-09-14 \
+      --out data/batches
 """
 from __future__ import annotations
 
 import argparse
 import io
-from datetime import date
+import json
+import os
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import pyarrow as pa
@@ -81,12 +85,145 @@ def export_day_partition(
     if out_path_or_bucket.startswith("gs://"):
         return _upload_gcs(out_path_or_bucket, payload, game_date)
 
-    import os
-
     os.makedirs(os.path.dirname(os.path.abspath(out_path_or_bucket)), exist_ok=True)
     with open(out_path_or_bucket, "wb") as fh:
         fh.write(payload)
     return out_path_or_bucket
+
+
+MANIFEST_NAME = "manifest.json"
+MANIFEST_SCHEMA_VERSION = 1
+
+
+def write_manifest(
+    dest_dir_or_prefix: str,
+    entries: list[dict[str, Any]],
+    client: Any = None,
+    clock: Any = None,
+) -> str:
+    """Write manifest.json next to the exported batches.
+
+    entries: per-file dicts of {path, game_date, rows, bytes}; sorted by
+    game_date before writing. Returns the manifest path. Local directories
+    only: gs:// prefixes raise ValueError (the GCS object write is not
+    wired; use a local staging dir and upload the pair together).
+
+    clock: injectable zero-arg callable returning a datetime for
+    deterministic generated_at in tests; defaults to the real UTC clock.
+    Returns the would-be path (without creating a file) when entries is
+    empty — callers cannot distinguish skipped from written by the return
+    value alone.
+    """
+    if dest_dir_or_prefix.startswith("gs://"):
+        raise ValueError(
+            "write_manifest supports local directories only; got "
+            f"{dest_dir_or_prefix!r} (upload manifest.json alongside the "
+            "batches after a local export)"
+        )
+    if not entries:
+        # No files exported -> no manifest (avoids a misleading empty index).
+        return str(os.path.join(dest_dir_or_prefix, MANIFEST_NAME))
+
+    sorted_entries = sorted(entries, key=lambda e: e["game_date"])
+    clock = clock or dt_now_utc
+
+    manifest = {
+        "schema_version": MANIFEST_SCHEMA_VERSION,
+        "generated_at": clock().isoformat(),
+        "files": sorted_entries,
+    }
+    manifest_path = os.path.join(dest_dir_or_prefix, MANIFEST_NAME)
+    os.makedirs(os.path.dirname(os.path.abspath(manifest_path)), exist_ok=True)
+    with open(manifest_path, "w") as fh:
+        json.dump(manifest, fh, indent=2)
+    return manifest_path
+
+
+def dt_now_utc() -> datetime:
+    """Real UTC clock (the default for the injectable-clock seam)."""
+    return datetime.now(timezone.utc)
+
+
+def _rows_and_bytes(path: str) -> tuple[int | None, int | None]:
+    """Re-read an exported IPC file to count rows; measure its byte size.
+
+    Local paths only today; for gs:// destinations callers pass None/None
+    until object metadata round-trips are wired up (see export_day_range).
+    """
+    if path.startswith("gs://"):
+        # GCS object read (downloader + blob.size) is not wired yet; keep
+        # rows/bytes null in the manifest rather than guessing.
+        return None, None
+
+    with open(path, "rb") as fh:
+        table = pa.ipc.open_file(fh).read_all()
+    return table.num_rows, os.path.getsize(path)
+
+
+def export_day_range(
+    start_date: date,
+    end_date: date,
+    dest_dir: str,
+    client: Any = None,
+    compress: str | None = "zstd",
+    write_manifest_flag: bool = False,
+    clock: Any = None,
+) -> list[str]:
+    """Export every day's partition in an inclusive date range.
+
+    One file per day, named ``YYYY-MM-DD.arrow`` inside dest_dir; each day
+    gets its own partition-pruned query (require_partition_filter cost rule).
+
+    ``compress`` carries the IPC codec: 'zstd' (default), 'lz4', or None.
+
+    ``write_manifest_flag`` (default False, so existing callers are
+    unchanged): after exporting all days, re-read each local IPC file for its
+    row count, measure its byte size, and write manifest.json into the same
+    directory. gs:// destinations record rows/bytes as null until GCS object
+    reads are wired.
+
+    Returns the output paths in date order.
+    """
+    if start_date > end_date:
+        raise ValueError(
+            f"start_date {start_date.isoformat()} is after end_date {end_date.isoformat()}"
+        )
+
+    paths: list[str] = []
+    day = start_date
+    while day <= end_date:
+        out_path = os.path.join(dest_dir, f"{day.isoformat()}.arrow")
+        paths.append(
+            export_day_partition(
+                day,
+                out_path,
+                client=client,
+                compression=compress,
+            )
+        )
+        day += timedelta(days=1)
+
+    if write_manifest_flag:
+        entries = []
+        for day_path, day in zip(paths, _iter_days(start_date, end_date)):
+            rows, nbytes = _rows_and_bytes(day_path)
+            entries.append(
+                {
+                    "path": os.path.basename(day_path),
+                    "game_date": day.isoformat(),
+                    "rows": rows,
+                    "bytes": nbytes,
+                }
+            )
+        write_manifest(dest_dir, entries, clock=clock)
+    return paths
+
+
+def _iter_days(start_date: date, end_date: date):
+    day = start_date
+    while day <= end_date:
+        yield day
+        day += timedelta(days=1)
 
 
 def _upload_gcs(gs_uri: str, payload: bytes, game_date: date) -> str:
@@ -105,11 +242,20 @@ def _upload_gcs(gs_uri: str, payload: bytes, game_date: date) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--date", required=True, help="game_date to export (YYYY-MM-DD)")
+    scope = ap.add_mutually_exclusive_group(required=True)
+    scope.add_argument("--date", help="single game_date to export (YYYY-MM-DD)")
+    scope.add_argument(
+        "--date-range",
+        nargs=2,
+        metavar=("START", "END"),
+        help="inclusive date range to export (YYYY-MM-DD YYYY-MM-DD); "
+        "one YYYY-MM-DD.arrow file per day under --out directory",
+    )
     ap.add_argument(
         "--out",
         required=True,
-        help="local file path or gs://bucket[/prefix] destination",
+        help="local file path or gs://bucket[/prefix] destination "
+        "(with --date-range, a directory)",
     )
     ap.add_argument(
         "--compression",
@@ -118,11 +264,18 @@ def main(argv: list[str] | None = None) -> int:
         help="IPC compression codec (default zstd)",
     )
     args = ap.parse_args(argv)
+    compression = None if args.compression == "none" else args.compression
+
+    if args.date_range:
+        start, end = (date.fromisoformat(d) for d in args.date_range)
+        for dest in export_day_range(start, end, args.out, compress=compression):
+            print(f"exported {os.path.splitext(os.path.basename(dest))[0]} -> {dest}")
+        return 0
 
     dest = export_day_partition(
         date.fromisoformat(args.date),
         args.out,
-        compression=None if args.compression == "none" else args.compression,
+        compression=compression,
     )
     print(f"exported {args.date} -> {dest}")
     return 0

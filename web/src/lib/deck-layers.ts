@@ -6,6 +6,7 @@
  */
 import { DataFilterExtension } from "@deck.gl/extensions";
 import { PathLayer, type PathLayerProps } from "@deck.gl/layers";
+import type { PickingInfo } from "@deck.gl/core";
 import { type AccessorFunction } from "@deck.gl/core";
 import type { OrbitViewState } from "@deck.gl/core";
 
@@ -71,35 +72,12 @@ export function dataFilterExtension() {
 }
 
 /**
- * Pitch-type palette: 4-seam FF, slider SL, changeup CH, curveball CU,
- * cutter FC, sinker SI, sweeper ST, plus common Statcast codes.
- * Unknown codes fall back to gray.
+ * Pitch colors live in pitch-type-color.ts (shared with the 2D legend);
+ * unknown codes get a deterministic per-code color so legend and trajectories
+ * always agree; gray is reserved for missing/empty codes.
  */
-export const PITCH_COLORS: Readonly<Record<string, [number, number, number]>> = Object.freeze({
-  FF: [230, 57, 70], // 4-seam fastball — red
-  FT: [241, 133, 44], // two-seam — orange
-  SI: [184, 115, 51], // sinker — rust
-  FC: [255, 196, 0], // cutter — gold
-  SL: [67, 170, 139], // slider — teal
-  ST: [38, 132, 255], // sweeper — blue
-  SW: [38, 132, 255], // sweeper (alt code)
-  CU: [139, 81, 255], // curveball — violet
-  KC: [97, 62, 178], // knuckle curve — deep violet
-  CS: [72, 61, 139], // slow curve — slate violet
-  CH: [42, 157, 244], // changeup — sky blue
-  FS: [0, 181, 204], // splitter — cyan
-  FO: [0, 181, 204], // forkball — cyan
-  KN: [199, 199, 111], // knuckleball — olive
-  EP: [155, 205, 155], // eephus — pale green
-  SC: [188, 140, 255], // screwball — light violet
-});
-
-export const FALLBACK_COLOR: [number, number, number] = [160, 160, 160];
-
-/** Distinct RGB per pitch type code, with a neutral fallback. */
-export function pitchColor(pitchType: string): [number, number, number] {
-  return PITCH_COLORS[pitchType?.toUpperCase()] ?? FALLBACK_COLOR;
-}
+import { pitchColor } from "./pitch-type-color";
+export { PITCH_COLORS, FALLBACK_COLOR, pitchColor } from "./pitch-type-color";
 
 export type WireSegment = [number, number, number][];
 
@@ -151,7 +129,23 @@ export interface BuildLayersOpts {
    * narrows to [0.5, 1.5]. Data is still never filtered in JavaScript.
    */
   selectedTypes?: ReadonlySet<string> | null;
+  /**
+   * Hover/click pick handler for the trajectory layer (pickable). Picking
+   * is deck.gl GPU picking; it never changes filter uniforms or data.
+   */
+  onHover?: (info: PickingInfo<PitchDatum>) => void;
+  /**
+   * Currently picked pitch datum (hover/click). Drives a per-datum GPU width
+   * accessor that emphasizes the hovered trajectory — a layer attribute
+   * accessor, NOT CPU-side filtering; filter uniforms are untouched.
+   */
+  picked?: PitchDatum | null;
 }
+
+/** Base trajectory width in meters (the un-picked line width). */
+export const TRAJECTORY_WIDTH = 0.08;
+/** Width multiplier applied to the picked trajectory. */
+export const PICKED_WIDTH_MULTIPLIER = 2.5;
 
 /**
  * Full layer set for the visualizer. Filtering is 100% GPU-side: pitch data
@@ -160,7 +154,7 @@ export interface BuildLayersOpts {
  * filtering).
  */
 export function buildLayers(opts: BuildLayersOpts) {
-  const { pitches, speedRange, hBreakRange, vBreakRange, selectedTypes } = opts;
+  const { pitches, speedRange, hBreakRange, vBreakRange, selectedTypes, onHover, picked } = opts;
   const ext = dataFilterExtension();
   const hasSelection = !!selectedTypes && selectedTypes.size > 0;
   const typeRange: [number, number] = hasSelection ? [0.5, 1.5] : OPEN_RANGE;
@@ -176,12 +170,14 @@ export function buildLayers(opts: BuildLayersOpts) {
   const layers = [
     new PathLayer<PitchDatum>({
       id: "pitch-trajectories",
+      pickable: true,
+      onHover,
       coordinateSystem: "cartesian" as never,
       data: pitches,
       // path is a flat 60-point [x,y,z] array — consumed directly, zero-copy.
       getPath: (d) => d.path,
       getColor: (d) => [...pitchColor(d.pitchType), 220],
-      getWidth: 0.08,
+      getWidth: (d) => (d === picked ? TRAJECTORY_WIDTH * PICKED_WIDTH_MULTIPLIER : TRAJECTORY_WIDTH),
       widthUnits: "meters",
       widthMinPixels: 1.5,
       opacity: 0.9,
@@ -190,6 +186,7 @@ export function buildLayers(opts: BuildLayersOpts) {
       updateTriggers: {
         filterRange: [speedRange, hBreakRange, vBreakRange, typeRange],
         getFilterValue: selectedTypes ?? null,
+        getWidth: picked ?? null,
       },
     }),
     new PathLayer<WireSegment>({

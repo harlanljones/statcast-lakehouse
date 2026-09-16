@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 import pytest
 
-from ingestion.mlb_client import COLUMN_MAP, _row, fetch_game_day
+from ingestion.mlb_client import COLUMN_MAP, FetchRetriesExhausted, RetryPolicy, _row, fetch_game_day
 
 
 def statcast_record(**overrides: Any) -> dict[str, Any]:
@@ -148,17 +148,152 @@ class TestFetchGameDay:
         assert list(fetch_game_day(dt.date(2026, 9, 14), client=client)) == []
 
     def test_http_error_propagates(self):
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(503)
-
+        # Persistent 503: retried 3x with injected (real-world: backoff) sleeps,
+        # then a clear FetchRetriesExhausted (still an httpx.HTTPError) is raised.
+        handler, calls = scripted_handler([httpx.Response(503)])
         client = httpx.Client(transport=httpx.MockTransport(handler))
-        with pytest.raises(httpx.HTTPStatusError):
-            list(fetch_game_day(dt.date(2026, 9, 14), client=client))
+        sleeps: list[float] = []
+        with pytest.raises(FetchRetriesExhausted) as exc_info:
+            list(fetch_game_day(
+                dt.date(2026, 9, 14),
+                client=client,
+                retry=RetryPolicy(attempts=3, base_delay=0.5, sleep=sleeps.append),
+            ))
+        assert isinstance(exc_info.value, httpx.HTTPError)
+        assert exc_info.value.last_status == 503
+        assert exc_info.value.attempts == 3
+        assert len(calls) == 3
+        assert sleeps == [0.5, 1.0]
 
     def test_borrowed_client_not_closed(self):
         client = self._fake_client(["pitch_id,game_pk\n1,2\n"])
         list(fetch_game_day(dt.date(2026, 9, 14), client=client))
         assert not client.is_closed
+
+
+CSV_HEADER = (
+    "pitch_id,game_pk,game_date,pitcher,batter,pitch_type,description\n"
+)
+CSV_ROW = "7482193045,776123,2026-09-14,502043,665489,FF,ball\n"
+
+
+def scripted_handler(responses: list):
+    """MockTransport handler playing back scripted responses (Exception
+    entries are raised, the last one repeats); returns (handler, calls)."""
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        r = responses[len(calls) - 1] if len(calls) - 1 < len(responses) else responses[-1]
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    return handler, calls
+
+
+class TestRetry:
+    def test_transient_500_then_success_retries_once(self):
+        body = (CSV_HEADER + CSV_ROW).encode()
+        handler, calls = scripted_handler([httpx.Response(500), httpx.Response(200, content=body)])
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        sleeps: list[float] = []
+        policy = RetryPolicy(attempts=3, base_delay=0.5, sleep=sleeps.append)
+
+        rows = list(fetch_game_day(dt.date(2026, 9, 14), client=client, retry=policy))
+
+        assert len(rows) == 1
+        assert rows[0]["game_id"] == 776123
+        assert len(calls) == 2
+        assert sleeps == [0.5]
+
+    def test_501_is_retryable_too(self):
+        # The full 5xx range is retryable, not just the common allowlist.
+        body = (CSV_HEADER + CSV_ROW).encode()
+        handler, calls = scripted_handler([httpx.Response(501), httpx.Response(200, content=body)])
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        sleeps: list[float] = []
+        policy = RetryPolicy(attempts=3, base_delay=0.5, sleep=sleeps.append)
+
+        rows = list(fetch_game_day(dt.date(2026, 9, 14), client=client, retry=policy))
+
+        assert len(rows) == 1
+        assert len(calls) == 2
+        assert sleeps == [0.5]
+
+    def test_429_with_retry_after_sleeps_exactly_that_then_succeeds(self):
+        body = (CSV_HEADER + CSV_ROW).encode()
+        handler, calls = scripted_handler([
+            httpx.Response(429, headers={"retry-after": "7"}),
+            httpx.Response(200, content=body),
+        ])
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        sleeps: list[float] = []
+        policy = RetryPolicy(attempts=3, base_delay=0.5, sleep=sleeps.append)
+
+        rows = list(fetch_game_day(dt.date(2026, 9, 14), client=client, retry=policy))
+
+        assert len(rows) == 1
+        assert sleeps == [7.0]  # Retry-After honored, not the 0.5s backoff
+        assert len(calls) == 2
+
+    def test_persistent_500_raises_clear_exhausted_exception(self):
+        handler, calls = scripted_handler([httpx.Response(500)])
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        sleeps: list[float] = []
+        policy = RetryPolicy(attempts=3, base_delay=0.5, sleep=sleeps.append)
+
+        with pytest.raises(FetchRetriesExhausted) as exc_info:
+            list(fetch_game_day(dt.date(2026, 9, 14), client=client, retry=policy))
+
+        msg = str(exc_info.value)
+        assert "baseballsavant.mlb.com" in msg and "500" in msg
+        assert exc_info.value.last_status == 500
+        assert len(calls) == 3  # attempts, not retries
+        assert sleeps == [0.5, 1.0]  # exponential, jitterless
+
+    def test_404_is_not_retried(self):
+        handler, calls = scripted_handler([httpx.Response(404)])
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        sleeps: list[float] = []
+        policy = RetryPolicy(attempts=3, base_delay=0.5, sleep=sleeps.append)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            list(fetch_game_day(dt.date(2026, 9, 14), client=client, retry=policy))
+
+        assert len(calls) == 1  # immediate raise, no retry
+        assert sleeps == []
+
+    def test_transport_error_then_success(self):
+        body = (CSV_HEADER + CSV_ROW).encode()
+        handler, calls = scripted_handler([
+            httpx.ConnectError("connection reset"),
+            httpx.Response(200, content=body),
+        ])
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        sleeps: list[float] = []
+        policy = RetryPolicy(attempts=3, base_delay=0.5, sleep=sleeps.append)
+
+        rows = list(fetch_game_day(dt.date(2026, 9, 14), client=client, retry=policy))
+
+        assert len(rows) == 1
+        assert len(calls) == 2
+        assert sleeps == [0.5]
+
+    def test_persistent_transport_error_raises_exhausted(self):
+        handler, calls = scripted_handler([httpx.ConnectError("connection reset")])
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        sleeps: list[float] = []
+        policy = RetryPolicy(attempts=3, base_delay=0.5, sleep=sleeps.append)
+
+        with pytest.raises(FetchRetriesExhausted) as exc_info:
+            list(fetch_game_day(dt.date(2026, 9, 14), client=client, retry=policy))
+
+        assert "baseballsavant.mlb.com" in str(exc_info.value)
+        assert exc_info.value.last_status is None
+        assert "connection reset" in str(exc_info.value)
+        assert len(calls) == 3
+        assert sleeps == [0.5, 1.0]
 
 
 def test_column_map_targets_match_worker_schema_names():

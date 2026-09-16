@@ -10,6 +10,7 @@ Two modes:
 Usage:
   python -m ingestion.worker --dry-run --out data/sample.arrow --pitches 200
   python -m ingestion.worker --live --date 2026-09-14   # requires GCP creds
+  python -m ingestion.worker --live --backfill 2026-09-10 2026-09-12
 """
 from __future__ import annotations
 
@@ -103,7 +104,13 @@ def trajectory(pitch: dict[str, float], n: int = 60) -> list[tuple[float, float,
     return [position_at(pitch, t_end * i / (n - 1)) for i in range(n)]
 
 
-def synth_pitch(rng: random.Random, game_id: int, game_day: date, i: int) -> dict[str, Any]:
+def synth_pitch(
+    rng: random.Random,
+    game_id: int,
+    game_day: date,
+    i: int,
+    ingestion_time: datetime | None = None,
+) -> dict[str, Any]:
     """A plausible synthetic pitch in Statcast coordinate space.
 
     x: catcher's right (+), y: distance from plate, z: height above plate.
@@ -140,16 +147,26 @@ def synth_pitch(rng: random.Random, game_id: int, game_day: date, i: int) -> dic
         "sz_bot": 1.5,
         "is_swing": int(rng.random() < 0.47),
         "is_whiff": 0,
-        "ingestion_time": datetime.now(timezone.utc),
+        "ingestion_time": ingestion_time or datetime.now(timezone.utc),
     }
 
 
-def synth_day(rng: random.Random, game_day: date, n_pitches: int) -> pa.Table:
-    """One synthetic game day; whiffs only on swings, as in the real data."""
+def synth_day(
+    rng: random.Random,
+    game_day: date,
+    n_pitches: int,
+    *,
+    ingestion_time: datetime | None = None,
+) -> pa.Table:
+    """One synthetic game day; whiffs only on swings, as in the real data.
+
+    ingestion_time defaults to now per call; pass a fixed tz-aware datetime
+    for byte-stable output (e.g. the serving /pitches/sample endpoint).
+    """
     rows = []
     game_id = int(game_day.strftime("%Y%m%d")) * 100 + 1
     for i in range(n_pitches):
-        p = synth_pitch(rng, game_id, game_day, i)
+        p = synth_pitch(rng, game_id, game_day, i, ingestion_time=ingestion_time)
         if p["is_swing"]:
             p["is_whiff"] = int(rng.random() < 0.25)
         rows.append(p)
@@ -211,16 +228,78 @@ def write_bq(rows: Iterable[dict[str, Any]], project: str, table: str) -> int:
     return n
 
 
+def _live_day(game_day: date, project: str) -> int:
+    """One day of the live path: fetch -> write. Returns rows written."""
+    from ingestion.mlb_client import fetch_game_day
+
+    rows = fetch_game_day(game_day)
+    return write_bq(rows, project, "bronze_pitches")
+
+
+def run_backfill(start: date, end: date, project: str) -> int:
+    """Multi-day live mode: per-day fetch/write, failures don't abort.
+
+    Prints one ok/failed line per day plus a final summary. Exit 0 unless
+    every day failed.
+    """
+    ok, failures = 0, []
+    day = start
+    while day <= end:
+        try:
+            n = _live_day(day, project)
+            print(f"backfill {day.isoformat()}: ok ({n} pitches)")
+            ok += 1
+        except Exception as exc:  # noqa: BLE001 — one bad day must not abort
+            print(f"backfill {day.isoformat()}: failed ({type(exc).__name__}: {exc})")
+            failures.append((day, f"{type(exc).__name__}: {exc}"))
+        day += timedelta(days=1)
+    print(f"backfill summary: {ok} ok, {len(failures)} failed")
+    for day, summary in failures:
+        print(f"  {day.isoformat()}: {summary}")
+    return 0 if ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true", help="synthetic day -> local Arrow file")
     ap.add_argument("--live", action="store_true", help="MLB API -> BigQuery Storage Write")
-    ap.add_argument("--date", default=str(date.today() - timedelta(days=1)))
+    ap.add_argument("--date", default=None)
+    ap.add_argument(
+        "--backfill",
+        nargs=2,
+        metavar=("START", "END"),
+        help="live multi-day backfill, inclusive (requires --live)",
+    )
     ap.add_argument("--pitches", type=int, default=300)
     ap.add_argument("--out", default="data/sample.arrow")
     ap.add_argument("--project", default=None, help="GCP project (live mode)")
     args = ap.parse_args(argv)
 
+    if args.backfill:
+        if args.date is not None:
+            ap.error("--backfill is mutually exclusive with --date")
+        if not args.live:
+            ap.error("--backfill requires --live")
+        if args.dry_run:
+            ap.error("--backfill requires --live (not compatible with --dry-run)")
+        if not args.project:
+            print(
+                "error: --live requires --project (GCP project id, e.g. --project my-gcp-proj)",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            start, end = (date.fromisoformat(s) for s in args.backfill)
+        except ValueError:
+            ap.error(
+                f"invalid --backfill {args.backfill!r}: expected START END as YYYY-MM-DD"
+            )
+        if start > end:
+            ap.error(f"--backfill START {start} is after END {end}")
+        return run_backfill(start, end, args.project)
+
+    if args.date is None:
+        args.date = str(date.today() - timedelta(days=1))
     try:
         game_day = date.fromisoformat(args.date)
     except ValueError:
@@ -239,10 +318,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not args.project:
         ap.error("--live requires --project")
-    from ingestion.mlb_client import fetch_game_day
-
-    rows = fetch_game_day(game_day)
-    n = write_bq(rows, args.project, "bronze_pitches")
+    n = _live_day(game_day, args.project)
     print(f"wrote {n} pitches -> {args.project}.statcast_analytics.bronze_pitches")
     return 0
 
