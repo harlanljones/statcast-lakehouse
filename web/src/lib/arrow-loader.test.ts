@@ -1,7 +1,14 @@
 /** Arrow IPC loader tests: byte stream -> PitchTable. */
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { tableFromArrays, tableToIPC } from "apache-arrow";
-import { loadPitchTable, fetchPitches, clearEtagCache, getEtag, type PitchTable } from "./arrow-loader";
+import {
+  loadPitchTable,
+  fetchPitches,
+  fetchDatePartitions,
+  clearEtagCache,
+  getEtag,
+  type PitchTable,
+} from "./arrow-loader";
 import { PLATE_Y } from "./kinematics";
 
 const N = 60;
@@ -13,26 +20,33 @@ function ipcBuffer(rows: {
   y0?: Float64Array | number[];
   vy0?: Float64Array | number[];
   ay?: Float64Array | number[];
+  plateX?: Float64Array | number[];
+  plateZ?: Float64Array | number[];
+  isSwing?: Int32Array | number[];
+  isWhiff?: Int32Array | number[];
 }): ArrayBuffer {
   const count = rows.count;
   // Release point ~55.5 ft from the plate front, moving toward it at 120 ft/s.
   const ones = () => new Float64Array(count).fill(1);
   const y0 = rows.y0 ?? new Float64Array(count).fill(55.5);
-  return tableToIPC(
-    tableFromArrays({
-      x0: ones(),
-      y0: y0 as Float64Array,
-      z0: ones(),
-      vx0: ones(),
-      vy0: (rows.vy0 ?? new Float64Array(count).fill(-120)) as Float64Array,
-      vz0: ones(),
-      ax: ones(),
-      ay: (rows.ay ?? ones()) as Float64Array,
-      az: ones(),
-      release_speed: new Float32Array(count).fill(94.5),
-      pitch_type: rows.pitchTypes,
-    }),
-  ).buffer as ArrayBuffer;
+  const arrays: Record<string, any> = {
+    x0: ones(),
+    y0: y0 as Float64Array,
+    z0: ones(),
+    vx0: ones(),
+    vy0: (rows.vy0 ?? new Float64Array(count).fill(-120)) as Float64Array,
+    vz0: ones(),
+    ax: ones(),
+    ay: (rows.ay ?? ones()) as Float64Array,
+    az: ones(),
+    release_speed: new Float32Array(count).fill(94.5),
+    pitch_type: rows.pitchTypes,
+  };
+  if (rows.plateX) arrays.plate_x = new Float64Array(rows.plateX);
+  if (rows.plateZ) arrays.plate_z = new Float64Array(rows.plateZ);
+  if (rows.isSwing) arrays.is_swing = new Int32Array(rows.isSwing);
+  if (rows.isWhiff) arrays.is_whiff = new Int32Array(rows.isWhiff);
+  return tableToIPC(tableFromArrays(arrays)).buffer as ArrayBuffer;
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -75,6 +89,47 @@ describe("loadPitchTable", () => {
     const { table, pitches } = loadPitchTable(buf);
     expect(table.numRows).toBe(0);
     expect(pitches).toEqual([]);
+  });
+
+  it("extracts plate_x, plate_z, is_swing, and is_whiff when present", () => {
+    const buf = ipcBuffer({
+      count: 2,
+      pitchTypes: ["FF", "SL"],
+      plateX: [0.25, -0.5],
+      plateZ: [2.5, 1.8],
+      isSwing: [1, 0],
+      isWhiff: [1, 0],
+    });
+    const { pitches } = loadPitchTable(buf);
+    expect(pitches).toHaveLength(2);
+    expect(pitches[0].plateX).toBeCloseTo(0.25);
+    expect(pitches[0].plateZ).toBeCloseTo(2.5);
+    expect(pitches[0].pfxX).toBe(pitches[0].plateX);
+    expect(pitches[0].pfxZ).toBe(pitches[0].plateZ);
+    expect(pitches[0].isSwing).toBe(1);
+    expect(pitches[0].isWhiff).toBe(1);
+
+    expect(pitches[1].plateX).toBeCloseTo(-0.5);
+    expect(pitches[1].plateZ).toBeCloseTo(1.8);
+    expect(pitches[1].pfxX).toBe(pitches[1].plateX);
+    expect(pitches[1].pfxZ).toBe(pitches[1].plateZ);
+    expect(pitches[1].isSwing).toBe(0);
+    expect(pitches[1].isWhiff).toBe(0);
+  });
+
+  it("falls back to terminal path coordinates when plate_x/plate_z are absent", () => {
+    const buf = ipcBuffer({ count: 1, pitchTypes: ["FF"] });
+    const { pitches } = loadPitchTable(buf);
+    expect(pitches).toHaveLength(1);
+    const p = pitches[0];
+    const termX = p.path[(N - 1) * 3];
+    const termZ = p.path[(N - 1) * 3 + 2];
+    expect(p.plateX).toBe(termX);
+    expect(p.plateZ).toBe(termZ);
+    expect(p.pfxX).toBe(termX);
+    expect(p.pfxZ).toBe(termZ);
+    expect(p.isSwing).toBeUndefined();
+    expect(p.isWhiff).toBeUndefined();
   });
 });
 
@@ -182,5 +237,41 @@ describe("fetchPitches", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/pitches?date=2024-04-01");
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/pitches?date=2024-04-02");
     expect(getEtag("/pitches?date=2024-04-02")).toBe('"u1"');
+  });
+});
+
+describe("fetchDatePartitions", () => {
+  it("returns partition list on 200 response", async () => {
+    const partitions = [
+      { game_date: "2026-09-14", rows: 350 },
+      { game_date: "2026-09-13", rows: 420 },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(partitions), { status: 200 })),
+    );
+    const result = await fetchDatePartitions();
+    expect(result).toEqual(partitions);
+    expect(fetch).toHaveBeenCalledWith("/pitches/dates");
+  });
+
+  it("returns default partition on 503 response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("Service Unavailable", { status: 503 })),
+    );
+    const result = await fetchDatePartitions();
+    expect(result).toEqual([{ game_date: "2026-09-14", rows: 300 }]);
+  });
+
+  it("returns default partition on network error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("Network offline");
+      }),
+    );
+    const result = await fetchDatePartitions();
+    expect(result).toEqual([{ game_date: "2026-09-14", rows: 300 }]);
   });
 });

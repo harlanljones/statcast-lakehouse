@@ -147,3 +147,21 @@ class TestColdEndpoint:
         r = client.get("/pitches/cold", params={"date": "2026-09-13"})
         assert r.status_code == 503
         assert "missing path" in r.text
+
+
+def test_pitches_dates_falls_back_to_manifest_when_no_gcp_project(
+    client, batch_dir, monkeypatch
+):
+    monkeypatch.delenv("GCP_PROJECT", raising=False)
+    r = client.get("/pitches/dates")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/json")
+    manifest = json.loads((batch_dir / "manifest.json").read_text())
+    expected = [
+        {"game_date": f["game_date"], "rows": f.get("rows", 0)}
+        for f in manifest["files"]
+    ]
+    assert r.json() == expected
+    assert [d["game_date"] for d in r.json()] == [
+        f["game_date"] for f in manifest["files"]
+    ]

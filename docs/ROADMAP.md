@@ -81,3 +81,35 @@ items 3+ are completed offline (no stubs in code).
 - Cost-guard suite (`ingestion/tests/test_warehouse_sql.py`) and schema-parity
   guard (`test_schema_parity.py`) enforcing worker.SCHEMA <-> fct_pitches DDL
   <-> mlb_client.COLUMN_MAP; bronze DDL now carries a raw JSON staging column.
+
+## 11. Exploratory query engine & multi-axis GPU slicing (Completed offline)
+- Serving layer: offline partition date discovery in `serving/app.py`
+  (`/pitches/dates` falls back to `STATCAST_BATCH_DIR/manifest.json` when
+  `GCP_PROJECT` is unset, and 503s cleanly if no manifest exists).
+- Web data layer: `web/src/lib/arrow-loader.ts` extracts `plate_x`, `plate_z`,
+  `is_swing`, and `is_whiff` directly from Arrow columns with terminal trajectory
+  path fallbacks; `fetchDatePartitions` fetches available partitions with offline
+  fallback.
+- GPU slicing: `web/src/lib/deck-layers.ts` multi-channel `DataFilterExtension`
+  (speed, horizontal plate X, vertical plate Z, discrete criteria mask for
+  pitch type, zone preset: all/in_zone/out_of_zone, and outcome: all/swings/whiffs).
+- UI controls: `ControlPanel.tsx` gains date partition selector, zone filter
+  presets, outcome filters, whiff rate badge, and continuous plate location sliders.
+- Tooltip & accessibility: `pitch-tooltip.ts` displays zone status and pitch outcome,
+  announced via `aria-live`.
+
+## 12. Trajectory flight scrubbing, pitch tunneling & diamond grounding (Completed offline)
+- Spatial diamond grounding: `web/src/lib/deck-layers.ts` provides `diamondWireframeSegments()`
+  (pitching rubber at $y=60.5$ ft, mound circle at $y=59.0$ ft, left/right batter's boxes,
+  strike zone wireframe, and home plate pentagon).
+- Pitch tunneling commitment plane: wireframe rectangle at $y=23.8$ ft (`tunnelingPlaneSegments()`)
+  enabling visual inspection of pitch tunneling and decision points.
+- Animated baseball markers: `ScatterplotLayer` rendering baseball spheres at `flightProgress`
+  time along each 60-point path, sharing the exact same `DataFilterExtension` GPU uniform filters.
+- Flight scrubbing controls: `ControlPanel.tsx` and `App.tsx` wire Play/Pause animation loop
+  (~1.2s per pitch cycle) and interactive $0\% \to 100\%$ flight progress scrubber.
+- Kinematics benchmark: `web/src/lib/kinematics.test.ts` pins a performance SLA proving 1,000
+  pitch trajectories solve in ~1.1ms (<5ms SLA).
+- Acceptance: 82 vitest tests passing across 6 test files, zero TypeScript errors, clean production build.
+
+

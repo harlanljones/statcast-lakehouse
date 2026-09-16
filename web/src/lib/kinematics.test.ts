@@ -43,3 +43,33 @@ describe("trajectory", () => {
     expect(z).toBeCloseTo(6 - 10 * 0.1 + 0.5 * 32.174 * 0.01, 9);
   });
 });
+
+describe("trajectory benchmark", () => {
+  it("computes 1,000 pitch trajectories in <5ms", () => {
+    const pitches: Array<Parameters<typeof flightTime>[0]> = Array.from({ length: 1000 }, (_, i) => ({
+      x0: -2 + (i % 5) * 0.8,
+      y0: 54 + (i % 3),
+      z0: 5.5 + (i % 4) * 0.3,
+      vx0: 4 + (i % 7) * 0.2,
+      vy0: -130 - (i % 10),
+      vz0: -5 - (i % 6) * 0.5,
+      ax: -10 + (i % 20),
+      ay: 25 + (i % 5),
+      az: -20 - (i % 15),
+    }));
+
+    // JIT warm up
+    for (let i = 0; i < 100; i++) {
+      trajectory(pitches[i]);
+    }
+
+    const start = performance.now();
+    for (let i = 0; i < 1000; i++) {
+      trajectory(pitches[i]);
+    }
+    const elapsed = performance.now() - start;
+
+    expect(elapsed).toBeLessThan(5);
+  });
+});
+

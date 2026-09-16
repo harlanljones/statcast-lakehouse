@@ -5,7 +5,7 @@
  * filter ranges — no JavaScript array filtering on the interaction path.
  */
 import { DataFilterExtension } from "@deck.gl/extensions";
-import { PathLayer, type PathLayerProps } from "@deck.gl/layers";
+import { PathLayer, ScatterplotLayer, type PathLayerProps } from "@deck.gl/layers";
 import type { PickingInfo } from "@deck.gl/core";
 import { type AccessorFunction } from "@deck.gl/core";
 import type { OrbitViewState } from "@deck.gl/core";
@@ -23,7 +23,11 @@ export interface PitchDatum {
   releaseSpeed: number;
   pfxX: number;
   pfxZ: number;
+  plateX: number;
+  plateZ: number;
   pitchType: string;
+  isSwing?: number;
+  isWhiff?: number;
 }
 
 export const FILTER_SIZE = 4;
@@ -38,6 +42,15 @@ export const STRIKE_ZONE = {
   zMin: 1.5,
   zMax: 3.5,
 } as const;
+
+/** Check whether a coordinate at the plate is inside the rulebook strike zone. */
+export function isInsideStrikeZone(plateX: number, plateZ: number): boolean {
+  return (
+    Math.abs(plateX) <= STRIKE_ZONE.halfWidth &&
+    plateZ >= STRIKE_ZONE.zMin &&
+    plateZ <= STRIKE_ZONE.zMax
+  );
+}
 
 /**
  * Camera viewpoint presets (OrbitView view states, feet / degrees).
@@ -109,6 +122,93 @@ export function strikeZoneSegments(): WireSegment[] {
 }
 
 /**
+ * Pitcher's rubber at y = 60.5, z = 0.833, width 2.0 ft, depth 0.5 ft (closed rectangle).
+ */
+export function pitcherRubberSegments(): WireSegment[] {
+  const yFront = 60.5;
+  const yBack = 61.0;
+  const halfW = 1.0;
+  const z = 0.833;
+  return [
+    [
+      [-halfW, yFront, z],
+      [halfW, yFront, z],
+      [halfW, yBack, z],
+      [-halfW, yBack, z],
+      [-halfW, yFront, z],
+    ],
+  ];
+}
+
+/**
+ * Mound circle at y = 59.0, radius 9.0 ft at z = 0.
+ */
+export function moundCircleSegments(segments = 36): WireSegment[] {
+  const cy = 59.0;
+  const r = 9.0;
+  const pts: [number, number, number][] = [];
+  for (let i = 0; i < segments; i++) {
+    const theta = (i * 2 * Math.PI) / segments;
+    pts.push([r * Math.sin(theta), cy + r * Math.cos(theta), 0]);
+  }
+  pts.push([...pts[0]]);
+  return [pts];
+}
+
+/**
+ * Batter's boxes on left (x in [1.2, 5.2]) and right (x in [-5.2, -1.2]),
+ * y in [-1.58, 4.42], z = 0 (closed rectangles).
+ */
+export function battersBoxesSegments(): WireSegment[] {
+  const yMin = -1.58;
+  const yMax = 4.42;
+  const leftBox: WireSegment = [
+    [1.2, yMin, 0],
+    [5.2, yMin, 0],
+    [5.2, yMax, 0],
+    [1.2, yMax, 0],
+    [1.2, yMin, 0],
+  ];
+  const rightBox: WireSegment = [
+    [-5.2, yMin, 0],
+    [-1.2, yMin, 0],
+    [-1.2, yMax, 0],
+    [-5.2, yMax, 0],
+    [-5.2, yMin, 0],
+  ];
+  return [leftBox, rightBox];
+}
+
+/**
+ * Tunneling commitment plane wireframe at y = 23.8 ft (x in [-2.5, 2.5], z in [1.0, 5.0]).
+ */
+export function tunnelingPlaneSegments(): WireSegment[] {
+  const y = 23.8;
+  return [
+    [
+      [-2.5, y, 1.0],
+      [2.5, y, 1.0],
+      [2.5, y, 5.0],
+      [-2.5, y, 5.0],
+      [-2.5, y, 1.0],
+    ],
+  ];
+}
+
+/**
+ * Full diamond spatial reference wireframe combining strike zone rectangle,
+ * home plate pentagon, pitcher rubber, mound circle, and left/right batter's boxes.
+ */
+export function diamondWireframeSegments(): WireSegment[] {
+  return [
+    ...strikeZoneSegments(),
+    ...pitcherRubberSegments(),
+    ...moundCircleSegments(),
+    ...battersBoxesSegments(),
+  ];
+}
+
+/**
  * DataFilterExtension props are attached at runtime by the `extensions` prop;
  * deck.gl's base typings don't include them, so the filtered props are cast.
  */
@@ -117,12 +217,19 @@ type FilteredPathProps<D> = Partial<Omit<PathLayerProps<D>, "data">> & {
   filterRange: [[number, number], [number, number], [number, number], [number, number]];
 };
 
+export type ZoneFilter = "all" | "in_zone" | "out_of_zone";
+export type OutcomeFilter = "all" | "swings" | "whiffs";
+
 export interface BuildLayersOpts {
   pitches: PitchDatum[];
   speedRange: [number, number];
   /** Optional extra channels; default open (match everything). */
   hBreakRange?: [number, number];
   vBreakRange?: [number, number];
+  plateXRange?: [number, number];
+  plateZRange?: [number, number];
+  zoneFilter?: ZoneFilter;
+  outcomeFilter?: OutcomeFilter;
   /**
    * Selected pitch-type codes. When provided (and non-empty), the 4th GPU
    * filter channel carries set membership per datum and the type range
@@ -140,6 +247,8 @@ export interface BuildLayersOpts {
    * accessor, NOT CPU-side filtering; filter uniforms are untouched.
    */
   picked?: PitchDatum | null;
+  flightProgress?: number;
+  showTunneling?: boolean;
 }
 
 /** Base trajectory width in meters (the un-picked line width). */
@@ -154,20 +263,49 @@ export const PICKED_WIDTH_MULTIPLIER = 2.5;
  * filtering).
  */
 export function buildLayers(opts: BuildLayersOpts) {
-  const { pitches, speedRange, hBreakRange, vBreakRange, selectedTypes, onHover, picked } = opts;
+  const {
+    pitches,
+    speedRange,
+    hBreakRange,
+    vBreakRange,
+    plateXRange,
+    plateZRange,
+    zoneFilter,
+    outcomeFilter,
+    selectedTypes,
+    onHover,
+    picked,
+    flightProgress,
+    showTunneling,
+  } = opts;
   const ext = dataFilterExtension();
-  const hasSelection = !!selectedTypes && selectedTypes.size > 0;
-  const typeRange: [number, number] = hasSelection ? [0.5, 1.5] : OPEN_RANGE;
+
+  const hasTypeFilter = Boolean(selectedTypes && selectedTypes.size > 0);
+  const hasZoneFilter = zoneFilter === "in_zone" || zoneFilter === "out_of_zone";
+  const hasOutcomeFilter = outcomeFilter === "swings" || outcomeFilter === "whiffs";
+  const anyCriteriaActive = hasTypeFilter || hasZoneFilter || hasOutcomeFilter;
+
+  const typeRange: [number, number] = anyCriteriaActive ? [0.5, 1.5] : OPEN_RANGE;
+  const xRange = plateXRange ?? hBreakRange ?? OPEN_RANGE;
+  const zRange = plateZRange ?? vBreakRange ?? OPEN_RANGE;
+
   const filteredProps: FilteredPathProps<PitchDatum> = {
-    getFilterValue: (d) => [
-      d.releaseSpeed,
-      d.pfxX,
-      d.pfxZ,
-      hasSelection ? (selectedTypes.has(d.pitchType) ? 1 : 0) : 1,
-    ],
-    filterRange: filterRange(speedRange, hBreakRange, vBreakRange, typeRange),
+    getFilterValue: (d) => {
+      const px = d.plateX ?? d.pfxX ?? 0;
+      const pz = d.plateZ ?? d.pfxZ ?? 0;
+      const typePass = !hasTypeFilter || selectedTypes!.has(d.pitchType);
+      const zonePass =
+        !hasZoneFilter ||
+        (zoneFilter === "in_zone" ? isInsideStrikeZone(px, pz) : !isInsideStrikeZone(px, pz));
+      const outcomePass =
+        !hasOutcomeFilter ||
+        (outcomeFilter === "swings" ? Boolean(d.isSwing) : Boolean(d.isWhiff));
+      const mask = typePass && zonePass && outcomePass ? 1 : 0;
+      return [d.releaseSpeed, px, pz, mask];
+    },
+    filterRange: filterRange(speedRange, xRange, zRange, typeRange),
   };
-  const layers = [
+  const layers: (PathLayer<any> | ScatterplotLayer<any>)[] = [
     new PathLayer<PitchDatum>({
       id: "pitch-trajectories",
       pickable: true,
@@ -184,15 +322,15 @@ export function buildLayers(opts: BuildLayersOpts) {
       ...filteredProps,
       extensions: [ext],
       updateTriggers: {
-        filterRange: [speedRange, hBreakRange, vBreakRange, typeRange],
-        getFilterValue: selectedTypes ?? null,
+        filterRange: [speedRange, xRange, zRange, typeRange],
+        getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
         getWidth: picked ?? null,
       },
     }),
     new PathLayer<WireSegment>({
       id: "strike-zone",
       coordinateSystem: "cartesian" as never,
-      data: strikeZoneSegments(),
+      data: diamondWireframeSegments(),
       getPath: (s) => s,
       getColor: [255, 255, 255],
       getWidth: 0.03,
@@ -201,5 +339,54 @@ export function buildLayers(opts: BuildLayersOpts) {
       opacity: 0.85,
     }),
   ];
+
+  if (showTunneling) {
+    layers.push(
+      new PathLayer<WireSegment>({
+        id: "tunneling-plane",
+        coordinateSystem: "cartesian" as never,
+        data: tunnelingPlaneSegments(),
+        getPath: (s) => s,
+        getColor: [255, 215, 0],
+        getWidth: 0.03,
+        widthUnits: "meters",
+        widthMinPixels: 1,
+        opacity: 0.85,
+      }),
+    );
+  }
+
+  if (flightProgress !== undefined) {
+    layers.push(
+      new ScatterplotLayer<PitchDatum>({
+        id: "baseball-markers",
+        coordinateSystem: "cartesian" as never,
+        data: pitches,
+        getPosition: (d: PitchDatum): [number, number, number] => {
+          const idx = Math.min(59, Math.max(0, Math.floor(flightProgress * 59)));
+          const offset = idx * 3;
+          if (d.path && d.path.length >= offset + 3) {
+            return [d.path[offset], d.path[offset + 1], d.path[offset + 2]];
+          }
+          return [0, 0, 0];
+        },
+        getRadius: 0.1,
+        radiusUnits: "meters",
+        stroked: true,
+        filled: true,
+        getFillColor: [255, 255, 255, 240],
+        getLineColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 255],
+        lineWidthMinPixels: 1.5,
+        extensions: [ext],
+        ...filteredProps,
+        updateTriggers: {
+          getPosition: flightProgress,
+          getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
+          filterRange: [speedRange, xRange, zRange, typeRange],
+        },
+      } as never),
+    );
+  }
+
   return layers;
 }

@@ -4,6 +4,7 @@
  * All pure functions — no Solid, no deck.gl, no DOM.
  */
 import type { Table } from "apache-arrow";
+import type { PitchDatum } from "./deck-layers";
 
 /** Distinct non-empty pitch-type codes, most frequent first, ties alphabetical. */
 export function distinctPitchTypes(pitches: { pitchType: string }[]): string[] {
@@ -34,4 +35,25 @@ export function formatRowCount(n: number): string {
 /** "1,234 rows · 2024-04-01", or "1,234 rows" when no date is available. */
 export function formatDataStatus(rowCount: number, gameDate: string | null): string {
   return gameDate ? `${formatRowCount(rowCount)} rows · ${gameDate}` : `${formatRowCount(rowCount)} rows`;
+}
+
+export interface WhiffRate {
+  swings: number;
+  whiffs: number;
+  whiffPct: number | null;
+}
+
+/**
+ * Compute whiff statistics across an array of pitches.
+ * Whiff rate = (whiffs / swings) * 100, or null when swings is 0.
+ */
+export function computeWhiffRate(pitches: PitchDatum[]): WhiffRate {
+  let swings = 0;
+  let whiffs = 0;
+  for (const p of pitches) {
+    if (p.isSwing) swings++;
+    if (p.isWhiff) whiffs++;
+  }
+  const whiffPct = swings > 0 ? (whiffs / swings) * 100 : null;
+  return { swings, whiffs, whiffPct };
 }

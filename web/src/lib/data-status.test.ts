@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { tableFromArrays, tableToIPC } from "apache-arrow";
 import { loadPitchTable } from "./arrow-loader";
-import { distinctPitchTypes, extractGameDate, formatDataStatus } from "./data-status";
+import { distinctPitchTypes, extractGameDate, formatDataStatus, computeWhiffRate } from "./data-status";
+import type { PitchDatum } from "./deck-layers";
 
 describe("distinctPitchTypes", () => {
   it("returns distinct codes ordered by frequency then code", () => {
@@ -57,5 +58,55 @@ describe("formatDataStatus", () => {
 
   it("groups thousands with commas", () => {
     expect(formatDataStatus(1000000, "2024-04-01")).toBe("1,000,000 rows · 2024-04-01");
+  });
+});
+
+describe("computeWhiffRate", () => {
+  const dummyPitch = (swing?: number, whiff?: number): PitchDatum => ({
+    path: new Float32Array(180),
+    releaseSpeed: 95,
+    pfxX: 0,
+    pfxZ: 0,
+    plateX: 0,
+    plateZ: 0,
+    pitchType: "FF",
+    isSwing: swing,
+    isWhiff: whiff,
+  });
+
+  it("calculates whiff percentage when swings are present", () => {
+    const pitches = [
+      dummyPitch(1, 1),
+      dummyPitch(1, 0),
+      dummyPitch(1, 0),
+      dummyPitch(1, 0),
+    ];
+    const res = computeWhiffRate(pitches);
+    expect(res.swings).toBe(4);
+    expect(res.whiffs).toBe(1);
+    expect(res.whiffPct).toBeCloseTo(25.0);
+  });
+
+  it("returns null whiffPct when there are zero swings", () => {
+    const takesOnly = [dummyPitch(0, 0), dummyPitch(0, 0)];
+    expect(computeWhiffRate(takesOnly)).toEqual({
+      swings: 0,
+      whiffs: 0,
+      whiffPct: null,
+    });
+
+    expect(computeWhiffRate([])).toEqual({
+      swings: 0,
+      whiffs: 0,
+      whiffPct: null,
+    });
+  });
+
+  it("handles 100% whiff rate", () => {
+    const allWhiffs = [dummyPitch(1, 1), dummyPitch(1, 1)];
+    const res = computeWhiffRate(allWhiffs);
+    expect(res.swings).toBe(2);
+    expect(res.whiffs).toBe(2);
+    expect(res.whiffPct).toBeCloseTo(100.0);
   });
 });

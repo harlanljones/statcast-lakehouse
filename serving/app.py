@@ -13,6 +13,7 @@ import hashlib
 import io
 import json
 import os
+import pathlib
 import random
 from datetime import datetime, timezone
 
@@ -205,6 +206,16 @@ def pitches_cold(request: Request, date: str) -> Response:
 @app.get("/pitches/dates")
 def pitches_dates() -> Response:
     """Distinct recent game_date partitions + row counts (metadata, JSON)."""
+    if not os.environ.get("GCP_PROJECT"):
+        manifest_path = pathlib.Path(_batch_dir()) / "manifest.json"
+        if not manifest_path.is_file():
+            raise HTTPException(503, "GCP_PROJECT not configured; use /pitches/sample")
+        files = _read_batch_manifest()
+        rows = [
+            {"game_date": f["game_date"], "rows": f.get("rows", 0)} for f in files
+        ]
+        return Response(content=json.dumps(rows), media_type="application/json")
+
     client = _bq_client()
     q = """
     SELECT game_date, COUNT(*) AS n

@@ -2,10 +2,16 @@
 import { tableFromIPC, type Table } from "apache-arrow";
 import { trajectoryFlat, type PitchKinematics } from "./kinematics";
 import type { PitchDatum } from "./deck-layers";
+export type { PitchDatum } from "./deck-layers";
 
 export interface PitchTable {
   table: Table;
   pitches: PitchDatum[];
+}
+
+export interface DatePartition {
+  game_date: string;
+  rows: number;
 }
 
 /**
@@ -20,6 +26,12 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const vx0 = col("vx0"), vy0 = col("vy0"), vz0 = col("vz0");
   const ax = col("ax"), ay = col("ay"), az = col("az");
   const speed = col("release_speed");
+
+  const plateXCol = table.getChild("plate_x");
+  const plateZCol = table.getChild("plate_z");
+  const isSwingCol = table.getChild("is_swing");
+  const isWhiffCol = table.getChild("is_whiff");
+
   const pitches: PitchDatum[] = [];
   for (let i = 0; i < table.numRows; i++) {
     const k: PitchKinematics = {
@@ -33,12 +45,31 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
     } catch {
       continue; // degenerate row (never reaches plate) — drop, don't crash
     }
+
+    const N = path.length / 3;
+    const fallbackX = path[(N - 1) * 3];
+    const fallbackZ = path[(N - 1) * 3 + 2];
+
+    const rawPlateX = plateXCol?.get(i);
+    const rawPlateZ = plateZCol?.get(i);
+    const plateX = rawPlateX != null && !isNaN(Number(rawPlateX)) ? Number(rawPlateX) : fallbackX;
+    const plateZ = rawPlateZ != null && !isNaN(Number(rawPlateZ)) ? Number(rawPlateZ) : fallbackZ;
+
+    const rawSwing = isSwingCol?.get(i);
+    const rawWhiff = isWhiffCol?.get(i);
+    const isSwing = rawSwing != null ? Number(rawSwing) : undefined;
+    const isWhiff = rawWhiff != null ? Number(rawWhiff) : undefined;
+
     pitches.push({
       path,
       releaseSpeed: speed[i],
-      pfxX: 0, // filled from query result when present
-      pfxZ: 0,
+      plateX,
+      plateZ,
+      pfxX: plateX,
+      pfxZ: plateZ,
       pitchType: String(table.getChild("pitch_type")?.get(i) ?? ""),
+      isSwing,
+      isWhiff,
     });
   }
   return { table, pitches };
@@ -87,4 +118,21 @@ export async function fetchPitches(url: string): Promise<PitchTable> {
   if (etag) etagCache.set(url, { etag, parsed });
   else etagCache.delete(url); // keep the cache honest: no ETag, no entry
   return parsed;
+}
+
+/**
+ * Fetch available date partitions from /pitches/dates.
+ * Returns default [{ game_date: "2026-09-14", rows: 300 }] if 503 or network error.
+ */
+export async function fetchDatePartitions(): Promise<DatePartition[]> {
+  try {
+    const res = await fetch("/pitches/dates");
+    if (!res.ok) {
+      return [{ game_date: "2026-09-14", rows: 300 }];
+    }
+    const data = await res.json();
+    return Array.isArray(data) ? data : [{ game_date: "2026-09-14", rows: 300 }];
+  } catch {
+    return [{ game_date: "2026-09-14", rows: 300 }];
+  }
 }

@@ -3,7 +3,7 @@
  * Pure logic only — the deck.gl picking and DOM rendering live in
  * Visualizer.tsx; this module is unit-tested in pitch-tooltip.test.ts.
  */
-import { pitchColor, type PitchDatum } from "./deck-layers";
+import { isInsideStrikeZone, pitchColor, type PitchDatum } from "./deck-layers";
 
 export interface PitchTooltipInfo {
   pitchType: string;
@@ -13,6 +13,10 @@ export interface PitchTooltipInfo {
   speed: string;
   /** e.g. "0.1 ft, 2.3 ft" */
   location: string;
+  /** "In Zone" vs "Ball" */
+  zone: string;
+  /** "Whiff", "Swing", "Take", or undefined if not available */
+  outcome?: string;
 }
 
 /** Round half away from zero, then fix to one decimal (deterministic sign handling). */
@@ -24,11 +28,27 @@ function round1(value: number): string {
 /** Format a hovered pitch into tooltip fields; null when nothing is picked. */
 export function pitchTooltip(d: PitchDatum | null | undefined): PitchTooltipInfo | null {
   if (!d) return null;
+  const px = d.plateX ?? d.pfxX ?? 0;
+  const pz = d.plateZ ?? d.pfxZ ?? 0;
+  const inZone = isInsideStrikeZone(px, pz);
+  const zone = inZone ? "In Zone" : "Ball";
+
+  let outcome: string | undefined;
+  if (d.isWhiff) {
+    outcome = "Whiff";
+  } else if (d.isSwing) {
+    outcome = "Swing";
+  } else if (d.isSwing === 0) {
+    outcome = "Take";
+  }
+
   return {
     pitchType: d.pitchType,
     color: pitchColor(d.pitchType),
     speed: `${round1(d.releaseSpeed)} mph`,
-    location: `${round1(d.pfxX)} ft, ${round1(d.pfxZ)} ft`,
+    location: `${round1(px)} ft, ${round1(pz)} ft`,
+    zone,
+    outcome,
   };
 }
 
@@ -59,5 +79,7 @@ export function clampTooltipPos(
 export function pitchTooltipSummary(d: PitchDatum | null | undefined): string {
   const info = pitchTooltip(d);
   if (!info) return "";
-  return `${info.pitchType}: ${info.speed}, ${info.location}`;
+  const parts = [`${info.pitchType}: ${info.speed}`, info.location, info.zone];
+  if (info.outcome) parts.push(info.outcome);
+  return parts.join(", ");
 }

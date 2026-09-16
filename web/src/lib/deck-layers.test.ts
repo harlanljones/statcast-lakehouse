@@ -1,16 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { DataFilterExtension } from "@deck.gl/extensions";
+import { ScatterplotLayer } from "@deck.gl/layers";
 import {
   CAMERA_VIEWS,
   FALLBACK_COLOR,
   FILTER_SIZE,
   PITCH_COLORS,
   STRIKE_ZONE,
+  battersBoxesSegments,
   buildLayers,
   dataFilterExtension,
+  diamondWireframeSegments,
   filterRange,
+  isInsideStrikeZone,
+  moundCircleSegments,
   pitchColor,
+  pitcherRubberSegments,
   strikeZoneSegments,
+  tunnelingPlaneSegments,
   type PitchDatum,
 } from "./deck-layers";
 import { deterministicFallbackColor } from "./pitch-type-color";
@@ -21,6 +28,8 @@ function pitch(overrides: Partial<PitchDatum> = {}): PitchDatum {
     releaseSpeed: 94.5,
     pfxX: 0,
     pfxZ: 0,
+    plateX: 0,
+    plateZ: 0,
     pitchType: "FF",
     ...overrides,
   };
@@ -141,6 +150,96 @@ describe("strikeZoneSegments", () => {
   });
 });
 
+describe("diamondWireframeSegments", () => {
+  const segs = diamondWireframeSegments();
+
+  it("combines strike zone, plate, rubber, mound circle, and batter boxes", () => {
+    // 4 zone edges + 1 plate + 1 rubber + 1 mound circle + 2 batter's boxes = 9 wireframe paths
+    expect(segs).toHaveLength(9);
+  });
+
+  it("defines pitcher rubber at y = [60.5, 61.0], z = 0.833, width 2.0 ft", () => {
+    const rubber = pitcherRubberSegments()[0];
+    expect(rubber).toHaveLength(5); // closed rectangle
+    expect(rubber[0]).toEqual(rubber[4]);
+    for (const [x, y, z] of rubber) {
+      expect(x).toBeGreaterThanOrEqual(-1.0);
+      expect(x).toBeLessThanOrEqual(1.0);
+      expect(y).toBeGreaterThanOrEqual(60.5);
+      expect(y).toBeLessThanOrEqual(61.0);
+      expect(z).toBeCloseTo(0.833, 3);
+    }
+  });
+
+  it("defines mound circle at y = 59.0 with radius 9.0 ft at z = 0", () => {
+    const circle = moundCircleSegments()[0];
+    expect(circle.length).toBeGreaterThan(10);
+    expect(circle[0]).toEqual(circle[circle.length - 1]); // closed loop
+    for (const [x, y, z] of circle) {
+      expect(z).toBe(0);
+      const dist = Math.hypot(x, y - 59.0);
+      expect(dist).toBeCloseTo(9.0, 5);
+    }
+  });
+
+  it("defines left and right batter boxes at z = 0", () => {
+    const [leftBox, rightBox] = battersBoxesSegments();
+    expect(leftBox).toHaveLength(5);
+    expect(rightBox).toHaveLength(5);
+    expect(leftBox[0]).toEqual(leftBox[4]);
+    expect(rightBox[0]).toEqual(rightBox[4]);
+
+    for (const [x, y, z] of leftBox) {
+      expect(x).toBeGreaterThanOrEqual(1.2 - 1e-6);
+      expect(x).toBeLessThanOrEqual(5.2 + 1e-6);
+      expect(y).toBeGreaterThanOrEqual(-1.58 - 1e-6);
+      expect(y).toBeLessThanOrEqual(4.42 + 1e-6);
+      expect(z).toBe(0);
+    }
+
+    for (const [x, y, z] of rightBox) {
+      expect(x).toBeGreaterThanOrEqual(-5.2 - 1e-6);
+      expect(x).toBeLessThanOrEqual(-1.2 + 1e-6);
+      expect(y).toBeGreaterThanOrEqual(-1.58 - 1e-6);
+      expect(y).toBeLessThanOrEqual(4.42 + 1e-6);
+      expect(z).toBe(0);
+    }
+  });
+});
+
+describe("tunnelingPlaneSegments", () => {
+  const segs = tunnelingPlaneSegments();
+
+  it("defines wireframe rectangle at y = 23.8 ft, x in [-2.5, 2.5], z in [1.0, 5.0]", () => {
+    expect(segs).toHaveLength(1);
+    const rect = segs[0];
+    expect(rect).toHaveLength(5); // closed loop
+    expect(rect[0]).toEqual(rect[4]);
+    for (const [x, y, z] of rect) {
+      expect(y).toBeCloseTo(23.8, 6);
+      expect(x).toBeGreaterThanOrEqual(-2.5);
+      expect(x).toBeLessThanOrEqual(2.5);
+      expect(z).toBeGreaterThanOrEqual(1.0);
+      expect(z).toBeLessThanOrEqual(5.0);
+    }
+  });
+});
+
+describe("isInsideStrikeZone", () => {
+  it("identifies pitches inside the strike zone", () => {
+    expect(isInsideStrikeZone(0, 2.5)).toBe(true);
+    expect(isInsideStrikeZone(0.83, 1.5)).toBe(true);
+    expect(isInsideStrikeZone(-0.83, 3.5)).toBe(true);
+  });
+
+  it("identifies pitches outside horizontal and vertical bounds", () => {
+    expect(isInsideStrikeZone(0.84, 2.5)).toBe(false);
+    expect(isInsideStrikeZone(-0.84, 2.5)).toBe(false);
+    expect(isInsideStrikeZone(0, 1.49)).toBe(false);
+    expect(isInsideStrikeZone(0, 3.51)).toBe(false);
+  });
+});
+
 describe("buildLayers", () => {
   const pitches = [
     pitch({ pitchType: "FF", releaseSpeed: 96 }),
@@ -228,5 +327,225 @@ describe("buildLayers", () => {
     };
     expect(layer.props.getColor(pitches[0])).toEqual([...PITCH_COLORS.FF, 220]);
     expect(layer.props.getColor(pitch({ pitchType: "ZZ" }))).toEqual([...deterministicFallbackColor("ZZ"), 220]);
+  });
+
+  it("binds plateXRange and plateZRange to channels 1 and 2 of filterRange", () => {
+    const layer = buildLayers({
+      pitches,
+      speedRange: [80, 100],
+      plateXRange: [-1.2, 1.2],
+      plateZRange: [1.2, 4.0],
+    })[0] as unknown as {
+      props: { filterRange: number[][] };
+    };
+    expect(layer.props.filterRange[1]).toEqual([-1.2, 1.2]);
+    expect(layer.props.filterRange[2]).toEqual([1.2, 4.0]);
+  });
+
+  it("filters by strike zone via channel 3 discrete mask", () => {
+    const inZonePitch = pitch({ plateX: 0, plateZ: 2.5 });
+    const outZonePitch = pitch({ plateX: 1.5, plateZ: 2.5 });
+    const testPitches = [inZonePitch, outZonePitch];
+
+    const inLayer = buildLayers({
+      pitches: testPitches,
+      speedRange: [60, 105],
+      zoneFilter: "in_zone",
+    })[0] as unknown as {
+      props: {
+        filterRange: number[][];
+        getFilterValue: (d: PitchDatum) => number[];
+      };
+    };
+    expect(inLayer.props.filterRange[3]).toEqual([0.5, 1.5]);
+    expect(inLayer.props.getFilterValue(inZonePitch)[3]).toBe(1);
+    expect(inLayer.props.getFilterValue(outZonePitch)[3]).toBe(0);
+
+    const outLayer = buildLayers({
+      pitches: testPitches,
+      speedRange: [60, 105],
+      zoneFilter: "out_of_zone",
+    })[0] as unknown as {
+      props: {
+        filterRange: number[][];
+        getFilterValue: (d: PitchDatum) => number[];
+      };
+    };
+    expect(outLayer.props.filterRange[3]).toEqual([0.5, 1.5]);
+    expect(outLayer.props.getFilterValue(inZonePitch)[3]).toBe(0);
+    expect(outLayer.props.getFilterValue(outZonePitch)[3]).toBe(1);
+  });
+
+  it("filters by outcome (swings and whiffs) via channel 3 discrete mask", () => {
+    const takePitch = pitch({ isSwing: 0, isWhiff: 0 });
+    const foulPitch = pitch({ isSwing: 1, isWhiff: 0 });
+    const whiffPitch = pitch({ isSwing: 1, isWhiff: 1 });
+    const testPitches = [takePitch, foulPitch, whiffPitch];
+
+    const swingLayer = buildLayers({
+      pitches: testPitches,
+      speedRange: [60, 105],
+      outcomeFilter: "swings",
+    })[0] as unknown as {
+      props: {
+        filterRange: number[][];
+        getFilterValue: (d: PitchDatum) => number[];
+      };
+    };
+    expect(swingLayer.props.filterRange[3]).toEqual([0.5, 1.5]);
+    expect(swingLayer.props.getFilterValue(takePitch)[3]).toBe(0);
+    expect(swingLayer.props.getFilterValue(foulPitch)[3]).toBe(1);
+    expect(swingLayer.props.getFilterValue(whiffPitch)[3]).toBe(1);
+
+    const whiffLayer = buildLayers({
+      pitches: testPitches,
+      speedRange: [60, 105],
+      outcomeFilter: "whiffs",
+    })[0] as unknown as {
+      props: {
+        filterRange: number[][];
+        getFilterValue: (d: PitchDatum) => number[];
+      };
+    };
+    expect(whiffLayer.props.filterRange[3]).toEqual([0.5, 1.5]);
+    expect(whiffLayer.props.getFilterValue(takePitch)[3]).toBe(0);
+    expect(whiffLayer.props.getFilterValue(foulPitch)[3]).toBe(0);
+    expect(whiffLayer.props.getFilterValue(whiffPitch)[3]).toBe(1);
+  });
+
+  it("combines pitch type, zone, and outcome criteria in channel 3 mask", () => {
+    const matchPitch = pitch({ pitchType: "FF", plateX: 0, plateZ: 2.5, isSwing: 1, isWhiff: 1 });
+    const wrongType = pitch({ pitchType: "SL", plateX: 0, plateZ: 2.5, isSwing: 1, isWhiff: 1 });
+    const wrongZone = pitch({ pitchType: "FF", plateX: 2.0, plateZ: 2.5, isSwing: 1, isWhiff: 1 });
+    const wrongOutcome = pitch({ pitchType: "FF", plateX: 0, plateZ: 2.5, isSwing: 1, isWhiff: 0 });
+
+    const layer = buildLayers({
+      pitches: [matchPitch, wrongType, wrongZone, wrongOutcome],
+      speedRange: [60, 105],
+      selectedTypes: new Set(["FF"]),
+      zoneFilter: "in_zone",
+      outcomeFilter: "whiffs",
+    })[0] as unknown as {
+      props: {
+        filterRange: number[][];
+        getFilterValue: (d: PitchDatum) => number[];
+      };
+    };
+    expect(layer.props.filterRange[3]).toEqual([0.5, 1.5]);
+    expect(layer.props.getFilterValue(matchPitch)[3]).toBe(1);
+    expect(layer.props.getFilterValue(wrongType)[3]).toBe(0);
+    expect(layer.props.getFilterValue(wrongZone)[3]).toBe(0);
+    expect(layer.props.getFilterValue(wrongOutcome)[3]).toBe(0);
+  });
+
+  it("uses diamond wireframe segments for the strike-zone layer", () => {
+    const layers = buildLayers({ pitches, speedRange: [60, 105] });
+    const szLayer = layers.find((l) => l.id === "strike-zone") as unknown as {
+      props: { data: unknown };
+    };
+    expect(szLayer).toBeDefined();
+    expect(szLayer.props.data).toEqual(diamondWireframeSegments());
+  });
+
+  it("conditionally includes the tunneling commitment plane layer", () => {
+    const withoutTunnel = buildLayers({ pitches, speedRange: [60, 105], showTunneling: false });
+    expect(withoutTunnel.some((l) => l.id === "tunneling-plane")).toBe(false);
+
+    const withTunnel = buildLayers({ pitches, speedRange: [60, 105], showTunneling: true });
+    const tunnelLayer = withTunnel.find((l) => l.id === "tunneling-plane") as unknown as {
+      props: { data: unknown };
+    };
+    expect(tunnelLayer).toBeDefined();
+    expect(tunnelLayer.props.data).toEqual(tunnelingPlaneSegments());
+  });
+
+  it("conditionally adds ScatterplotLayer baseball markers when flightProgress is defined", () => {
+    const withoutProgress = buildLayers({ pitches, speedRange: [60, 105] });
+    expect(withoutProgress.some((l) => l.id === "baseball-markers")).toBe(false);
+
+    // Flat path of 60 points: (0, 55, 6) to (0, 1.417, 2.5)
+    const testPath = new Float32Array(180);
+    for (let i = 0; i < 60; i++) {
+      testPath[i * 3] = i * 0.1;
+      testPath[i * 3 + 1] = 55 - (i * (55 - 1.417)) / 59;
+      testPath[i * 3 + 2] = 6 - (i * (6 - 2.5)) / 59;
+    }
+    const testPitch = pitch({ pitchType: "SL", path: testPath, releaseSpeed: 87 });
+
+    const withProgress = buildLayers({
+      pitches: [testPitch],
+      speedRange: [60, 105],
+      flightProgress: 0.5,
+    });
+
+    const markerLayer = withProgress.find((l) => l.id === "baseball-markers") as unknown as {
+      props: {
+        coordinateSystem: string;
+        data: PitchDatum[];
+        getRadius: number;
+        radiusUnits: string;
+        stroked: boolean;
+        filled: boolean;
+        getFillColor: number[];
+        getLineColor: (d: PitchDatum) => number[];
+        lineWidthMinPixels: number;
+        extensions: DataFilterExtension[];
+        filterRange: number[][];
+        getFilterValue: (d: PitchDatum) => number[];
+        getPosition: (d: PitchDatum) => [number, number, number];
+        updateTriggers: Record<string, unknown>;
+      };
+    };
+
+    expect(markerLayer).toBeDefined();
+    expect(markerLayer).toBeInstanceOf(ScatterplotLayer);
+    expect(markerLayer.props.coordinateSystem).toBe("cartesian");
+    expect(markerLayer.props.getRadius).toBe(0.1);
+    expect(markerLayer.props.radiusUnits).toBe("meters");
+    expect(markerLayer.props.stroked).toBe(true);
+    expect(markerLayer.props.filled).toBe(true);
+    expect(markerLayer.props.getFillColor).toEqual([255, 255, 255, 240]);
+    expect(markerLayer.props.getLineColor(testPitch)).toEqual([...PITCH_COLORS.SL, 255]);
+    expect(markerLayer.props.lineWidthMinPixels).toBe(1.5);
+    expect(markerLayer.props.updateTriggers.getPosition).toBe(0.5);
+
+    // Samples 3D coordinates at Math.floor(0.5 * 59) = 29
+    const sampleAtHalf = markerLayer.props.getPosition(testPitch);
+    expect(sampleAtHalf[0]).toBeCloseTo(testPath[29 * 3], 5);
+    expect(sampleAtHalf[1]).toBeCloseTo(testPath[29 * 3 + 1], 5);
+    expect(sampleAtHalf[2]).toBeCloseTo(testPath[29 * 3 + 2], 5);
+
+    // Tests progress 0 (release) and 1 (plate)
+    const layerRelease = buildLayers({
+      pitches: [testPitch],
+      speedRange: [60, 105],
+      flightProgress: 0.0,
+    }).find((l) => l.id === "baseball-markers") as unknown as {
+      props: { getPosition: (d: PitchDatum) => [number, number, number] };
+    };
+    expect(layerRelease.props.getPosition(testPitch)).toEqual([testPath[0], testPath[1], testPath[2]]);
+
+    const layerPlate = buildLayers({
+      pitches: [testPitch],
+      speedRange: [60, 105],
+      flightProgress: 1.0,
+    }).find((l) => l.id === "baseball-markers") as unknown as {
+      props: { getPosition: (d: PitchDatum) => [number, number, number] };
+    };
+    expect(layerPlate.props.getPosition(testPitch)).toEqual([
+      testPath[59 * 3],
+      testPath[59 * 3 + 1],
+      testPath[59 * 3 + 2],
+    ]);
+
+    // Inherits GPU uniform filter props
+    expect(markerLayer.props.filterRange).toEqual([
+      [60, 105],
+      [-Infinity, Infinity],
+      [-Infinity, Infinity],
+      [-Infinity, Infinity],
+    ]);
+    expect(markerLayer.props.getFilterValue(testPitch)).toEqual([87, 0, 0, 1]);
+    expect(markerLayer.props.extensions[0]).toBeInstanceOf(DataFilterExtension);
   });
 });
