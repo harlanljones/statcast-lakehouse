@@ -175,6 +175,20 @@ def test_pitches_dates_returns_json_partition_list(client, fake_dates_client):
     ]
 
 
+def test_pitches_dates_entries_carry_game_date_for_web_client(client, fake_dates_client):
+    # Cross-layer contract: web/src/lib/data-source.ts depends on every entry
+    # having a `game_date` string (it maps objects -> date strings). If the
+    # serving shape changes, this pin fails alongside the web tests.
+    r = client.get("/pitches/dates")
+    assert r.status_code == 200
+    data = json.loads(r.content)
+    assert isinstance(data, list) and data
+    for entry in data:
+        assert set(entry) == {"game_date", "rows"}
+        assert isinstance(entry["game_date"], str)
+        assert entry["game_date"].startswith("20")
+
+
 def test_pitches_dates_query_scans_30_day_window(client, fake_dates_client):
     client.get("/pitches/dates")
     q = fake_dates_client.last_query

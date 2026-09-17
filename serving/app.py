@@ -4,7 +4,7 @@
   GET /pitches/sample           -> synthetic Arrow day (no GCP creds)
 
 The client parses this with the apache-arrow JS SDK — zero JSON overhead.
-Run: uvicorn serving.app:app --port 8080
+Run: uvicorn serving.app:app --port 8000  (matches web/vite.config.ts proxy; Docker/Cloud Run keeps $PORT, default 8080)
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import StreamingResponse
+
 
 from ingestion.worker import synth_day
 

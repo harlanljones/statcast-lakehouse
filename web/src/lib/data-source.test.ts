@@ -29,6 +29,22 @@ describe("fetchAvailableDates", () => {
     expect(await fetchAvailableDates()).toEqual(["2024-04-01", "2024-04-05"]);
   });
 
+  it("maps the real serving shape ({game_date, rows} objects) to date strings", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse([
+          { game_date: "2026-09-14", rows: 5000 },
+          { game_date: "2026-09-13", rows: 123 },
+        ]),
+      ),
+    );
+    expect(await fetchAvailableDates()).toEqual([
+      "2026-09-13",
+      "2026-09-14",
+    ]);
+  });
+
   it("filters entries that are not YYYY-MM-DD", async () => {
     vi.stubGlobal(
       "fetch",

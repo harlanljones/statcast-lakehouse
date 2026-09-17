@@ -27,7 +27,15 @@ export async function fetchAvailableDates(baseUrl = "/pitches"): Promise<string[
     return [];
   }
   if (!Array.isArray(body)) return [];
-  const dates = body.filter((d): d is string => {
+  // Serving returns objects: [{game_date: "2026-09-14", rows: 5000}, ...].
+  // Map to the game_date string; plain strings are accepted for backwards
+  // compatibility with the original contract.
+  const normalized = body.map((d) =>
+    d !== null && typeof d === "object" && typeof (d as { game_date?: unknown }).game_date === "string"
+      ? (d as { game_date: string }).game_date
+      : d,
+  );
+  const dates = normalized.filter((d): d is string => {
     if (typeof d !== "string" || !DATE_RE.test(d)) return false;
     const parsed = new Date(`${d}T00:00:00Z`);
     return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(d);
