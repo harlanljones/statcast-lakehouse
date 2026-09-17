@@ -18,6 +18,10 @@ import {
 } from "./lib/deck-layers";
 
 const [pitchData, setPitchData] = createSignal<PitchTable | null>(null);
+const [selectedDate, setSelectedDate] = createSignal<string | null>(null);
+const [availableDates, setAvailableDates] = createSignal<string[]>([]);
+const [loadError, setLoadError] = createSignal<string | null>(null);
+const [loading, setLoading] = createSignal(false);
 const [speedRange, setSpeedRange] = createSignal<[number, number]>([70, 105]);
 const [plateXRange, setPlateXRange] = createSignal<[number, number]>([-2.5, 2.5]);
 const [plateZRange, setPlateZRange] = createSignal<[number, number]>([0, 5]);
