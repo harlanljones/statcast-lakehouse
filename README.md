@@ -29,10 +29,7 @@ cd web && npm install && npm test && npm run build
 # Batch export from BigQuery partitions (needs GCP creds; tests inject a client)
 python3 -m ingestion.export_batch --date 2026-09-14 --out data/2026-09-14.arrow
 python3 -m ingestion.export_batch --date-range 2026-09-12 2026-09-14 \
-    --out data/batches --compression zstd
-# Multi-day export writes one game_date=YYYY-MM-DD.arrow per day; manifest.json
-# is written by the library's write_manifest()/export_day_range
-# (write_manifest_flag=True) — there is no CLI manifest flag.
+    --out data/batches --compression zstd --manifest
 
 # Live multi-day backfill (MLB API -> BigQuery Storage Write; needs GCP creds)
 python3 -m ingestion.worker --live --backfill 2026-09-12 2026-09-14

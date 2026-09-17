@@ -237,6 +237,71 @@ class TestExportDayRange:
 # ---- Export manifest ----
 
 
+class TestExportCLI:
+    @pytest.mark.parametrize("manifest", [False, True])
+    @pytest.mark.parametrize("compression", ["zstd", "lz4", "none"])
+    def test_range_manifest_opt_in(
+        self, tmp_path, day_table, monkeypatch, capsys, manifest, compression
+    ):
+        from ingestion import export_batch
+
+        fake_client = FakeBigQueryClient(day_table)
+
+        def export_partition(game_date, out, client=None, compression="zstd"):
+            assert compression == (None if compression_arg == "none" else compression_arg)
+            return export_day_partition(
+                game_date, out, client=fake_client, compression=compression
+            )
+
+        compression_arg = compression
+        monkeypatch.setattr(export_batch, "export_day_partition", export_partition)
+        args = [
+            "--date-range", "2026-09-12", "2026-09-13",
+            "--out", str(tmp_path), "--compression", compression,
+        ]
+        if manifest:
+            args.append("--manifest")
+
+        assert export_batch.main(args) == 0
+        assert len(fake_client.queries) == 2
+        assert len(list(tmp_path.glob("*.arrow"))) == 2
+        assert (tmp_path / "manifest.json").exists() is manifest
+        assert "exported 2026-09-12" in capsys.readouterr().out
+        if manifest:
+            data = json.loads((tmp_path / "manifest.json").read_text())
+            assert [entry["game_date"] for entry in data["files"]] == [
+                "2026-09-12", "2026-09-13",
+            ]
+            for entry in data["files"]:
+                assert entry["rows"] == day_table.num_rows
+                assert entry["bytes"] == (tmp_path / entry["path"]).stat().st_size
+
+    @pytest.mark.parametrize(
+        ("scope", "destination", "message"),
+        [
+            (["--date", "2026-09-14"], "day.arrow", "requires --date-range"),
+            (
+                ["--date-range", "2026-09-12", "2026-09-13"],
+                "gs://batches/prefix", "local directories only",
+            ),
+        ],
+    )
+    def test_manifest_rejects_unsupported_modes_before_export(
+        self, monkeypatch, capsys, scope, destination, message
+    ):
+        from ingestion import export_batch
+
+        def unexpected_export(*args, **kwargs):
+            pytest.fail("invalid arguments must not start an export")
+
+        monkeypatch.setattr(export_batch, "export_day_partition", unexpected_export)
+        monkeypatch.setattr(export_batch, "export_day_range", unexpected_export)
+        with pytest.raises(SystemExit) as exc:
+            export_batch.main([*scope, "--out", destination, "--manifest"])
+        assert exc.value.code == 2
+        assert message in capsys.readouterr().err
+
+
 class FakeClock:
     """Injectable clock: returns a fixed UTC datetime."""
 

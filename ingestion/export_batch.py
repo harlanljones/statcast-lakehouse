@@ -263,12 +263,24 @@ def main(argv: list[str] | None = None) -> int:
         default="zstd",
         help="IPC compression codec (default zstd)",
     )
+    ap.add_argument(
+        "--manifest",
+        action="store_true",
+        help="write manifest.json alongside batches (requires --date-range; local directories only)",
+    )
     args = ap.parse_args(argv)
+    if args.manifest and not args.date_range:
+        ap.error("--manifest requires --date-range")
+    if args.manifest and args.out.startswith("gs://"):
+        ap.error("--manifest supports local directories only; export locally before uploading")
     compression = None if args.compression == "none" else args.compression
 
     if args.date_range:
         start, end = (date.fromisoformat(d) for d in args.date_range)
-        for dest in export_day_range(start, end, args.out, compress=compression):
+        for dest in export_day_range(
+            start, end, args.out, compress=compression,
+            write_manifest_flag=args.manifest,
+        ):
             print(f"exported {os.path.splitext(os.path.basename(dest))[0]} -> {dest}")
         return 0
 

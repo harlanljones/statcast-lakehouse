@@ -43,9 +43,10 @@ items 3+ are completed offline (no stubs in code).
   one YYYY-MM-DD.arrow per day, IPC codec via `compress`: zstd/lz4/none) and
   `write_manifest` (manifest.json with schema_version/generated_at/files
   [path, game_date, rows, bytes], sorted by game_date, skipped when empty;
-  gs:// rows/bytes recorded as null). CLI gained `--date-range START END`
-  (manifest writing is library-level: `write_manifest` /
-  `export_day_range(write_manifest_flag=True)` — no CLI flag).
+  local destinations only). CLI supports `--date-range START END --manifest`
+  to opt into manifest writing; `--manifest` rejects single-file mode and GCS
+  destinations before any export starts. Library callers can use
+  `export_day_range(write_manifest_flag=True)`.
 - Acceptance: 170 pytest / 57 vitest green offline; export range + manifest
   behavior pinned in `ingestion/tests/test_export_batch.py`.
 
