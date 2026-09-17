@@ -50,12 +50,15 @@ def _etag_matches(header_value: str, etag: str) -> bool:
     return False
 
 
-def _arrow_response(table, if_none_match: str | None = None) -> Response:
+def _serialize(table) -> tuple[bytes, str]:
     sink = io.BytesIO()
-    with pa_ipc_new(sink, table.schema) as writer:  # noqa: F821 - set below
+    with pa.ipc.new_file(sink, table.schema) as writer:
         writer.write_table(table)
     body = sink.getvalue()
-    etag = _etag_for(body)
+    return body, _etag_for(body)
+
+
+def _respond(body: bytes, etag: str, if_none_match: str | None) -> Response:
     if if_none_match and _etag_matches(if_none_match, etag):
         # RFC 9111 4.3.4: 304 should carry the Cache-Control of the stored
         # response so caches refresh with the same directives.
@@ -73,10 +76,13 @@ def _arrow_response(table, if_none_match: str | None = None) -> Response:
     )
 
 
+def _arrow_response(table, if_none_match: str | None = None) -> Response:
+    body, etag = _serialize(table)
+    return _respond(body, etag, if_none_match)
+
+
 # imported after app init so uvicorn reloads pick schema changes
 import pyarrow as pa  # noqa: E402
-
-_arrow_response.__globals__["pa_ipc_new"] = pa.ipc.new_file
 
 
 @app.get("/healthz")
@@ -87,20 +93,31 @@ def healthz() -> dict:
 SAMPLE_PITCHES_CAP = 5000
 _SAMPLE_DAY = dt.date(2026, 9, 14)
 
+# Byte-stable synthetic sample cache, keyed by row count: the seed and
+# ingestion_time are fixed, so regenerating or re-serializing per request is
+# pure waste — a 304 must do neither. Bounded: keys are capped at CAP.
+_SAMPLE_CACHE: dict[int, tuple[bytes, str]] = {}
 
-@app.get("/pitches/sample")
-def sample(request: Request, pitches: int = 300) -> Response:
-    n = max(1, min(pitches, SAMPLE_PITCHES_CAP))
-    # Fixed seed + fixed ingestion_time -> byte-stable body -> working 304.
-    return _arrow_response(
-        synth_day(
+
+def _sample_body(n: int) -> tuple[bytes, str]:
+    cached = _SAMPLE_CACHE.get(n)
+    if cached is None:
+        table = synth_day(
             random.Random(2026),
             _SAMPLE_DAY,
             n,
             ingestion_time=datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc),
-        ),
-        if_none_match=request.headers.get("if-none-match"),
-    )
+        )
+        cached = _serialize(table)
+        _SAMPLE_CACHE[n] = cached
+    return cached
+
+
+@app.get("/pitches/sample")
+def sample(request: Request, pitches: int = 300) -> Response:
+    n = max(1, min(pitches, SAMPLE_PITCHES_CAP))
+    body, etag = _sample_body(n)
+    return _respond(body, etag, request.headers.get("if-none-match"))
 
 
 def _bq_client():
