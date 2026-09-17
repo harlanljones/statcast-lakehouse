@@ -18,7 +18,14 @@ export async function fetchAvailableDates(baseUrl = "/pitches"): Promise<string[
     return []; // network failure — same degradation as non-200
   }
   if (!res.ok) return [];
-  const body: unknown = await res.json();
+  // A 200 with a malformed body must also degrade to [] (same contract as
+  // network failure / non-200), never throw.
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    return [];
+  }
   if (!Array.isArray(body)) return [];
   const dates = body.filter((d): d is string => {
     if (typeof d !== "string" || !DATE_RE.test(d)) return false;

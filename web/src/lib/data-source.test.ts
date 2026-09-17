@@ -53,4 +53,12 @@ describe("fetchAvailableDates", () => {
     await fetchAvailableDates("/api/pitches");
     expect(fetchMock).toHaveBeenCalledWith("/api/pitches/dates");
   });
+
+  it("returns [] on a 200 with a malformed JSON body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("<html>not json</html>", { status: 200 })),
+    );
+    await expect(fetchAvailableDates()).resolves.toEqual([]);
+  });
 });

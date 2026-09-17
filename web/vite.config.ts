@@ -7,7 +7,10 @@ export default defineConfig({
   server: {
     proxy: {
       // Dev-only: forward serving-API requests to the local FastAPI app.
-      "/pitches": "http://localhost:8000",
+      "/pitches": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
     },
   },
   test: { environment: "node" },
