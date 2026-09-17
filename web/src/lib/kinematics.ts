@@ -12,6 +12,7 @@
  */
 
 export const PLATE_Y = 1.417; // ft, front face of home plate
+export const GRAVITY_FT_S2 = 32.174; // standard gravity in ft/s^2
 
 export interface PitchKinematics {
   x0: number;
@@ -23,6 +24,25 @@ export interface PitchKinematics {
   ax: number;
   ay: number;
   az: number;
+}
+
+export interface BreakVector {
+  hBreakInches: number; // horizontal break in inches (+ is catcher's right)
+  vBreakInches: number; // induced vertical break (IVB) in inches (+ is upward Magnus lift)
+  totalBreakInches: number;
+}
+
+/**
+ * Kinematic parameters without aerodynamic Magnus force (gravity and drag only).
+ * Drag ay is preserved so flight time to home plate remains identical.
+ */
+export function ghostKinematics(p: PitchKinematics): PitchKinematics {
+  return {
+    ...p,
+    ax: 0,
+    ay: p.ay,
+    az: -GRAVITY_FT_S2,
+  };
 }
 
 /** Solve y(t) = y0 + vy0 t + 1/2 ay t^2 = PLATE_Y for the larger root. */
@@ -68,3 +88,38 @@ export function trajectoryFlat(p: PitchKinematics, n = 60): Float32Array {
   for (let i = 0; i < n; i++) flat.set(path[i], i * 3);
   return flat;
 }
+
+/** Ghost trajectory under pure gravity and drag (no aerodynamic Magnus force). */
+export function ghostTrajectory(p: PitchKinematics, n = 60): Array<[number, number, number]> {
+  return trajectory(ghostKinematics(p), n);
+}
+
+/** Ghost trajectory as a flat Float32Array for zero-copy GPU upload. */
+export function ghostTrajectoryFlat(p: PitchKinematics, n = 60): Float32Array {
+  return trajectoryFlat(ghostKinematics(p), n);
+}
+
+/**
+ * Aerodynamic break vector in inches at plate arrival (Nathan 2012 definition).
+ * Measures the displacement between the actual pitch and the ghost pitch.
+ */
+export function computeBreakVector(p: PitchKinematics): BreakVector {
+  const tEnd = flightTime(p);
+  const dxFt = 0.5 * p.ax * tEnd * tEnd;
+  const dzFt = 0.5 * (p.az - (-GRAVITY_FT_S2)) * tEnd * tEnd;
+  const hBreakInches = dxFt * 12;
+  const vBreakInches = dzFt * 12;
+  const totalBreakInches = Math.hypot(hBreakInches, vBreakInches);
+  return { hBreakInches, vBreakInches, totalBreakInches };
+}
+
+/**
+ * Segment connecting ghost arrival point to actual arrival point at the plate.
+ */
+export function breakVectorSegment(p: PitchKinematics): [[number, number, number], [number, number, number]] {
+  const tEnd = flightTime(p);
+  const actual = positionAt(p, tEnd);
+  const ghost = positionAt(ghostKinematics(p), tEnd);
+  return [ghost, actual];
+}
+

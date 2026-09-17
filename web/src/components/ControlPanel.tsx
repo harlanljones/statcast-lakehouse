@@ -40,7 +40,10 @@ export interface ControlPanelProps {
   onTogglePlay?: () => void;
   showTunneling?: boolean;
   onToggleTunneling?: (v: boolean) => void;
+  showGhostBreak?: boolean;
+  onToggleGhostBreak?: (v: boolean) => void;
 }
+
 
 /**
  * Control panel. Every control writes Solid signals; Visualizer rebinds
@@ -157,7 +160,17 @@ export default function ControlPanel(props: ControlPanelProps): JSX.Element {
           />
           Tunneling Plane
         </label>
+        <label style={{ display: "inline-flex", "align-items": "center", gap: "4px" }}>
+          <input
+            type="checkbox"
+            checked={props.showGhostBreak ?? false}
+            aria-label="toggle ghost break"
+            onChange={(e) => props.onToggleGhostBreak?.(e.currentTarget.checked)}
+          />
+          Ghost Break (Magnus)
+        </label>
       </div>
+
 
       <div role="group" aria-label="strike zone filter" style={{ display: "flex", gap: "4px" }}>
         <button

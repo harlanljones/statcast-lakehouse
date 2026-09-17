@@ -26,6 +26,7 @@ import pyarrow as pa
 
 # Physical constants for the plate plane (Statcast convention, feet).
 PLATE_Y_FT = 1.417
+GRAVITY_FT_S2 = 32.174
 
 SCHEMA = pa.schema(
     [
@@ -102,6 +103,46 @@ def trajectory(pitch: dict[str, float], n: int = 60) -> list[tuple[float, float,
     """n points from release to the plate plane (Statcast's 60-point path)."""
     t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
     return [position_at(pitch, t_end * i / (n - 1)) for i in range(n)]
+
+
+def ghost_kinematics(pitch: dict[str, float]) -> dict[str, float]:
+    """Kinematic parameters without Magnus aerodynamic force (gravity + drag only)."""
+    ghost = dict(pitch)
+    ghost["ax"] = 0.0
+    ghost["ay"] = pitch["ay"]
+    ghost["az"] = -GRAVITY_FT_S2
+    return ghost
+
+
+def ghost_trajectory(
+    pitch: dict[str, float], n: int = 60
+) -> list[tuple[float, float, float]]:
+    """n points along the trajectory under pure gravity and drag."""
+    return trajectory(ghost_kinematics(pitch), n=n)
+
+
+def compute_break_vector(pitch: dict[str, float]) -> dict[str, float]:
+    """Aerodynamic break in inches at plate arrival (Nathan 2012 definition)."""
+    t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
+    dx_ft = 0.5 * pitch["ax"] * t_end * t_end
+    dz_ft = 0.5 * (pitch["az"] - (-GRAVITY_FT_S2)) * t_end * t_end
+    h_break = dx_ft * 12.0
+    v_break = dz_ft * 12.0
+    return {
+        "h_break_inches": h_break,
+        "v_break_inches": v_break,
+        "total_break_inches": math.hypot(h_break, v_break),
+    }
+
+
+def break_vector_segment(
+    pitch: dict[str, float],
+) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """Line segment connecting ghost arrival point to actual arrival point at the plate."""
+    t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
+    actual = position_at(pitch, t_end)
+    ghost = position_at(ghost_kinematics(pitch), t_end)
+    return (ghost, actual)
 
 
 def synth_pitch(

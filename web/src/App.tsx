@@ -30,6 +30,8 @@ const [selectedDate, setSelectedDate] = createSignal<string>("");
 const [flightProgress, setFlightProgress] = createSignal<number>(1.0);
 const [isPlaying, setIsPlaying] = createSignal<boolean>(false);
 const [showTunneling, setShowTunneling] = createSignal<boolean>(false);
+const [showGhostBreak, setShowGhostBreak] = createSignal<boolean>(false);
+
 
 // Display-only derived values (badge + chips). These run once per signal
 // change, never per frame; the layer data itself is never filtered in JS.
@@ -130,6 +132,7 @@ export default function App() {
         viewState={CAMERA_VIEWS[view()]}
         flightProgress={flightProgress()}
         showTunneling={showTunneling()}
+        showGhostBreak={showGhostBreak()}
       />
       <ControlPanel
         speed={speedRange()}
@@ -161,9 +164,12 @@ export default function App() {
         onTogglePlay={togglePlay}
         showTunneling={showTunneling()}
         onToggleTunneling={setShowTunneling}
+        showGhostBreak={showGhostBreak()}
+        onToggleGhostBreak={setShowGhostBreak}
       />
     </div>
   );
 }
+
 
 render(() => <App />, document.getElementById("root")!);

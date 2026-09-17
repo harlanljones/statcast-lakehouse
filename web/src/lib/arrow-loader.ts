@@ -1,6 +1,10 @@
 /** Arrow IPC loader: byte stream -> columnar table -> per-pitch GPU data. */
 import { tableFromIPC, type Table } from "apache-arrow";
-import { trajectoryFlat, type PitchKinematics } from "./kinematics";
+import {
+  trajectoryFlat,
+  computeBreakVector,
+  type PitchKinematics,
+} from "./kinematics";
 import type { PitchDatum } from "./deck-layers";
 export type { PitchDatum } from "./deck-layers";
 
@@ -70,6 +74,8 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
       pitchType: String(table.getChild("pitch_type")?.get(i) ?? ""),
       isSwing,
       isWhiff,
+      kinematics: k,
+      breakVector: computeBreakVector(k),
     });
   }
   return { table, pitches };
