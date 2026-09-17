@@ -31,9 +31,9 @@ Side path (warehouse -> batch consumers):
 ```
 BigQuery (fct_pitches, partition-filtered scans)
   -> ingestion/export_batch.py export_day_range --date-range START END
-     (inclusive, one game_date=YYYY-MM-DD/pitches.arrow per day, zstd/lz4/
-     none IPC codec) -> GCS or local dir (+ manifest.json, optional
-     --write-manifest)
+     (inclusive, one YYYY-MM-DD.arrow per day, zstd/lz4/none IPC codec)
+     -> GCS or local dir (optional --manifest writes manifest.json locally;
+        requires --date-range and rejects GCS destinations before exporting)
 ```
 
 ## Key decisions (and why)
