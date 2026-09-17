@@ -114,35 +114,6 @@ export default function ControlPanel(props: ControlPanelProps): JSX.Element {
         </Show>
       </div>
 
-      <Show when={props.availableDates.length > 0}>
-        <label>
-          game date{" "}
-          <select
-            aria-label="game date"
-            value={props.selectedDate ?? ""}
-            onChange={(e) => props.onSelectDate(e.currentTarget.value)}
-          >
-            <option value="" disabled>
-              select a date
-            </option>
-            <For each={props.availableDates}>
-              {(date) => <option value={date}>{date}</option>}
-            </For>
-          </select>
-        </label>
-      </Show>
-
-      <Show when={props.loading}>
-        <span role="status" aria-label="loading">
-          loading…
-        </span>
-      </Show>
-      <Show when={props.loadError}>
-        <span role="alert" aria-label="load error">
-          {props.loadError}
-        </span>
-      </Show>
-
       <div role="group" aria-label="camera view presets" style={{ display: "flex", gap: "4px" }}>
         <For each={Object.keys(CAMERA_VIEWS) as CameraViewName[]}>
           {(name) => (

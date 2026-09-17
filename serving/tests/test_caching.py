@@ -176,9 +176,10 @@ def test_pitches_dates_returns_json_partition_list(client, fake_dates_client):
 
 
 def test_pitches_dates_entries_carry_game_date_for_web_client(client, fake_dates_client):
-    # Cross-layer contract: web/src/lib/data-source.ts depends on every entry
-    # having a `game_date` string (it maps objects -> date strings). If the
-    # serving shape changes, this pin fails alongside the web tests.
+    # Cross-layer contract: web/src/lib/arrow-loader.ts's fetchDatePartitions
+    # consumes every entry as a DatePartition ({ game_date: string, rows:
+    # number }), reading `game_date` directly. If the serving shape changes,
+    # this pin fails alongside the web tests.
     r = client.get("/pitches/dates")
     assert r.status_code == 200
     data = json.loads(r.content)
