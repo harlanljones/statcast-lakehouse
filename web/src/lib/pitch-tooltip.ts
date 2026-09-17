@@ -17,6 +17,8 @@ export interface PitchTooltipInfo {
   zone: string;
   /** "Whiff", "Swing", "Take", or undefined if not available */
   outcome?: string;
+  /** Aerodynamic break displacement, e.g. "IVB +16.2\"  HB -14.1\"" */
+  break?: string;
 }
 
 /** Round half away from zero, then fix to one decimal (deterministic sign handling). */
@@ -42,6 +44,15 @@ export function pitchTooltip(d: PitchDatum | null | undefined): PitchTooltipInfo
     outcome = "Take";
   }
 
+  let breakStr: string | undefined;
+  if (d.breakVector) {
+    const ivb = d.breakVector.vBreakInches;
+    const hb = d.breakVector.hBreakInches;
+    const ivbSign = ivb >= 0 ? "+" : "";
+    const hbSign = hb >= 0 ? "+" : "";
+    breakStr = `IVB ${ivbSign}${round1(ivb)}"  HB ${hbSign}${round1(hb)}"`;
+  }
+
   return {
     pitchType: d.pitchType,
     color: pitchColor(d.pitchType),
@@ -49,8 +60,10 @@ export function pitchTooltip(d: PitchDatum | null | undefined): PitchTooltipInfo
     location: `${round1(px)} ft, ${round1(pz)} ft`,
     zone,
     outcome,
+    break: breakStr,
   };
 }
+
 
 /** Gap in pixels between the pointer and the tooltip card's top-left corner. */
 export const TOOLTIP_OFFSET = { x: 12, y: 12 } as const;
@@ -80,6 +93,8 @@ export function pitchTooltipSummary(d: PitchDatum | null | undefined): string {
   const info = pitchTooltip(d);
   if (!info) return "";
   const parts = [`${info.pitchType}: ${info.speed}`, info.location, info.zone];
+  if (info.break) parts.push(info.break);
   if (info.outcome) parts.push(info.outcome);
   return parts.join(", ");
 }
+

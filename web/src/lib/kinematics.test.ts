@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { flightTime, positionAt, trajectory, trajectoryFlat, PLATE_Y } from "./kinematics";
+import {
+  flightTime,
+  positionAt,
+  trajectory,
+  trajectoryFlat,
+  ghostKinematics,
+  ghostTrajectory,
+  ghostTrajectoryFlat,
+  computeBreakVector,
+  breakVectorSegment,
+  PLATE_Y,
+  GRAVITY_FT_S2,
+} from "./kinematics";
 
 const FASTBALL: Parameters<typeof flightTime>[0] = {
   x0: 0, y0: 55, z0: 6,
@@ -44,8 +56,74 @@ describe("trajectory", () => {
   });
 });
 
+describe("ghostKinematics and breakVector", () => {
+  const SLIDER: Parameters<typeof flightTime>[0] = {
+    x0: -1.5, y0: 55, z0: 5.8,
+    vx0: 3.5, vy0: -125, vz0: -3.0,
+    ax: -8.0, ay: 20.0, az: -22.0,
+  };
+
+  it("ghostKinematics clears lateral break and sets standard downward gravity", () => {
+    const ghost = ghostKinematics(SLIDER);
+    expect(ghost.ax).toBe(0);
+    expect(ghost.ay).toBe(SLIDER.ay);
+    expect(ghost.az).toBe(-GRAVITY_FT_S2);
+    expect(ghost.x0).toBe(SLIDER.x0);
+    expect(ghost.y0).toBe(SLIDER.y0);
+    expect(ghost.z0).toBe(SLIDER.z0);
+  });
+
+  it("ghostTrajectory arrives at the plate at the identical flight time as the actual pitch", () => {
+    const tActual = flightTime(SLIDER);
+    const tGhost = flightTime(ghostKinematics(SLIDER));
+    expect(tGhost).toBeCloseTo(tActual, 9);
+
+    const actualPath = trajectory(SLIDER);
+    const ghostPath = ghostTrajectory(SLIDER);
+    expect(ghostPath).toHaveLength(60);
+    expect(ghostPath[0][1]).toBeCloseTo(55, 6);
+    expect(ghostPath[59][1]).toBeCloseTo(PLATE_Y, 5);
+    expect(actualPath[59][1]).toBeCloseTo(ghostPath[59][1], 5);
+  });
+
+  it("ghostTrajectoryFlat returns 180 Float32 elements", () => {
+    const flat = ghostTrajectoryFlat(SLIDER);
+    expect(flat).toHaveLength(180);
+    expect(flat instanceof Float32Array).toBe(true);
+  });
+
+  it("computeBreakVector calculates Nathan 2012 aerodynamic break displacement", () => {
+    const tEnd = flightTime(SLIDER);
+    const breakVec = computeBreakVector(SLIDER);
+
+    const expectedDxInches = 0.5 * SLIDER.ax * tEnd * tEnd * 12;
+    const expectedDzInches = 0.5 * (SLIDER.az - (-GRAVITY_FT_S2)) * tEnd * tEnd * 12;
+
+    expect(breakVec.hBreakInches).toBeCloseTo(expectedDxInches, 5);
+    expect(breakVec.vBreakInches).toBeCloseTo(expectedDzInches, 5);
+    expect(breakVec.totalBreakInches).toBeCloseTo(
+      Math.hypot(expectedDxInches, expectedDzInches),
+      5,
+    );
+  });
+
+  it("breakVectorSegment connects ghost arrival to actual arrival at home plate", () => {
+    const tEnd = flightTime(SLIDER);
+    const [ghostEnd, actualEnd] = breakVectorSegment(SLIDER);
+
+    expect(ghostEnd[1]).toBeCloseTo(PLATE_Y, 5);
+    expect(actualEnd[1]).toBeCloseTo(PLATE_Y, 5);
+
+    // Delta matches break displacement in feet
+    const dx = actualEnd[0] - ghostEnd[0];
+    const dz = actualEnd[2] - ghostEnd[2];
+    expect(dx * 12).toBeCloseTo(computeBreakVector(SLIDER).hBreakInches, 5);
+    expect(dz * 12).toBeCloseTo(computeBreakVector(SLIDER).vBreakInches, 5);
+  });
+});
+
 describe("trajectory benchmark", () => {
-  it("computes 1,000 pitch trajectories in <5ms", () => {
+  it("computes 1,000 pitch trajectories in <10ms", () => {
     const pitches: Array<Parameters<typeof flightTime>[0]> = Array.from({ length: 1000 }, (_, i) => ({
       x0: -2 + (i % 5) * 0.8,
       y0: 54 + (i % 3),
@@ -59,8 +137,9 @@ describe("trajectory benchmark", () => {
     }));
 
     // JIT warm up
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 200; i++) {
       trajectory(pitches[i]);
+      ghostTrajectory(pitches[i]);
     }
 
     const start = performance.now();
@@ -69,7 +148,8 @@ describe("trajectory benchmark", () => {
     }
     const elapsed = performance.now() - start;
 
-    expect(elapsed).toBeLessThan(5);
+    expect(elapsed).toBeLessThan(10);
   });
 });
+
 

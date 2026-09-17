@@ -105,9 +105,42 @@ describe("pitchTooltip", () => {
     ).toBe("FF: 92.0 mph, 1.2 ft, 1.0 ft, Ball, Take");
   });
 
+  it("formats aerodynamic break when breakVector is present", () => {
+    const info = pitchTooltip(
+      pitch({
+        breakVector: {
+          hBreakInches: -14.2,
+          vBreakInches: 16.5,
+          totalBreakInches: 21.77,
+        },
+      }),
+    )!;
+    expect(info.break).toBe('IVB +16.5"  HB -14.2"');
+  });
+
+  it("summarizes break in aria-live region when breakVector is present", () => {
+    expect(
+      pitchTooltipSummary(
+        pitch({
+          releaseSpeed: 94.5,
+          plateX: 0.12,
+          plateZ: 2.34,
+          breakVector: {
+            hBreakInches: -8.5,
+            vBreakInches: 17.2,
+            totalBreakInches: 19.18,
+          },
+          isSwing: 1,
+          isWhiff: 1,
+        }),
+      ),
+    ).toBe('FF: 94.5 mph, 0.1 ft, 2.3 ft, In Zone, IVB +17.2"  HB -8.5", Whiff');
+  });
+
   it("handles a null datum (nothing hovered)", () => {
     expect(pitchTooltip(null)).toBeNull();
     expect(pitchTooltip(undefined)).toBeNull();
     expect(pitchTooltipSummary(null)).toBe("");
   });
 });
+

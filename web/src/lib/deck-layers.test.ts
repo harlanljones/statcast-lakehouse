@@ -548,4 +548,68 @@ describe("buildLayers", () => {
     expect(markerLayer.props.getFilterValue(testPitch)).toEqual([87, 0, 0, 1]);
     expect(markerLayer.props.extensions[0]).toBeInstanceOf(DataFilterExtension);
   });
+
+  it("builds ghost-trajectories layer when showGhostBreak is true", () => {
+    const testPitch = pitch({
+      ghostPath: new Float32Array([0, 55, 5, 0, 20, 3.5, 0, 1.417, 2.0]),
+    });
+    const layers = buildLayers({
+      pitches: [testPitch],
+      speedRange: [60, 105],
+      showGhostBreak: true,
+    });
+    const ghostLayer = layers.find((l) => l.id === "ghost-trajectories") as unknown as {
+      props: {
+        coordinateSystem: string;
+        getColor: [number, number, number, number];
+        getPath: (d: PitchDatum) => Float32Array;
+        extensions: unknown[];
+      };
+    };
+    expect(ghostLayer).toBeDefined();
+    expect(ghostLayer.props.coordinateSystem).toBe("cartesian");
+    expect(ghostLayer.props.getColor).toEqual([200, 220, 240, 80]);
+    expect(ghostLayer.props.getPath(testPitch)).toBe(testPitch.ghostPath);
+    expect(ghostLayer.props.extensions[0]).toBeInstanceOf(DataFilterExtension);
+  });
+
+  it("builds picked-ghost-trajectory and picked-break-vector when a pitch with kinematics is picked", () => {
+    const testPitch = pitch({
+      kinematics: {
+        x0: -1.5, y0: 55, z0: 5.8,
+        vx0: 3.5, vy0: -125, vz0: -3.0,
+        ax: -8.0, ay: 20.0, az: -22.0,
+      },
+    });
+    const layers = buildLayers({
+      pitches: [testPitch],
+      speedRange: [60, 105],
+      picked: testPitch,
+    });
+    const pickedGhost = layers.find((l) => l.id === "picked-ghost-trajectory") as unknown as {
+      props: {
+        coordinateSystem: string;
+        getColor: [number, number, number, number];
+        getPath: () => Float32Array;
+      };
+    };
+    const breakVecLayer = layers.find((l) => l.id === "picked-break-vector") as unknown as {
+      props: {
+        coordinateSystem: string;
+        getColor: [number, number, number];
+        data: [[[number, number, number], [number, number, number]]];
+      };
+    };
+    expect(pickedGhost).toBeDefined();
+    expect(pickedGhost.props.coordinateSystem).toBe("cartesian");
+    expect(pickedGhost.props.getColor).toEqual([220, 240, 255, 230]);
+    expect(pickedGhost.props.getPath()).toHaveLength(180);
+
+    expect(breakVecLayer).toBeDefined();
+    expect(breakVecLayer.props.getColor).toEqual([255, 215, 0]);
+    expect(breakVecLayer.props.data).toHaveLength(1);
+    expect(breakVecLayer.props.data[0][0][1]).toBeCloseTo(1.417, 3);
+    expect(breakVecLayer.props.data[0][1][1]).toBeCloseTo(1.417, 3);
+  });
 });
+

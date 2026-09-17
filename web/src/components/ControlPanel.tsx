@@ -40,7 +40,13 @@ export interface ControlPanelProps {
   onTogglePlay?: () => void;
   showTunneling?: boolean;
   onToggleTunneling?: (v: boolean) => void;
+  showGhostBreak?: boolean;
+  onToggleGhostBreak?: (v: boolean) => void;
+  availableDates?: string[];
+  loading?: boolean;
+  loadError?: string | null;
 }
+
 
 /**
  * Control panel. Every control writes Solid signals; Visualizer rebinds
@@ -114,13 +120,13 @@ export default function ControlPanel(props: ControlPanelProps): JSX.Element {
         </Show>
       </div>
 
-      <Show when={props.availableDates.length > 0}>
+      <Show when={props.availableDates && props.availableDates.length > 0}>
         <label>
           game date{" "}
           <select
             aria-label="game date"
             value={props.selectedDate ?? ""}
-            onChange={(e) => props.onSelectDate(e.currentTarget.value)}
+            onChange={(e) => props.onSelectDate?.(e.currentTarget.value)}
           >
             <option value="" disabled>
               select a date
@@ -131,6 +137,7 @@ export default function ControlPanel(props: ControlPanelProps): JSX.Element {
           </select>
         </label>
       </Show>
+
 
       <Show when={props.loading}>
         <span role="status" aria-label="loading">
@@ -186,7 +193,17 @@ export default function ControlPanel(props: ControlPanelProps): JSX.Element {
           />
           Tunneling Plane
         </label>
+        <label style={{ display: "inline-flex", "align-items": "center", gap: "4px" }}>
+          <input
+            type="checkbox"
+            checked={props.showGhostBreak ?? false}
+            aria-label="toggle ghost break"
+            onChange={(e) => props.onToggleGhostBreak?.(e.currentTarget.checked)}
+          />
+          Ghost Break (Magnus)
+        </label>
       </div>
+
 
       <div role="group" aria-label="strike zone filter" style={{ display: "flex", gap: "4px" }}>
         <button

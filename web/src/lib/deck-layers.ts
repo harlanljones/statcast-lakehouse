@@ -9,6 +9,12 @@ import { PathLayer, ScatterplotLayer, type PathLayerProps } from "@deck.gl/layer
 import type { PickingInfo } from "@deck.gl/core";
 import { type AccessorFunction } from "@deck.gl/core";
 import type { OrbitViewState } from "@deck.gl/core";
+import {
+  ghostTrajectoryFlat,
+  breakVectorSegment,
+  type PitchKinematics,
+  type BreakVector,
+} from "./kinematics";
 
 export const ORBIT_TARGET: [number, number, number] = [0, 1.417, 2.5];
 export const INITIAL_VIEW: OrbitViewState = {
@@ -20,6 +26,7 @@ export const INITIAL_VIEW: OrbitViewState = {
 
 export interface PitchDatum {
   path: Float32Array;
+  ghostPath?: Float32Array;
   releaseSpeed: number;
   pfxX: number;
   pfxZ: number;
@@ -28,6 +35,8 @@ export interface PitchDatum {
   pitchType: string;
   isSwing?: number;
   isWhiff?: number;
+  kinematics?: PitchKinematics;
+  breakVector?: BreakVector;
 }
 
 export const FILTER_SIZE = 4;
@@ -249,6 +258,7 @@ export interface BuildLayersOpts {
   picked?: PitchDatum | null;
   flightProgress?: number;
   showTunneling?: boolean;
+  showGhostBreak?: boolean;
 }
 
 /** Base trajectory width in meters (the un-picked line width). */
@@ -277,6 +287,7 @@ export function buildLayers(opts: BuildLayersOpts) {
     picked,
     flightProgress,
     showTunneling,
+    showGhostBreak,
   } = opts;
   const ext = dataFilterExtension();
 
@@ -356,6 +367,56 @@ export function buildLayers(opts: BuildLayersOpts) {
     );
   }
 
+  if (showGhostBreak) {
+    layers.unshift(
+      new PathLayer<PitchDatum>({
+        id: "ghost-trajectories",
+        coordinateSystem: "cartesian" as never,
+        data: pitches,
+        getPath: (d) => d.ghostPath ?? (d.kinematics ? ghostTrajectoryFlat(d.kinematics) : d.path),
+        getColor: [200, 220, 240, 80],
+        getWidth: TRAJECTORY_WIDTH * 0.75,
+        widthUnits: "meters",
+        widthMinPixels: 1.0,
+        opacity: 0.6,
+        ...filteredProps,
+        extensions: [ext],
+        updateTriggers: {
+          filterRange: [speedRange, xRange, zRange, typeRange],
+          getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
+        },
+      }),
+    );
+  }
+
+  if (picked?.kinematics) {
+    const k = picked.kinematics;
+    layers.push(
+      new PathLayer<PitchDatum>({
+        id: "picked-ghost-trajectory",
+        coordinateSystem: "cartesian" as never,
+        data: [picked],
+        getPath: () => picked.ghostPath ?? ghostTrajectoryFlat(k),
+        getColor: [220, 240, 255, 230],
+        getWidth: TRAJECTORY_WIDTH * 1.5,
+        widthUnits: "meters",
+        widthMinPixels: 2.0,
+        opacity: 0.95,
+      }),
+      new PathLayer<WireSegment>({
+        id: "picked-break-vector",
+        coordinateSystem: "cartesian" as never,
+        data: [breakVectorSegment(k)],
+        getPath: (s) => s,
+        getColor: [255, 215, 0],
+        getWidth: 0.04,
+        widthUnits: "meters",
+        widthMinPixels: 2.5,
+        opacity: 1.0,
+      }),
+    );
+  }
+
   if (flightProgress !== undefined) {
     layers.push(
       new ScatterplotLayer<PitchDatum>({
@@ -390,3 +451,4 @@ export function buildLayers(opts: BuildLayersOpts) {
 
   return layers;
 }
+

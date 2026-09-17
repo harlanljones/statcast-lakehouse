@@ -23,6 +23,7 @@ export interface VisualizerProps {
   viewState?: OrbitViewState | null;
   flightProgress?: number;
   showTunneling?: boolean;
+  showGhostBreak?: boolean;
 }
 
 /**
@@ -41,8 +42,8 @@ export default function Visualizer(props: VisualizerProps) {
   // Cursor-anchored tooltip position (canvas-relative px, already clamped).
   const [tipPos, setTipPos] = createSignal({ x: 0, y: 0 });
   // Estimated rendered card size for clamping (matches the styled card below).
-  const CARD_W = 140;
-  const CARD_H = 100;
+  const CARD_W = 160;
+  const CARD_H = 120;
 
   const handlePick = (info: PickingInfo<PitchDatum>) => {
     const obj = info.object ?? null;
@@ -99,6 +100,7 @@ export default function Visualizer(props: VisualizerProps) {
             onHover: handlePick,
             flightProgress: props.flightProgress,
             showTunneling: props.showTunneling,
+            showGhostBreak: props.showGhostBreak,
           })
         : [],
     });
@@ -146,15 +148,16 @@ export default function Visualizer(props: VisualizerProps) {
             position: "absolute",
             top: `${tipPos().y}px`,
             left: `${tipPos().x}px`,
-            width: "140px",
+            width: "160px",
             "pointer-events": "none",
-            background: "rgba(15, 15, 20, 0.85)",
+            background: "rgba(15, 15, 20, 0.88)",
             color: "#eee",
             padding: "6px 10px",
             "border-radius": "6px",
             "font-size": "12px",
             "font-family": "monospace",
             "white-space": "pre",
+            "box-shadow": "0 4px 12px rgba(0,0,0,0.5)",
           }}
         >
           <div>
@@ -172,6 +175,7 @@ export default function Visualizer(props: VisualizerProps) {
           </div>
           <div>{tooltip()!.speed}</div>
           <div>{tooltip()!.location}</div>
+          {tooltip()!.break && <div style={{ color: "#ffd700" }}>{tooltip()!.break}</div>}
           <div>{tooltip()!.zone}</div>
           {tooltip()!.outcome && <div>{tooltip()!.outcome}</div>}
         </div>
@@ -179,3 +183,4 @@ export default function Visualizer(props: VisualizerProps) {
     </div>
   );
 }
+

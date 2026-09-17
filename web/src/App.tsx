@@ -18,7 +18,6 @@ import {
 } from "./lib/deck-layers";
 
 const [pitchData, setPitchData] = createSignal<PitchTable | null>(null);
-const [selectedDate, setSelectedDate] = createSignal<string | null>(null);
 const [availableDates, setAvailableDates] = createSignal<string[]>([]);
 const [loadError, setLoadError] = createSignal<string | null>(null);
 const [loading, setLoading] = createSignal(false);
@@ -34,6 +33,8 @@ const [selectedDate, setSelectedDate] = createSignal<string>("");
 const [flightProgress, setFlightProgress] = createSignal<number>(1.0);
 const [isPlaying, setIsPlaying] = createSignal<boolean>(false);
 const [showTunneling, setShowTunneling] = createSignal<boolean>(false);
+const [showGhostBreak, setShowGhostBreak] = createSignal<boolean>(false);
+
 
 // Display-only derived values (badge + chips). These run once per signal
 // change, never per frame; the layer data itself is never filtered in JS.
@@ -134,6 +135,7 @@ export default function App() {
         viewState={CAMERA_VIEWS[view()]}
         flightProgress={flightProgress()}
         showTunneling={showTunneling()}
+        showGhostBreak={showGhostBreak()}
       />
       <ControlPanel
         speed={speedRange()}
@@ -165,9 +167,15 @@ export default function App() {
         onTogglePlay={togglePlay}
         showTunneling={showTunneling()}
         onToggleTunneling={setShowTunneling}
+        showGhostBreak={showGhostBreak()}
+        onToggleGhostBreak={setShowGhostBreak}
+        availableDates={availableDates()}
+        loading={loading()}
+        loadError={loadError()}
       />
     </div>
   );
 }
+
 
 render(() => <App />, document.getElementById("root")!);

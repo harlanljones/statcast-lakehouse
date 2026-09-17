@@ -176,6 +176,7 @@ def test_dates_json_under_50ms(client, monkeypatch):
             return FakeJob()
 
     monkeypatch.setattr(app_module, "_bq_client", lambda: FakeClient())
+    monkeypatch.setenv("GCP_PROJECT", "test-project")
 
     elapsed_ms, response = _timed_get(client, "/pitches/dates")
     assert response.status_code == 200
