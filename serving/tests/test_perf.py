@@ -10,9 +10,15 @@ Pins latency budgets from the ROADMAP/TDD acceptance criteria:
   4. GET /pitches/dates JSON                                <  50 ms
 
 All timings use fastapi TestClient (in-process, no network) and are warm
-(each budget is measured after one warmup request). Marked ``perf`` so CI or
-slow machines can deselect with ``-m "not perf"`` without touching the rest
-of the suite.
+(each budget is measured after one warmup request), except
+``test_sample_cold_full_response_under_250ms`` which exercises the cold
+(cache-miss) full-response path by clearing the sample cache first.
+
+Deselection convention: pytest.ini intentionally has no ``addopts`` — the
+repo convention is to run everything explicitly (``python -m pytest -q``),
+so perf benchmarks run in the default suite. To skip them on slow machines
+or in selective CI jobs, opt OUT explicitly with ``-m "not perf"``; there
+is no separate opt-in flag to remember.
 """
 from __future__ import annotations
 
@@ -60,6 +66,36 @@ def test_sample_full_response_under_250ms(client):
     assert response.status_code == 200
     assert len(response.content) > 0
     assert elapsed_ms < _budget_ms(250), f"sample 200 took {elapsed_ms:.1f}ms (budget 250ms)"
+
+
+def test_sample_cold_full_response_under_250ms(client):
+    """Cold path: cache-miss full response (synth_day + serialize) < 250ms."""
+    app_module._sample_body.cache_clear()
+    start = time.perf_counter()
+    response = client.get("/pitches/sample", params={"pitches": N_ROWS})
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    assert response.status_code == 200
+    assert len(response.content) > 0
+    assert elapsed_ms < _budget_ms(250), f"cold sample 200 took {elapsed_ms:.1f}ms (budget 250ms)"
+
+
+def test_sample_cache_is_bounded(client):
+    """lru_cache caps at 8 entries; many distinct sizes must not retain all."""
+    app_module._sample_body.cache_clear()
+    for n in range(1, 25):
+        app_module._sample_body(n)
+    info = app_module._sample_body.cache_info()
+    assert info.currsize <= 8, f"cache grew to {info.currsize} entries (maxsize 8)"
+    app_module._sample_body.cache_clear()
+
+
+def test_sample_body_byte_stable_across_cache_eviction(client):
+    """Same key yields identical bytes even after lru_cache eviction."""
+    b1, e1 = app_module._sample_body(N_ROWS)
+    for n in range(1, 25):  # force eviction of N_ROWS
+        app_module._sample_body(n)
+    b2, e2 = app_module._sample_body(N_ROWS)
+    assert (b1, e1) == (b2, e2)
 
 
 # --------------------------------------------------------------- 2. 304 path

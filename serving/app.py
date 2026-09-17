@@ -9,6 +9,7 @@ Run: uvicorn serving.app:app --port 8080
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import hashlib
 import io
 import json
@@ -95,22 +96,21 @@ _SAMPLE_DAY = dt.date(2026, 9, 14)
 
 # Byte-stable synthetic sample cache, keyed by row count: the seed and
 # ingestion_time are fixed, so regenerating or re-serializing per request is
-# pure waste — a 304 must do neither. Bounded: keys are capped at CAP.
-_SAMPLE_CACHE: dict[int, tuple[bytes, str]] = {}
-
-
+# pure waste — a 304 must do neither. lru_cache(maxsize=8) bounds memory:
+# only the 8 most recently used row counts keep a full serialized body
+# (each is on the order of a few hundred KB, so 8 entries stay small).
+# Thread-safety: functools.lru_cache is thread-safe — concurrent misses may
+# each compute once (benign duplicate work), but reads never see partial
+# state and the same key always yields the same bytes.
+@functools.lru_cache(maxsize=8)
 def _sample_body(n: int) -> tuple[bytes, str]:
-    cached = _SAMPLE_CACHE.get(n)
-    if cached is None:
-        table = synth_day(
-            random.Random(2026),
-            _SAMPLE_DAY,
-            n,
-            ingestion_time=datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc),
-        )
-        cached = _serialize(table)
-        _SAMPLE_CACHE[n] = cached
-    return cached
+    table = synth_day(
+        random.Random(2026),
+        _SAMPLE_DAY,
+        n,
+        ingestion_time=datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc),
+    )
+    return _serialize(table)
 
 
 @app.get("/pitches/sample")
