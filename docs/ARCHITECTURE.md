@@ -16,14 +16,16 @@ MLB Stats API (baseballsavant statcast endpoint)
        (partitioned game_date, clustered pitcher/batter/pitch_type,
         ST_GEOGPOINT plate_location, require_partition_filter)
   -> BQML model_pitch_whiff (BOOSTED_TREE_CLASSIFIER, swings only)
+       and ML.EVALUATE evaluation (AUC >= 0.70)
   -> serving/app.py (FastAPI: one game_date partition -> Arrow IPC file,
      sha256 ETag + If-None-Match 304 with Cache-Control; /pitches/dates JSON
      partition index, 30-day window; /pitches/cold serves exported Arrow
      batches via manifest.json under STATCAST_BATCH_DIR (path-contained);
      /pitches/sample byte-stable, capped)
-  -> web/src/lib/arrow-loader.ts (apache-arrow JS, zero-copy columns)
-  -> web/src/lib/kinematics.ts (9-parameter solver -> 60-pt path, Float32Array)
-  -> Deck.gl (GPU trajectory rendering; DataFilterExtension uniform filters)
+  -> web/src/lib/kinematics.ts (9-parameter solver -> 60-pt path, Float32Array;
+     ghost trajectories, Nathan 2012 break vectors, release extension)
+  -> Deck.gl (GPU trajectory rendering, ghost break vectors, 3D release clustering;
+     DataFilterExtension uniform filters, tunneling commitment plane)
 ```
 
 Side path (warehouse -> batch consumers):
@@ -60,6 +62,10 @@ BigQuery (fct_pitches, partition-filtered scans)
   Arrow file per game_date plus manifest.json (path/game_date/rows/bytes,
   sorted by game_date) so batch consumers can process days independently
   and skip already-ingested files.
+- **Commitment plane tunneling & 2D movement profile** — commitment plane ($y = 23.8$ ft)
+  physics solve the decision threshold in closed form; 3D tunnel markers and the 2D
+  Movement Profile (IVB vs HB) SVG overlay share bidirectional picking synchronization
+  with zero array filtering on user interaction.
 
 ## Diagram
 

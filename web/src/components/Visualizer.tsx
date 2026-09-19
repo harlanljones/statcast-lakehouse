@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Deck, OrbitView } from "@deck.gl/core";
 import type { OrbitViewState, PickingInfo } from "@deck.gl/core";
 import type { PitchTable } from "../lib/arrow-loader";
@@ -11,6 +11,12 @@ import {
   type OutcomeFilter,
 } from "../lib/deck-layers";
 import { pitchTooltip, pitchTooltipSummary, clampTooltipPos } from "../lib/pitch-tooltip";
+import BreakChart from "./BreakChart";
+import PairComparisonPanel from "./PairComparisonPanel";
+import FatiguePanel from "./FatiguePanel";
+import type { ArsenalCentroid } from "../lib/arsenal";
+import type { FatigueBucket, ReleaseDispersion } from "../lib/dispersion";
+import type { HeatmapCell } from "../lib/heatmap";
 
 export interface VisualizerProps {
   data: PitchTable | null;
@@ -24,6 +30,25 @@ export interface VisualizerProps {
   flightProgress?: number;
   showTunneling?: boolean;
   showGhostBreak?: boolean;
+  showReleasePoints?: boolean;
+  showPlateCrossings?: boolean;
+  showBreakChart?: boolean;
+  pairedTypes?: [string, string] | null;
+  arsenalCentroids?: Map<string, ArsenalCentroid> | null;
+  showPairComparison?: boolean;
+  onSelectPairedTypes?: (pair: [string, string] | null) => void;
+  availableTypes?: string[];
+  onTogglePairComparison?: (v: boolean) => void;
+  showContactSim?: boolean;
+  batSpeed?: number;
+  attackAngleDeg?: number;
+  showDispersion?: boolean;
+  releaseDispersion?: ReleaseDispersion | null;
+  showFatigue?: boolean;
+  fatigueBuckets?: FatigueBucket[];
+  onToggleFatigue?: (v: boolean) => void;
+  showHeatmap?: boolean;
+  heatmapCells?: HeatmapCell[] | null;
 }
 
 /**
@@ -42,8 +67,8 @@ export default function Visualizer(props: VisualizerProps) {
   // Cursor-anchored tooltip position (canvas-relative px, already clamped).
   const [tipPos, setTipPos] = createSignal({ x: 0, y: 0 });
   // Estimated rendered card size for clamping (matches the styled card below).
-  const CARD_W = 160;
-  const CARD_H = 120;
+  const CARD_W = 180;
+  const CARD_H = 240;
 
   const handlePick = (info: PickingInfo<PitchDatum>) => {
     const obj = info.object ?? null;
@@ -101,6 +126,17 @@ export default function Visualizer(props: VisualizerProps) {
             flightProgress: props.flightProgress,
             showTunneling: props.showTunneling,
             showGhostBreak: props.showGhostBreak,
+            showReleasePoints: props.showReleasePoints,
+            showPlateCrossings: props.showPlateCrossings,
+            pairedTypes: props.pairedTypes,
+            arsenalCentroids: props.arsenalCentroids,
+            showContactSim: props.showContactSim,
+            batSpeed: props.batSpeed,
+            attackAngleDeg: props.attackAngleDeg,
+            showDispersion: props.showDispersion,
+            releaseDispersion: props.releaseDispersion,
+            showHeatmap: props.showHeatmap,
+            heatmapCells: props.heatmapCells,
           })
         : [],
     });
@@ -122,6 +158,29 @@ export default function Visualizer(props: VisualizerProps) {
         style={{ flex: "1", width: "100%", height: "100%" }}
         aria-label={`orbit-target:${ORBIT_TARGET.join(",")}`}
       />
+      <Show when={props.showBreakChart && props.data?.pitches}>
+        <BreakChart
+          pitches={props.data!.pitches}
+          picked={picked()}
+          onPick={(p) => setPicked(p)}
+        />
+      </Show>
+      <Show when={props.showPairComparison && props.arsenalCentroids}>
+        <PairComparisonPanel
+          availableTypes={props.availableTypes ?? []}
+          pairedTypes={props.pairedTypes ?? null}
+          onSelectPairedTypes={(pair) => props.onSelectPairedTypes?.(pair)}
+          centroids={props.arsenalCentroids!}
+          onClose={() => props.onTogglePairComparison?.(false)}
+        />
+      </Show>
+      <Show when={props.showFatigue && props.fatigueBuckets}>
+        <FatiguePanel
+          buckets={props.fatigueBuckets!}
+          dispersion={props.releaseDispersion}
+          onClose={() => props.onToggleFatigue?.(false)}
+        />
+      </Show>
       {/* aria-live status: announces the hovered pitch for screen readers.
           Visually hidden via inline styles (no global CSS in this app). */}
       <span
@@ -174,10 +233,20 @@ export default function Visualizer(props: VisualizerProps) {
             {tooltip()!.pitchType}
           </div>
           <div>{tooltip()!.speed}</div>
+          {tooltip()!.spin && <div style={{ color: "#a0e0a0" }}>{tooltip()!.spin}</div>}
           <div>{tooltip()!.location}</div>
           {tooltip()!.break && <div style={{ color: "#ffd700" }}>{tooltip()!.break}</div>}
+          {tooltip()!.tunnel && <div style={{ color: "#ffd700" }}>{tooltip()!.tunnel}</div>}
+          {tooltip()!.release && <div style={{ color: "#80d0ff" }}>{tooltip()!.release}</div>}
+          {tooltip()!.extension && <div style={{ color: "#80d0ff" }}>{tooltip()!.extension}</div>}
+          {tooltip()!.zoneBounds && <div style={{ color: "#a0e0ff" }}>{tooltip()!.zoneBounds}</div>}
           <div>{tooltip()!.zone}</div>
           {tooltip()!.outcome && <div>{tooltip()!.outcome}</div>}
+          {tooltip()!.simulatedContact && (
+            <div style={{ color: "#ff99ff", "margin-top": "3px", "border-top": "1px solid #444", "padding-top": "2px" }}>
+              {tooltip()!.simulatedContact}
+            </div>
+          )}
         </div>
       )}
     </div>

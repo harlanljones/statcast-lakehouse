@@ -9,8 +9,14 @@ import {
   ghostTrajectoryFlat,
   computeBreakVector,
   breakVectorSegment,
+  releaseExtension,
+  COMMITMENT_PLANE_Y_FT,
+  solveCommitmentTime,
+  commitmentPosition,
+  tunnelingDistance,
   PLATE_Y,
   GRAVITY_FT_S2,
+  PITCHING_RUBBER_Y_FT,
 } from "./kinematics";
 
 const FASTBALL: Parameters<typeof flightTime>[0] = {
@@ -119,6 +125,58 @@ describe("ghostKinematics and breakVector", () => {
     const dz = actualEnd[2] - ghostEnd[2];
     expect(dx * 12).toBeCloseTo(computeBreakVector(SLIDER).hBreakInches, 5);
     expect(dz * 12).toBeCloseTo(computeBreakVector(SLIDER).vBreakInches, 5);
+  });
+
+  it("releaseExtension calculates distance from pitching rubber (60.5 ft)", () => {
+    expect(PITCHING_RUBBER_Y_FT).toBe(60.5);
+    expect(releaseExtension(55.0)).toBeCloseTo(5.5, 6);
+    expect(releaseExtension(54.2)).toBeCloseTo(6.3, 6);
+    expect(releaseExtension(SLIDER.y0)).toBeCloseTo(60.5 - SLIDER.y0, 6);
+  });
+});
+
+describe("commitment plane and tunneling", () => {
+  const FASTBALL = {
+    x0: 0, y0: 55, z0: 6,
+    vx0: 0, vy0: -130, vz0: -10,
+    ax: 0, ay: 0, az: 0,
+  };
+  const SLIDER = {
+    x0: -1.5, y0: 55, z0: 5.8,
+    vx0: 3.5, vy0: -125, vz0: -3.0,
+    ax: -8.0, ay: 20.0, az: -22.0,
+  };
+
+  it("commitment plane constant is 23.8 ft", () => {
+    expect(COMMITMENT_PLANE_Y_FT).toBe(23.8);
+  });
+
+  it("solveCommitmentTime matches zero-acceleration closed form", () => {
+    const t = solveCommitmentTime(FASTBALL);
+    expect(t).toBeCloseTo((55.0 - 23.8) / 130.0, 9);
+  });
+
+  it("solveCommitmentTime with acceleration arrives at y = 23.8 ft", () => {
+    const t = solveCommitmentTime(SLIDER);
+    const y = SLIDER.y0 + SLIDER.vy0 * t + 0.5 * SLIDER.ay * t * t;
+    expect(y).toBeCloseTo(COMMITMENT_PLANE_Y_FT, 6);
+  });
+
+  it("commitmentPosition y coordinate is 23.8 ft", () => {
+    const pos = commitmentPosition(SLIDER);
+    expect(pos[1]).toBeCloseTo(COMMITMENT_PLANE_Y_FT, 6);
+  });
+
+  it("tunnelingDistance provides symmetric Euclidean distance in inches", () => {
+    expect(tunnelingDistance(FASTBALL, FASTBALL)).toBeCloseTo(0, 9);
+    const d12 = tunnelingDistance(FASTBALL, SLIDER);
+    const d21 = tunnelingDistance(SLIDER, FASTBALL);
+    expect(d12).toBeCloseTo(d21, 9);
+    expect(d12).toBeGreaterThan(0);
+  });
+
+  it("rejects pitches not reaching commitment plane", () => {
+    expect(() => solveCommitmentTime({ ...FASTBALL, y0: 20, vy0: 5 })).toThrow();
   });
 });
 

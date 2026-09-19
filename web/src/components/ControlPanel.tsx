@@ -9,6 +9,7 @@ import {
 import { pitchTypeColor } from "../lib/pitch-type-color";
 import { formatDataStatus, type WhiffRate } from "../lib/data-status";
 import type { DatePartition } from "../lib/arrow-loader";
+import type { HeatmapMode } from "../lib/heatmap";
 
 export interface ControlPanelProps {
   speed: [number, number];
@@ -42,6 +43,28 @@ export interface ControlPanelProps {
   onToggleTunneling?: (v: boolean) => void;
   showGhostBreak?: boolean;
   onToggleGhostBreak?: (v: boolean) => void;
+  showReleasePoints?: boolean;
+  onToggleReleasePoints?: (v: boolean) => void;
+  showPlateCrossings?: boolean;
+  onTogglePlateCrossings?: (v: boolean) => void;
+  showBreakChart?: boolean;
+  onToggleBreakChart?: (v: boolean) => void;
+  showPairComparison?: boolean;
+  onTogglePairComparison?: (v: boolean) => void;
+  showContactSim?: boolean;
+  onToggleContactSim?: (v: boolean) => void;
+  batSpeed?: number;
+  onBatSpeed?: (v: number) => void;
+  attackAngleDeg?: number;
+  onAttackAngleDeg?: (v: number) => void;
+  showDispersion?: boolean;
+  onToggleDispersion?: (v: boolean) => void;
+  showFatigue?: boolean;
+  onToggleFatigue?: (v: boolean) => void;
+  showHeatmap?: boolean;
+  onToggleHeatmap?: (v: boolean) => void;
+  heatmapMode?: HeatmapMode;
+  onHeatmapMode?: (m: HeatmapMode) => void;
 }
 
 
@@ -169,6 +192,130 @@ export default function ControlPanel(props: ControlPanelProps): JSX.Element {
           />
           Ghost Break (Magnus)
         </label>
+        <label style={{ display: "inline-flex", "align-items": "center", gap: "4px" }}>
+          <input
+            type="checkbox"
+            checked={props.showReleasePoints ?? false}
+            aria-label="toggle release points"
+            onChange={(e) => props.onToggleReleasePoints?.(e.currentTarget.checked)}
+          />
+          Release Points
+        </label>
+        <label style={{ display: "inline-flex", "align-items": "center", gap: "4px" }}>
+          <input
+            type="checkbox"
+            checked={props.showPlateCrossings ?? false}
+            aria-label="toggle plate crossings"
+            onChange={(e) => props.onTogglePlateCrossings?.(e.currentTarget.checked)}
+          />
+          Plate Crossings
+        </label>
+        <label style={{ display: "inline-flex", "align-items": "center", gap: "4px" }}>
+          <input
+            type="checkbox"
+            checked={props.showBreakChart ?? false}
+            aria-label="toggle break chart"
+            onChange={(e) => props.onToggleBreakChart?.(e.currentTarget.checked)}
+          />
+          Break Chart (2D)
+        </label>
+        <label style={{ display: "inline-flex", "align-items": "center", gap: "4px" }}>
+          <input
+            type="checkbox"
+            checked={props.showPairComparison ?? false}
+            aria-label="toggle pitch pairs"
+            onChange={(e) => props.onTogglePairComparison?.(e.currentTarget.checked)}
+          />
+          Pitch Pairs (Tunneling)
+        </label>
+        <label style={{ display: "inline-flex", "align-items": "center", gap: "4px" }}>
+          <input
+            type="checkbox"
+            checked={props.showContactSim ?? false}
+            aria-label="toggle contact simulation"
+            onChange={(e) => props.onToggleContactSim?.(e.currentTarget.checked)}
+          />
+          Contact Sim (Bat)
+        </label>
+        <Show when={props.showContactSim}>
+          <label title="Bat swing speed at sweet spot">
+            bat <strong>{Math.round(props.batSpeed ?? 75)}</strong> mph{" "}
+            <input
+              type="range"
+              min={60}
+              max={90}
+              step={1}
+              value={props.batSpeed ?? 75}
+              aria-label="bat speed mph"
+              onInput={(e) => props.onBatSpeed?.(Number(e.currentTarget.value))}
+            />
+          </label>
+          <label title="Bat vertical attack angle">
+            attack <strong>{Math.round(props.attackAngleDeg ?? 10)}°</strong>{" "}
+            <input
+              type="range"
+              min={-5}
+              max={30}
+              step={1}
+              value={props.attackAngleDeg ?? 10}
+              aria-label="attack angle degrees"
+              onInput={(e) => props.onAttackAngleDeg?.(Number(e.currentTarget.value))}
+            />
+          </label>
+        </Show>
+        <label style={{ display: "inline-flex", "align-items": "center", gap: "4px" }}>
+          <input
+            type="checkbox"
+            checked={props.showDispersion ?? false}
+            aria-label="toggle release dispersion"
+            onChange={(e) => props.onToggleDispersion?.(e.currentTarget.checked)}
+          />
+          Release Dispersion (1.5σ)
+        </label>
+        <label style={{ display: "inline-flex", "align-items": "center", gap: "4px" }}>
+          <input
+            type="checkbox"
+            checked={props.showFatigue ?? false}
+            aria-label="toggle fatigue analysis"
+            onChange={(e) => props.onToggleFatigue?.(e.currentTarget.checked)}
+          />
+          Fatigue Analysis
+        </label>
+        <label style={{ display: "inline-flex", "align-items": "center", gap: "4px" }}>
+          <input
+            type="checkbox"
+            checked={props.showHeatmap ?? false}
+            aria-label="toggle strike zone heatmap"
+            onChange={(e) => props.onToggleHeatmap?.(e.currentTarget.checked)}
+          />
+          Zone Heatmap
+        </label>
+        <Show when={props.showHeatmap}>
+          <button
+            aria-label="Heatmap density mode"
+            aria-pressed={props.heatmapMode === "density" || !props.heatmapMode}
+            style={{
+              padding: "1px 6px",
+              "font-size": "0.85em",
+              "font-weight": (props.heatmapMode === "density" || !props.heatmapMode) ? "bold" : "normal",
+            }}
+            onClick={() => props.onHeatmapMode?.("density")}
+          >
+            Density
+          </button>
+          <button
+            aria-label="Heatmap whiff rate mode"
+            aria-pressed={props.heatmapMode === "whiff_rate"}
+            style={{
+              padding: "1px 6px",
+              "font-size": "0.85em",
+              "font-weight": props.heatmapMode === "whiff_rate" ? "bold" : "normal",
+            }}
+            onClick={() => props.onHeatmapMode?.("whiff_rate")}
+          >
+            Whiff %
+          </button>
+        </Show>
       </div>
 
 

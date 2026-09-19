@@ -4,6 +4,8 @@
  * Visualizer.tsx; this module is unit-tested in pitch-tooltip.test.ts.
  */
 import { isInsideStrikeZone, pitchColor, type PitchDatum } from "./deck-layers";
+import { commitmentPosition } from "./kinematics";
+import { computeCollision } from "./collision";
 
 export interface PitchTooltipInfo {
   pitchType: string;
@@ -19,6 +21,18 @@ export interface PitchTooltipInfo {
   outcome?: string;
   /** Aerodynamic break displacement, e.g. "IVB +16.2\"  HB -14.1\"" */
   break?: string;
+  /** Spin rate in RPM, e.g. "2350 rpm" */
+  spin?: string;
+  /** Release coordinates, e.g. "Rel (+1.5, 5.8) ft" */
+  release?: string;
+  /** Extension from rubber, e.g. "Ext 6.2 ft" */
+  extension?: string;
+  /** Batter-specific strike zone bounds, e.g. "Zone [1.5, 3.4] ft" */
+  zoneBounds?: string;
+  /** Tunneling point at commitment plane (y = 23.8 ft), e.g. "Tunnel (+0.3, 3.2) ft" */
+  tunnel?: string;
+  /** Simulated ball-bat contact quality and distance, e.g. "Sim: 106.5 mph (Barrel) • 375.7 ft" */
+  simulatedContact?: string;
 }
 
 /** Round half away from zero, then fix to one decimal (deterministic sign handling). */
@@ -32,7 +46,7 @@ export function pitchTooltip(d: PitchDatum | null | undefined): PitchTooltipInfo
   if (!d) return null;
   const px = d.plateX ?? d.pfxX ?? 0;
   const pz = d.plateZ ?? d.pfxZ ?? 0;
-  const inZone = isInsideStrikeZone(px, pz);
+  const inZone = isInsideStrikeZone(px, pz, d.szTop, d.szBot);
   const zone = inZone ? "In Zone" : "Ball";
 
   let outcome: string | undefined;
@@ -53,6 +67,45 @@ export function pitchTooltip(d: PitchDatum | null | undefined): PitchTooltipInfo
     breakStr = `IVB ${ivbSign}${round1(ivb)}"  HB ${hbSign}${round1(hb)}"`;
   }
 
+  let spin: string | undefined;
+  if (d.spinRate != null && !isNaN(d.spinRate)) {
+    spin = `${Math.round(d.spinRate)} rpm`;
+  }
+
+  let release: string | undefined;
+  let extension: string | undefined;
+  if (d.kinematics) {
+    const k = d.kinematics;
+    const signX = k.x0 >= 0 ? "+" : "";
+    release = `Rel (${signX}${round1(k.x0)}, ${round1(k.z0)}) ft`;
+    const ext = d.extension ?? (60.5 - k.y0);
+    extension = `Ext ${round1(ext)} ft`;
+  }
+
+  let zoneBounds: string | undefined;
+  if (d.szTop != null && d.szBot != null && !isNaN(d.szTop) && !isNaN(d.szBot)) {
+    zoneBounds = `Zone [${round1(d.szBot)}, ${round1(d.szTop)}] ft`;
+  }
+
+  let tunnel: string | undefined;
+  if (d.commitmentPoint || d.kinematics) {
+    const cp = d.commitmentPoint ?? (d.kinematics ? commitmentPosition(d.kinematics) : null);
+    if (cp) {
+      const signX = cp[0] >= 0 ? "+" : "";
+      tunnel = `Tunnel (${signX}${round1(cp[0])}, ${round1(cp[2])}) ft`;
+    }
+  }
+
+  let simulatedContact: string | undefined;
+  if (d.kinematics) {
+    const col = computeCollision(d.kinematics);
+    if (col.contactQuality === "Whiff") {
+      simulatedContact = "Sim: Whiff";
+    } else {
+      simulatedContact = `Sim: ${round1(col.exitSpeedMph)} mph (${col.contactQuality}) • ${round1(col.distanceFt)} ft`;
+    }
+  }
+
   return {
     pitchType: d.pitchType,
     color: pitchColor(d.pitchType),
@@ -61,6 +114,12 @@ export function pitchTooltip(d: PitchDatum | null | undefined): PitchTooltipInfo
     zone,
     outcome,
     break: breakStr,
+    spin,
+    release,
+    extension,
+    zoneBounds,
+    tunnel,
+    simulatedContact,
   };
 }
 
@@ -92,8 +151,15 @@ export function clampTooltipPos(
 export function pitchTooltipSummary(d: PitchDatum | null | undefined): string {
   const info = pitchTooltip(d);
   if (!info) return "";
-  const parts = [`${info.pitchType}: ${info.speed}`, info.location, info.zone];
+  const parts = [`${info.pitchType}: ${info.speed}`];
+  if (info.spin) parts.push(info.spin);
+  parts.push(info.location, info.zone);
+  if (info.zoneBounds) parts.push(info.zoneBounds);
   if (info.break) parts.push(info.break);
+  if (info.release) parts.push(info.release);
+  if (info.extension) parts.push(info.extension);
+  if (info.tunnel) parts.push(info.tunnel);
+  if (info.simulatedContact) parts.push(info.simulatedContact);
   if (info.outcome) parts.push(info.outcome);
   return parts.join(", ");
 }

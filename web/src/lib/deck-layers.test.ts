@@ -8,6 +8,7 @@ import {
   PITCH_COLORS,
   STRIKE_ZONE,
   battersBoxesSegments,
+  batterStrikeZoneSegments,
   buildLayers,
   dataFilterExtension,
   diamondWireframeSegments,
@@ -19,8 +20,10 @@ import {
   strikeZoneSegments,
   tunnelingPlaneSegments,
   type PitchDatum,
+  type WireSegment,
 } from "./deck-layers";
 import { deterministicFallbackColor } from "./pitch-type-color";
+import { computeArsenalCentroids } from "./arsenal";
 
 function pitch(overrides: Partial<PitchDatum> = {}): PitchDatum {
   return {
@@ -86,7 +89,7 @@ describe("dataFilterExtension", () => {
 });
 
 describe("CAMERA_VIEWS", () => {
-  it("defines the four broadcast presets with exact view states", () => {
+  it("defines the broadcast and batter presets with exact view states", () => {
     expect(CAMERA_VIEWS.Catcher).toEqual({
       target: [0, 1.417, 2.5],
       rotationX: 12,
@@ -97,6 +100,12 @@ describe("CAMERA_VIEWS", () => {
       target: [0, 25, 3],
       rotationX: 10,
       rotationOrbit: 215,
+      zoom: 5.5,
+    });
+    expect(CAMERA_VIEWS.Batter).toEqual({
+      target: [0, 25, 3],
+      rotationX: 8,
+      rotationOrbit: 0,
       zoom: 5.5,
     });
     expect(CAMERA_VIEWS.Overhead).toEqual({
@@ -113,8 +122,8 @@ describe("CAMERA_VIEWS", () => {
     });
   });
 
-  it("exposes exactly the four preset keys", () => {
-    expect(Object.keys(CAMERA_VIEWS).sort()).toEqual(["Catcher", "Overhead", "Pitcher", "Side"]);
+  it("exposes the five preset keys", () => {
+    expect(Object.keys(CAMERA_VIEWS).sort()).toEqual(["Batter", "Catcher", "Overhead", "Pitcher", "Side"]);
   });
 });
 
@@ -237,6 +246,26 @@ describe("isInsideStrikeZone", () => {
     expect(isInsideStrikeZone(-0.84, 2.5)).toBe(false);
     expect(isInsideStrikeZone(0, 1.49)).toBe(false);
     expect(isInsideStrikeZone(0, 3.51)).toBe(false);
+  });
+
+  it("honors batter-specific szTop and szBot when supplied", () => {
+    // Custom batter zone: knees at 1.7 ft, letters at 3.8 ft
+    expect(isInsideStrikeZone(0, 3.6, 3.8, 1.7)).toBe(true);
+    expect(isInsideStrikeZone(0, 1.6, 3.8, 1.7)).toBe(false);
+  });
+});
+
+describe("batterStrikeZoneSegments", () => {
+  it("draws a closed wireframe rectangle at specified batter heights", () => {
+    const segs = batterStrikeZoneSegments(3.6, 1.7);
+    expect(segs).toHaveLength(1);
+    expect(segs[0]).toHaveLength(5);
+    expect(segs[0][0]).toEqual(segs[0][4]);
+    for (const [, y, z] of segs[0]) {
+      expect(y).toBeCloseTo(STRIKE_ZONE.y, 6);
+      expect(z).toBeGreaterThanOrEqual(1.7 - 1e-9);
+      expect(z).toBeLessThanOrEqual(3.6 + 1e-9);
+    }
   });
 });
 
@@ -610,6 +639,283 @@ describe("buildLayers", () => {
     expect(breakVecLayer.props.data).toHaveLength(1);
     expect(breakVecLayer.props.data[0][0][1]).toBeCloseTo(1.417, 3);
     expect(breakVecLayer.props.data[0][1][1]).toBeCloseTo(1.417, 3);
+
+    const pickedRelease = layers.find((l) => l.id === "picked-release-point") as unknown as {
+      props: {
+        coordinateSystem: string;
+        getPosition: () => [number, number, number];
+        getFillColor: [number, number, number, number];
+      };
+    };
+    expect(pickedRelease).toBeDefined();
+    expect(pickedRelease.props.coordinateSystem).toBe("cartesian");
+    expect(pickedRelease.props.getPosition()).toEqual([-1.5, 55, 5.8]);
+    expect(pickedRelease.props.getFillColor).toEqual([255, 215, 0, 240]);
+  });
+
+  it("builds release-points layer when showReleasePoints is true", () => {
+    const testPitch = pitch({
+      kinematics: {
+        x0: -1.6, y0: 54.5, z0: 5.9,
+        vx0: 3.0, vy0: -130, vz0: -4.0,
+        ax: -5.0, ay: 15.0, az: -20.0,
+      },
+    });
+    const layers = buildLayers({
+      pitches: [testPitch],
+      speedRange: [60, 105],
+      showReleasePoints: true,
+    });
+    const releaseLayer = layers.find((l) => l.id === "release-points") as unknown as {
+      props: {
+        coordinateSystem: string;
+        getPosition: (d: PitchDatum) => [number, number, number];
+        getRadius: number;
+        extensions: unknown[];
+      };
+    };
+    expect(releaseLayer).toBeDefined();
+    expect(releaseLayer.props.coordinateSystem).toBe("cartesian");
+    expect(releaseLayer.props.getRadius).toBe(0.12);
+    expect(releaseLayer.props.getPosition(testPitch)).toEqual([-1.6, 54.5, 5.9]);
+    expect(releaseLayer.props.extensions[0]).toBeInstanceOf(DataFilterExtension);
+  });
+
+  it("builds plate-crossings layer when showPlateCrossings is true", () => {
+    const testPitch = pitch({ plateX: 0.35, plateZ: 2.75 });
+    const layers = buildLayers({
+      pitches: [testPitch],
+      speedRange: [60, 105],
+      showPlateCrossings: true,
+    });
+    const plateLayer = layers.find((l) => l.id === "plate-crossings") as unknown as {
+      props: {
+        coordinateSystem: string;
+        getPosition: (d: PitchDatum) => [number, number, number];
+        getRadius: number;
+        extensions: unknown[];
+      };
+    };
+    expect(plateLayer).toBeDefined();
+    expect(plateLayer.props.coordinateSystem).toBe("cartesian");
+    expect(plateLayer.props.getRadius).toBe(0.06);
+    expect(plateLayer.props.getPosition(testPitch)).toEqual([0.35, STRIKE_ZONE.y, 2.75]);
+    expect(plateLayer.props.extensions[0]).toBeInstanceOf(DataFilterExtension);
+  });
+
+  it("builds picked-plate-crossing and picked-batter-strike-zone when picked has szTop and szBot", () => {
+    const testPitch = pitch({
+      plateX: -0.2,
+      plateZ: 2.1,
+      szTop: 3.6,
+      szBot: 1.6,
+    });
+    const layers = buildLayers({
+      pitches: [testPitch],
+      speedRange: [60, 105],
+      picked: testPitch,
+    });
+    const pickedCrossing = layers.find((l) => l.id === "picked-plate-crossing") as unknown as {
+      props: {
+        coordinateSystem: string;
+        getPosition: () => [number, number, number];
+        getFillColor: [number, number, number, number];
+      };
+    };
+    const pickedZone = layers.find((l) => l.id === "picked-batter-strike-zone") as unknown as {
+      props: {
+        coordinateSystem: string;
+        getColor: [number, number, number];
+        data: WireSegment[];
+      };
+    };
+    expect(pickedCrossing).toBeDefined();
+    expect(pickedCrossing.props.coordinateSystem).toBe("cartesian");
+    expect(pickedCrossing.props.getPosition()).toEqual([-0.2, STRIKE_ZONE.y, 2.1]);
+    expect(pickedCrossing.props.getFillColor).toEqual([255, 215, 0, 240]);
+
+    expect(pickedZone).toBeDefined();
+    expect(pickedZone.props.coordinateSystem).toBe("cartesian");
+    expect(pickedZone.props.getColor).toEqual([0, 220, 255]);
+    expect(pickedZone.props.data).toHaveLength(1);
+    expect(pickedZone.props.data[0][0][2]).toBeCloseTo(1.6);
+    expect(pickedZone.props.data[0][2][2]).toBeCloseTo(3.6);
+  });
+
+  it("builds tunnel-points layer when showTunneling is true", () => {
+    const testPitch = pitch({
+      commitmentPoint: [0.25, 23.8, 3.1],
+    });
+    const layers = buildLayers({
+      pitches: [testPitch],
+      speedRange: [60, 105],
+      showTunneling: true,
+    });
+    const tunnelLayer = layers.find((l) => l.id === "tunnel-points") as unknown as {
+      props: {
+        coordinateSystem: string;
+        getPosition: (d: PitchDatum) => [number, number, number];
+        getRadius: number;
+        extensions: unknown[];
+      };
+    };
+    expect(tunnelLayer).toBeDefined();
+    expect(tunnelLayer.props.coordinateSystem).toBe("cartesian");
+    expect(tunnelLayer.props.getRadius).toBe(0.08);
+    expect(tunnelLayer.props.getPosition(testPitch)).toEqual([0.25, 23.8, 3.1]);
+    expect(tunnelLayer.props.extensions[0]).toBeInstanceOf(DataFilterExtension);
+  });
+
+  it("builds picked-tunnel-point layer when picked pitch has kinematics or commitmentPoint", () => {
+    const testPitch = pitch({
+      commitmentPoint: [0.15, 23.8, 2.95],
+      kinematics: {
+        x0: 0, y0: 55, z0: 6,
+        vx0: 0, vy0: -130, vz0: 0,
+        ax: 0, ay: 0, az: 0,
+      },
+    });
+    const layers = buildLayers({
+      pitches: [testPitch],
+      speedRange: [60, 105],
+      picked: testPitch,
+    });
+    const pickedTunnel = layers.find((l) => l.id === "picked-tunnel-point") as unknown as {
+      props: {
+        coordinateSystem: string;
+        getPosition: () => [number, number, number];
+        getRadius: number;
+        getFillColor: [number, number, number, number];
+      };
+    };
+    expect(pickedTunnel).toBeDefined();
+    expect(pickedTunnel.props.coordinateSystem).toBe("cartesian");
+    expect(pickedTunnel.props.getRadius).toBe(0.14);
+    expect(pickedTunnel.props.getPosition()).toEqual([0.15, 23.8, 2.95]);
+    expect(pickedTunnel.props.getFillColor).toEqual([255, 215, 0, 240]);
+  });
+
+  it("builds paired-tunnel-envelope and paired-centroid-paths when pairedTypes and arsenalCentroids are provided", () => {
+    const p1 = pitch({
+      pitchType: "FF",
+      kinematics: {
+        x0: -1.6, y0: 55.0, z0: 6.0,
+        vx0: 2.0, vy0: -135.0, vz0: -5.0,
+        ax: 5.0, ay: 0.0, az: 15.0,
+      },
+    });
+    const p2 = pitch({
+      pitchType: "SL",
+      kinematics: {
+        x0: -1.6, y0: 55.0, z0: 5.9,
+        vx0: 2.5, vy0: -120.0, vz0: -3.0,
+        ax: -8.0, ay: 0.0, az: -20.0,
+      },
+    });
+    const centroids = computeArsenalCentroids([p1, p2]);
+    const layers = buildLayers({
+      pitches: [p1, p2],
+      speedRange: [60, 105],
+      pairedTypes: ["FF", "SL"],
+      arsenalCentroids: centroids,
+    });
+
+    const envelopeLayer = layers.find((l) => l.id === "paired-tunnel-envelope");
+    const pathsLayer = layers.find((l) => l.id === "paired-centroid-paths");
+
+    expect(envelopeLayer).toBeDefined();
+    expect(pathsLayer).toBeDefined();
+    expect(envelopeLayer!.props.coordinateSystem).toBe("cartesian");
+    expect(pathsLayer!.props.coordinateSystem).toBe("cartesian");
+  });
+
+  it("builds simulated batted trajectory and landing spot layers when contact sim is enabled", () => {
+    const p = pitch({
+      pitchType: "FF",
+      kinematics: {
+        x0: -2.0,
+        y0: 50.0,
+        z0: 5.8,
+        vx0: 5.0,
+        vy0: -130.0,
+        vz0: -4.0,
+        ax: -12.0,
+        ay: 26.0,
+        az: -18.0,
+      },
+    });
+
+    const layers = buildLayers({
+      pitches: [p],
+      speedRange: [60, 105],
+      picked: p,
+      showContactSim: true,
+      batSpeed: 75.0,
+      attackAngleDeg: 25.0,
+    });
+
+    const battedLayer = layers.find((l) => l.id === "simulated-batted-trajectory");
+    const landingLayer = layers.find((l) => l.id === "simulated-landing-spot");
+
+    expect(battedLayer).toBeDefined();
+    expect(landingLayer).toBeDefined();
+    expect(battedLayer!.props.coordinateSystem).toBe("cartesian");
+    expect(landingLayer!.props.coordinateSystem).toBe("cartesian");
+  });
+
+  it("builds release dispersion ellipsoid layer when showDispersion is true", () => {
+    const layers = buildLayers({
+      pitches: [],
+      speedRange: [60, 105],
+      showDispersion: true,
+      releaseDispersion: {
+        count: 10,
+        meanX: -1.5,
+        meanY: 55.0,
+        meanZ: 5.8,
+        stdX: 0.1,
+        stdY: 0.2,
+        stdZ: 0.15,
+        covXY: 0,
+        covXZ: 0,
+        covYZ: 0,
+        volumeCuFt: 0.05,
+        wireframeSegments: [
+          [[-1.4, 55.0, 5.8], [-1.6, 55.0, 5.8]],
+        ],
+      },
+    });
+
+    const ellipsoidLayer = layers.find((l) => l.id === "release-dispersion-ellipsoid");
+    expect(ellipsoidLayer).toBeDefined();
+    expect(ellipsoidLayer!.props.coordinateSystem).toBe("cartesian");
+  });
+
+  it("builds strike zone heatmap PolygonLayer when showHeatmap is true", () => {
+    const layers = buildLayers({
+      pitches: [],
+      speedRange: [60, 105],
+      showHeatmap: true,
+      heatmapCells: [
+        {
+          cellId: 0,
+          xMin: -0.5,
+          xMax: 0.0,
+          zMin: 1.5,
+          zMax: 2.5,
+          polygon: [[-0.5, 1.417, 1.5], [0.0, 1.417, 1.5], [0.0, 1.417, 2.5], [-0.5, 1.417, 2.5]],
+          pitchCount: 5,
+          swingCount: 3,
+          whiffCount: 2,
+          value: 1.0,
+          color: [255, 50, 30, 240],
+        },
+      ],
+    });
+
+    const heatmapLayer = layers.find((l) => l.id === "strike-zone-heatmap");
+    expect(heatmapLayer).toBeDefined();
+    expect(heatmapLayer!.props.coordinateSystem).toBe("cartesian");
   });
 });
 

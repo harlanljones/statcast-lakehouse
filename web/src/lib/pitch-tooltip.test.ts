@@ -118,6 +118,38 @@ describe("pitchTooltip", () => {
     expect(info.break).toBe('IVB +16.5"  HB -14.2"');
   });
 
+  it("formats spin rate, release coordinates, and extension when available", () => {
+    const info = pitchTooltip(
+      pitch({
+        spinRate: 2380.4,
+        kinematics: {
+          x0: -1.75,
+          y0: 54.3,
+          z0: 5.82,
+          vx0: 3,
+          vy0: -130,
+          vz0: -5,
+          ax: 5,
+          ay: 0,
+          az: -15,
+        },
+      }),
+    )!;
+    expect(info.spin).toBe("2380 rpm");
+    expect(info.release).toBe("Rel (-1.8, 5.8) ft");
+    expect(info.extension).toBe("Ext 6.2 ft");
+    expect(info.tunnel).toBe("Tunnel (-0.9, 4.2) ft");
+  });
+
+  it("formats explicit commitmentPoint when present", () => {
+    const info = pitchTooltip(
+      pitch({
+        commitmentPoint: [0.34, 23.8, 3.16],
+      }),
+    )!;
+    expect(info.tunnel).toBe("Tunnel (+0.3, 3.2) ft");
+  });
+
   it("summarizes break in aria-live region when breakVector is present", () => {
     expect(
       pitchTooltipSummary(
@@ -135,6 +167,80 @@ describe("pitchTooltip", () => {
         }),
       ),
     ).toBe('FF: 94.5 mph, 0.1 ft, 2.3 ft, In Zone, IVB +17.2"  HB -8.5", Whiff');
+  });
+
+  it("includes spin, release, extension, and tunnel in aria-live summary", () => {
+    expect(
+      pitchTooltipSummary(
+        pitch({
+          releaseSpeed: 95.0,
+          spinRate: 2450,
+          plateX: 0.1,
+          plateZ: 2.5,
+          kinematics: {
+            x0: 1.5,
+            y0: 54.5,
+            z0: 6.0,
+            vx0: 0,
+            vy0: -130,
+            vz0: 0,
+            ax: 0,
+            ay: 0,
+            az: 0,
+          },
+          isSwing: 1,
+          isWhiff: 1,
+        }),
+      ),
+    ).toBe("FF: 95.0 mph, 2450 rpm, 0.1 ft, 2.5 ft, In Zone, Rel (+1.5, 6.0) ft, Ext 6.0 ft, Tunnel (+1.5, 6.0) ft, Sim: 111.0 mph (Solid Contact) • 247.4 ft, Whiff");
+  });
+
+  it("formats batter-specific strike zone bounds when present", () => {
+    const info = pitchTooltip(
+      pitch({
+        plateX: 0.1,
+        plateZ: 3.6,
+        szTop: 3.75,
+        szBot: 1.62,
+      }),
+    )!;
+    expect(info.zone).toBe("In Zone");
+    expect(info.zoneBounds).toBe("Zone [1.6, 3.8] ft");
+  });
+
+  it("includes zoneBounds in aria-live summary when present", () => {
+    expect(
+      pitchTooltipSummary(
+        pitch({
+          releaseSpeed: 93.5,
+          plateX: 0.2,
+          plateZ: 3.6,
+          szTop: 3.8,
+          szBot: 1.6,
+        }),
+      ),
+    ).toBe("FF: 93.5 mph, 0.2 ft, 3.6 ft, In Zone, Zone [1.6, 3.8] ft");
+  });
+
+  it("formats simulated contact metrics when kinematics is present", () => {
+    const info = pitchTooltip(
+      pitch({
+        kinematics: {
+          x0: -2.0,
+          y0: 50.0,
+          z0: 5.8,
+          vx0: 5.0,
+          vy0: -130.0,
+          vz0: -4.0,
+          ax: -12.0,
+          ay: 26.0,
+          az: -18.0,
+        },
+      }),
+    )!;
+    expect(info.simulatedContact).toBeDefined();
+    expect(info.simulatedContact).toContain("Sim:");
+    expect(info.simulatedContact).toContain("mph");
   });
 
   it("handles a null datum (nothing hovered)", () => {

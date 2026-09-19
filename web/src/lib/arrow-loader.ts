@@ -3,6 +3,8 @@ import { tableFromIPC, type Table } from "apache-arrow";
 import {
   trajectoryFlat,
   computeBreakVector,
+  releaseExtension,
+  commitmentPosition,
   type PitchKinematics,
 } from "./kinematics";
 import type { PitchDatum } from "./deck-layers";
@@ -35,6 +37,9 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const plateZCol = table.getChild("plate_z");
   const isSwingCol = table.getChild("is_swing");
   const isWhiffCol = table.getChild("is_whiff");
+  const spinCol = table.getChild("release_spin_rate");
+  const szTopCol = table.getChild("sz_top");
+  const szBotCol = table.getChild("sz_bot");
 
   const pitches: PitchDatum[] = [];
   for (let i = 0; i < table.numRows; i++) {
@@ -64,9 +69,22 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
     const isSwing = rawSwing != null ? Number(rawSwing) : undefined;
     const isWhiff = rawWhiff != null ? Number(rawWhiff) : undefined;
 
+    const rawSpin = spinCol?.get(i);
+    const spinRate = rawSpin != null && !isNaN(Number(rawSpin)) ? Number(rawSpin) : undefined;
+    const extension = releaseExtension(k.y0);
+
+    const rawSzTop = szTopCol?.get(i);
+    const rawSzBot = szBotCol?.get(i);
+    const szTop = rawSzTop != null && !isNaN(Number(rawSzTop)) ? Number(rawSzTop) : undefined;
+    const szBot = rawSzBot != null && !isNaN(Number(rawSzBot)) ? Number(rawSzBot) : undefined;
+
     pitches.push({
       path,
       releaseSpeed: speed[i],
+      spinRate,
+      extension,
+      szTop,
+      szBot,
       plateX,
       plateZ,
       pfxX: plateX,
@@ -76,6 +94,7 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
       isWhiff,
       kinematics: k,
       breakVector: computeBreakVector(k),
+      commitmentPoint: commitmentPosition(k),
     });
   }
   return { table, pitches };

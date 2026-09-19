@@ -27,6 +27,8 @@ import pyarrow as pa
 # Physical constants for the plate plane (Statcast convention, feet).
 PLATE_Y_FT = 1.417
 GRAVITY_FT_S2 = 32.174
+PITCHING_RUBBER_Y_FT = 60.5
+COMMITMENT_PLANE_Y_FT = 23.8
 
 SCHEMA = pa.schema(
     [
@@ -143,6 +145,399 @@ def break_vector_segment(
     actual = position_at(pitch, t_end)
     ghost = position_at(ghost_kinematics(pitch), t_end)
     return (ghost, actual)
+
+
+def release_extension(y0: float) -> float:
+    """Extension in feet from the pitching rubber (60.5 ft) to release point."""
+    return PITCHING_RUBBER_Y_FT - y0
+
+
+def solve_commitment_time(y0: float, vy0: float, ay: float) -> float:
+    """Solve for the time t when the pitch crosses the commitment plane (y = 23.8 ft)."""
+    return solve_flight_time(y0, vy0, ay, y_end=COMMITMENT_PLANE_Y_FT)
+
+
+def commitment_position(pitch: dict[str, float]) -> tuple[float, float, float]:
+    """Position (x, y, z) in feet at the commitment plane (y = 23.8 ft)."""
+    t = solve_commitment_time(pitch["y0"], pitch["vy0"], pitch["ay"])
+    return position_at(pitch, t)
+
+
+def tunneling_distance(p1: dict[str, float], p2: dict[str, float]) -> float:
+    """Tunneling separation distance in inches at the commitment plane (y = 23.8 ft)."""
+    c1 = commitment_position(p1)
+    c2 = commitment_position(p2)
+    return math.hypot(c1[0] - c2[0], c1[2] - c2[2]) * 12.0
+
+
+def compute_arsenal_centroids(pitches: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Compute mean kinematic centroids and break characteristics per pitch_type."""
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for p in pitches:
+        pt = p.get("pitch_type", "")
+        if pt:
+            by_type.setdefault(pt, []).append(p)
+
+    centroids: dict[str, dict[str, Any]] = {}
+    for pt, pts in by_type.items():
+        n = len(pts)
+        mean_speed = sum(p.get("release_speed", 0.0) for p in pts) / n
+        mean_spin = sum(p.get("release_spin_rate", 0.0) for p in pts) / n
+        mean_x0 = sum(p["x0"] for p in pts) / n
+        mean_y0 = sum(p["y0"] for p in pts) / n
+        mean_z0 = sum(p["z0"] for p in pts) / n
+        mean_vx0 = sum(p["vx0"] for p in pts) / n
+        mean_vy0 = sum(p["vy0"] for p in pts) / n
+        mean_vz0 = sum(p["vz0"] for p in pts) / n
+        mean_ax = sum(p["ax"] for p in pts) / n
+        mean_ay = sum(p["ay"] for p in pts) / n
+        mean_az = sum(p["az"] for p in pts) / n
+        mean_px = sum(p.get("plate_x", 0.0) for p in pts) / n
+        mean_pz = sum(p.get("plate_z", 0.0) for p in pts) / n
+
+        k_mean = {
+            "x0": mean_x0, "y0": mean_y0, "z0": mean_z0,
+            "vx0": mean_vx0, "vy0": mean_vy0, "vz0": mean_vz0,
+            "ax": mean_ax, "ay": mean_ay, "az": mean_az,
+        }
+        bv = compute_break_vector(k_mean)
+        commit_pos = commitment_position(k_mean)
+
+        centroids[pt] = {
+            "pitch_type": pt,
+            "count": n,
+            "release_speed": mean_speed,
+            "release_spin_rate": mean_spin,
+            "kinematics": k_mean,
+            "plate_x": mean_px,
+            "plate_z": mean_pz,
+            "h_break_inches": bv["h_break_inches"],
+            "v_break_inches": bv["v_break_inches"],
+            "commitment_point": commit_pos,
+        }
+    return centroids
+
+
+def compute_pitch_pair_metrics(c1: dict[str, Any], c2: dict[str, Any]) -> dict[str, float]:
+    """Compute pairwise tunneling and deception divergence metrics between two pitch centroids."""
+    k1 = c1["kinematics"]
+    k2 = c2["kinematics"]
+
+    # Release separation in inches
+    rel_sep = math.hypot(k1["x0"] - k2["x0"], k1["z0"] - k2["z0"]) * 12.0
+
+    # Tunneling separation in inches at commitment plane (y = 23.8 ft)
+    cp1 = c1["commitment_point"]
+    cp2 = c2["commitment_point"]
+    tunnel_sep = math.hypot(cp1[0] - cp2[0], cp1[2] - cp2[2]) * 12.0
+
+    # Plate divergence in inches at plate plane (y = 1.417 ft)
+    t_end1 = solve_flight_time(k1["y0"], k1["vy0"], k1["ay"])
+    t_end2 = solve_flight_time(k2["y0"], k2["vy0"], k2["ay"])
+    pos1 = position_at(k1, t_end1)
+    pos2 = position_at(k2, t_end2)
+    plate_sep = math.hypot(pos1[0] - pos2[0], pos1[2] - pos2[2]) * 12.0
+
+    # Break divergence in inches
+    break_sep = math.hypot(c1["h_break_inches"] - c2["h_break_inches"], c1["v_break_inches"] - c2["v_break_inches"])
+
+    # Velocity delta in mph
+    delta_speed = abs(c1["release_speed"] - c2["release_speed"])
+
+    # Tunnel ratio (Deception index): divergence at plate over separation at commitment plane
+    tunnel_ratio = plate_sep / max(tunnel_sep, 0.01)
+
+    return {
+        "release_separation_inches": rel_sep,
+        "tunneling_separation_inches": tunnel_sep,
+        "plate_divergence_inches": plate_sep,
+        "break_divergence_inches": break_sep,
+        "velocity_delta_mph": delta_speed,
+        "tunnel_ratio": tunnel_ratio,
+    }
+
+
+def classify_contact_quality(exit_speed_mph: float, launch_angle_deg: float) -> str:
+    """Classify contact quality according to Statcast Barrel and batted ball zones."""
+    if exit_speed_mph <= 0.0:
+        return "Whiff"
+
+    if exit_speed_mph >= 98.0:
+        min_angle = max(8.0, 26.0 - (exit_speed_mph - 98.0) * 1.0)
+        max_angle = min(50.0, 30.0 + (exit_speed_mph - 98.0) * 1.1)
+        if min_angle <= launch_angle_deg <= max_angle:
+            return "Barrel"
+
+    if exit_speed_mph >= 90.0 and 10.0 <= launch_angle_deg <= 38.0:
+        return "Solid Contact"
+
+    if exit_speed_mph >= 80.0 and 0.0 <= launch_angle_deg <= 25.0:
+        return "Flare/Burner"
+
+    if launch_angle_deg > 38.0:
+        return "Under"
+
+    if launch_angle_deg < 0.0:
+        return "Topped"
+
+    return "Weak"
+
+
+def compute_collision(
+    pitch: dict[str, float],
+    bat_speed: float = 75.0,
+    attack_angle_deg: float = 10.0,
+    offset_z_in: float = 0.0,
+    offset_x_in: float = 0.0,
+) -> dict[str, Any]:
+    """Simulate ball-bat collision (Cross & Nathan 2006, arXiv:physics/0605040)."""
+    t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
+    vx_end = pitch["vx0"] + pitch["ax"] * t_end
+    vy_end = pitch["vy0"] + pitch["ay"] * t_end
+    vz_end = pitch["vz0"] + pitch["az"] * t_end
+    arrival_speed_fps = math.sqrt(vx_end * vx_end + vy_end * vy_end + vz_end * vz_end)
+    arrival_speed_mph = arrival_speed_fps / 1.467
+
+    r_eff = 2.5
+    d = math.hypot(offset_x_in, offset_z_in)
+
+    if d > r_eff:
+        return {
+            "exit_speed_mph": 0.0,
+            "launch_angle_deg": 0.0,
+            "spray_angle_deg": 0.0,
+            "contact_quality": "Whiff",
+            "distance_ft": 0.0,
+            "hang_time_s": 0.0,
+        }
+
+    q = 0.22
+    flush_exit = q * arrival_speed_mph + (1.0 + q) * bat_speed
+
+    f_offset = math.sqrt(max(0.0, 1.0 - (d / r_eff) ** 2))
+    exit_speed = flush_exit * f_offset
+
+    angle_offset = math.asin(offset_z_in / r_eff) * (180.0 / math.pi) * 0.6
+    launch_angle = attack_angle_deg - angle_offset
+
+    spray_angle = math.asin(offset_x_in / r_eff) * (180.0 / math.pi) * 0.6
+
+    quality = classify_contact_quality(exit_speed, launch_angle)
+
+    v0_fps = exit_speed * 1.467
+    theta_rad = math.radians(launch_angle)
+    vz0 = v0_fps * math.sin(theta_rad)
+    vy0 = v0_fps * math.cos(theta_rad) * math.cos(math.radians(spray_angle))
+    pos_end = position_at(pitch, t_end)
+    z_plate = max(0.5, pos_end[2])
+
+    disc = vz0 * vz0 + 2.0 * GRAVITY_FT_S2 * z_plate
+    t_hang = (vz0 + math.sqrt(max(0.0, disc))) / GRAVITY_FT_S2 if disc >= 0 else 0.0
+    t_hang = max(0.0, min(t_hang, 7.5))
+
+    distance_ft = vy0 * t_hang * math.exp(-0.12 * t_hang) if t_hang > 0 else 0.0
+
+    return {
+        "exit_speed_mph": exit_speed,
+        "launch_angle_deg": launch_angle,
+        "spray_angle_deg": spray_angle,
+        "contact_quality": quality,
+        "distance_ft": max(0.0, distance_ft),
+        "hang_time_s": t_hang,
+    }
+
+
+def project_batted_trajectory(
+    origin: tuple[float, float, float],
+    exit_speed_mph: float,
+    launch_angle_deg: float,
+    spray_angle_deg: float = 0.0,
+    hang_time_s: float = 4.0,
+    n: int = 40,
+) -> list[tuple[float, float, float]]:
+    """Project n-point 3D flight path of a batted ball into field coordinates."""
+    v0 = exit_speed_mph * 1.467
+    theta = math.radians(launch_angle_deg)
+    phi = math.radians(spray_angle_deg)
+    vx0 = v0 * math.sin(phi) * math.cos(theta)
+    vy0 = v0 * math.cos(phi) * math.cos(theta)
+    vz0 = v0 * math.sin(theta)
+
+    points: list[tuple[float, float, float]] = []
+    x0, y0, z0 = origin
+    t_total = max(0.1, hang_time_s)
+
+    for i in range(n):
+        t = t_total * i / (n - 1)
+        damping = math.exp(-0.12 * t)
+        x = x0 + vx0 * t * damping
+        y = y0 + vy0 * t * damping
+        z = max(0.0, z0 + vz0 * t - 0.5 * GRAVITY_FT_S2 * t * t)
+        points.append((x, y, z))
+
+    return points
+
+
+def generate_ellipsoid_wireframe(
+    center: tuple[float, float, float],
+    radii: tuple[float, float, float],
+    n_segments: int = 24,
+) -> list[list[tuple[float, float, float]]]:
+    """Generate wireframe segments for a 3D dispersion ellipsoid."""
+    cx, cy, cz = center
+    rx, ry, rz = radii
+    segments: list[list[tuple[float, float, float]]] = []
+
+    if rx <= 0 or ry <= 0 or rz <= 0:
+        return segments
+
+    # 1. Equator in XY plane at z = cz
+    xy_loop = []
+    for i in range(n_segments + 1):
+        angle = 2.0 * math.pi * i / n_segments
+        xy_loop.append((cx + rx * math.cos(angle), cy + ry * math.sin(angle), cz))
+    segments.append(xy_loop)
+
+    # 2. Meridian in XZ plane at y = cy
+    xz_loop = []
+    for i in range(n_segments + 1):
+        angle = 2.0 * math.pi * i / n_segments
+        xz_loop.append((cx + rx * math.cos(angle), cy, cz + rz * math.sin(angle)))
+    segments.append(xz_loop)
+
+    # 3. Meridian in YZ plane at x = cx
+    yz_loop = []
+    for i in range(n_segments + 1):
+        angle = 2.0 * math.pi * i / n_segments
+        yz_loop.append((cx, cy + ry * math.cos(angle), cz + rz * math.sin(angle)))
+    segments.append(yz_loop)
+
+    # 4. Upper and lower parallel latitude rings at z = cz +/- 0.5 * rz
+    for sign in (-0.5, 0.5):
+        lat_z = cz + sign * rz
+        scale = math.sqrt(max(0.0, 1.0 - sign * sign))
+        lat_loop = []
+        for i in range(n_segments + 1):
+            angle = 2.0 * math.pi * i / n_segments
+            lat_loop.append((cx + rx * scale * math.cos(angle), cy + ry * scale * math.sin(angle), lat_z))
+        segments.append(lat_loop)
+
+    return segments
+
+
+def compute_release_dispersion(
+    pitches: list[dict[str, Any]],
+    k_sigma: float = 1.0,
+) -> dict[str, Any]:
+    """Compute 3D release point covariance, standard deviations, and dispersion ellipsoid."""
+    n = len(pitches)
+    if n < 2:
+        return {
+            "count": n,
+            "mean_x": 0.0,
+            "mean_y": 0.0,
+            "mean_z": 0.0,
+            "std_x": 0.0,
+            "std_y": 0.0,
+            "std_z": 0.0,
+            "cov_xy": 0.0,
+            "cov_xz": 0.0,
+            "cov_yz": 0.0,
+            "volume_cu_ft": 0.0,
+            "wireframe_segments": [],
+        }
+
+    sum_x = sum(p["x0"] for p in pitches)
+    sum_y = sum(p["y0"] for p in pitches)
+    sum_z = sum(p["z0"] for p in pitches)
+    mx = sum_x / n
+    my = sum_y / n
+    mz = sum_z / n
+
+    var_x = sum((p["x0"] - mx) ** 2 for p in pitches) / (n - 1)
+    var_y = sum((p["y0"] - my) ** 2 for p in pitches) / (n - 1)
+    var_z = sum((p["z0"] - mz) ** 2 for p in pitches) / (n - 1)
+    std_x = math.sqrt(var_x)
+    std_y = math.sqrt(var_y)
+    std_z = math.sqrt(var_z)
+
+    cov_xy = sum((p["x0"] - mx) * (p["y0"] - my) for p in pitches) / (n - 1)
+    cov_xz = sum((p["x0"] - mx) * (p["z0"] - mz) for p in pitches) / (n - 1)
+    cov_yz = sum((p["y0"] - my) * (p["z0"] - mz) for p in pitches) / (n - 1)
+
+    radii = (k_sigma * std_x, k_sigma * std_y, k_sigma * std_z)
+    volume = (4.0 / 3.0) * math.pi * radii[0] * radii[1] * radii[2]
+    wireframe = generate_ellipsoid_wireframe((mx, my, mz), radii)
+
+    return {
+        "count": n,
+        "mean_x": mx,
+        "mean_y": my,
+        "mean_z": mz,
+        "std_x": std_x,
+        "std_y": std_y,
+        "std_z": std_z,
+        "cov_xy": cov_xy,
+        "cov_xz": cov_xz,
+        "cov_yz": cov_yz,
+        "volume_cu_ft": volume,
+        "wireframe_segments": wireframe,
+    }
+
+
+def compute_fatigue_buckets(
+    pitches: list[dict[str, Any]],
+    bucket_size: int = 25,
+) -> list[dict[str, Any]]:
+    """Partition pitches into count buckets to quantify velocity drop and arm angle fatigue."""
+    if not pitches or bucket_size <= 0:
+        return []
+
+    buckets: list[dict[str, Any]] = []
+    base_speed: float | None = None
+    base_z: float | None = None
+    base_ext: float | None = None
+
+    for i in range(0, len(pitches), bucket_size):
+        chunk = pitches[i : i + bucket_size]
+        count = len(chunk)
+        if count == 0:
+            continue
+
+        avg_speed = sum(p["release_speed"] for p in chunk) / count
+        avg_z = sum(p["z0"] for p in chunk) / count
+        avg_x = sum(p["x0"] for p in chunk) / count
+        avg_ext = sum(PITCHING_RUBBER_Y_FT - p["y0"] for p in chunk) / count
+
+        swings = sum(p.get("is_swing", 0) for p in chunk)
+        whiffs = sum(p.get("is_whiff", 0) for p in chunk)
+        whiff_pct = (whiffs / swings * 100.0) if swings > 0 else 0.0
+
+        if base_speed is None:
+            base_speed = avg_speed
+            base_z = avg_z
+            base_ext = avg_ext
+
+        delta_speed = avg_speed - base_speed
+        delta_z_in = (avg_z - base_z) * 12.0
+        delta_ext_in = (avg_ext - base_ext) * 12.0
+
+        buckets.append({
+            "bucket_index": len(buckets),
+            "pitch_count_start": i + 1,
+            "pitch_count_end": i + count,
+            "pitch_count": count,
+            "avg_release_speed": avg_speed,
+            "avg_release_z": avg_z,
+            "avg_release_x": avg_x,
+            "avg_extension": avg_ext,
+            "whiff_pct": whiff_pct,
+            "delta_velocity_mph": delta_speed,
+            "delta_release_z_inches": delta_z_in,
+            "delta_extension_inches": delta_ext_in,
+        })
+
+    return buckets
 
 
 def synth_pitch(

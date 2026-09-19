@@ -13,6 +13,8 @@
 
 export const PLATE_Y = 1.417; // ft, front face of home plate
 export const GRAVITY_FT_S2 = 32.174; // standard gravity in ft/s^2
+export const PITCHING_RUBBER_Y_FT = 60.5; // ft, pitching rubber distance from home plate
+export const COMMITMENT_PLANE_Y_FT = 23.8; // ft, commitment / decision plane distance from home plate
 
 export interface PitchKinematics {
   x0: number;
@@ -45,22 +47,22 @@ export function ghostKinematics(p: PitchKinematics): PitchKinematics {
   };
 }
 
-/** Solve y(t) = y0 + vy0 t + 1/2 ay t^2 = PLATE_Y for the larger root. */
-export function flightTime(p: PitchKinematics): number {
+/** Solve y(t) = y0 + vy0 t + 1/2 ay t^2 = yEnd for the larger root. */
+export function flightTime(p: PitchKinematics, yEnd = PLATE_Y): number {
   const a = 0.5 * p.ay;
   const b = p.vy0;
-  const c = p.y0 - PLATE_Y;
+  const c = p.y0 - yEnd;
   const disc = b * b - 4 * a * c;
-  if (disc < 0) throw new Error("pitch never reaches the plate plane");
+  if (disc < 0) throw new Error("pitch never reaches the target plane");
   if (Math.abs(a) < 1e-12) {
     if (b === 0) throw new Error("degenerate pitch: y is constant");
     const t = -c / b;
-    if (t <= 0 || b > 0) throw new Error("plate crossing not in the future");
+    if (t <= 0 || b > 0) throw new Error("plane crossing not in the future");
     return t;
   }
   const roots = [(-b - Math.sqrt(disc)) / (2 * a), (-b + Math.sqrt(disc)) / (2 * a)];
   const t = Math.min(...roots.filter((r) => r > 0 && b + 2 * a * r < 0));
-  if (!Number.isFinite(t)) throw new Error("plate crossing not in the future");
+  if (!Number.isFinite(t)) throw new Error("plane crossing not in the future");
   return t;
 }
 
@@ -122,4 +124,35 @@ export function breakVectorSegment(p: PitchKinematics): [[number, number, number
   const ghost = positionAt(ghostKinematics(p), tEnd);
   return [ghost, actual];
 }
+
+/**
+ * Extension in feet from the pitching rubber (60.5 ft) to release point.
+ */
+export function releaseExtension(y0: number): number {
+  return PITCHING_RUBBER_Y_FT - y0;
+}
+
+/**
+  * Flight time until crossing the commitment plane (y = 23.8 ft).
+  */
+export function solveCommitmentTime(p: PitchKinematics): number {
+  return flightTime(p, COMMITMENT_PLANE_Y_FT);
+}
+
+/**
+  * Position (x, y, z) in feet at the commitment plane (y = 23.8 ft).
+  */
+export function commitmentPosition(p: PitchKinematics): [number, number, number] {
+  return positionAt(p, solveCommitmentTime(p));
+}
+
+/**
+  * Tunneling separation distance in inches between two pitches at the commitment plane (y = 23.8 ft).
+  */
+export function tunnelingDistance(p1: PitchKinematics, p2: PitchKinematics): number {
+  const c1 = commitmentPosition(p1);
+  const c2 = commitmentPosition(p2);
+  return Math.hypot(c1[0] - c2[0], c1[2] - c2[2]) * 12;
+}
+
 

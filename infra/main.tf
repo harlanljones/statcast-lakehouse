@@ -65,6 +65,16 @@ resource "google_billing_budget" "hard_ceiling" {
     threshold_percent = 100.0
     spend_basis       = "FORECASTED_SPEND"
   }
+
+  all_updates_rule {
+    pubsub_topic   = google_pubsub_topic.billing_alerts.id
+    schema_version = "1.0"
+  }
+}
+
+resource "google_pubsub_topic" "billing_alerts" {
+  name    = "statcast-billing-alerts"
+  project = var.gcp_project
 }
 
 variable "billing_account" {
@@ -201,12 +211,12 @@ resource "google_cloud_run_v2_service" "serving" {
   location = var.gcp_region
   ingress  = "INGRESS_TRAFFIC_ALL"
 
-  scaling {
-    min_instance_count = 0
-    max_instance_count = 5
-  }
-
   template {
+    scaling {
+      min_instance_count = 0
+      max_instance_count = 5
+    }
+
     containers {
       image = var.serving_image
       ports {

@@ -5,16 +5,28 @@
  * filter ranges — no JavaScript array filtering on the interaction path.
  */
 import { DataFilterExtension } from "@deck.gl/extensions";
-import { PathLayer, ScatterplotLayer, type PathLayerProps } from "@deck.gl/layers";
+import { PathLayer, ScatterplotLayer, PolygonLayer, type PathLayerProps } from "@deck.gl/layers";
 import type { PickingInfo } from "@deck.gl/core";
 import { type AccessorFunction } from "@deck.gl/core";
 import type { OrbitViewState } from "@deck.gl/core";
 import {
+  trajectoryFlat,
   ghostTrajectoryFlat,
   breakVectorSegment,
+  commitmentPosition,
+  flightTime,
+  positionAt,
   type PitchKinematics,
   type BreakVector,
 } from "./kinematics";
+import { tunnelingEnvelopeSegments, type ArsenalCentroid } from "./arsenal";
+import {
+  computeCollision,
+  projectBattedTrajectory,
+  CONTACT_QUALITY_COLORS,
+} from "./collision";
+import type { ReleaseDispersion } from "./dispersion";
+import type { HeatmapCell } from "./heatmap";
 
 export const ORBIT_TARGET: [number, number, number] = [0, 1.417, 2.5];
 export const INITIAL_VIEW: OrbitViewState = {
@@ -35,8 +47,13 @@ export interface PitchDatum {
   pitchType: string;
   isSwing?: number;
   isWhiff?: number;
+  spinRate?: number;
+  extension?: number;
+  szTop?: number;
+  szBot?: number;
   kinematics?: PitchKinematics;
   breakVector?: BreakVector;
+  commitmentPoint?: [number, number, number];
 }
 
 export const FILTER_SIZE = 4;
@@ -52,23 +69,49 @@ export const STRIKE_ZONE = {
   zMax: 3.5,
 } as const;
 
-/** Check whether a coordinate at the plate is inside the rulebook strike zone. */
-export function isInsideStrikeZone(plateX: number, plateZ: number): boolean {
+/** Check whether a coordinate at the plate is inside the rulebook or batter-specific strike zone. */
+export function isInsideStrikeZone(
+  plateX: number,
+  plateZ: number,
+  szTop: number = STRIKE_ZONE.zMax,
+  szBot: number = STRIKE_ZONE.zMin,
+): boolean {
   return (
     Math.abs(plateX) <= STRIKE_ZONE.halfWidth &&
-    plateZ >= STRIKE_ZONE.zMin &&
-    plateZ <= STRIKE_ZONE.zMax
+    plateZ >= szBot &&
+    plateZ <= szTop
   );
 }
 
 /**
+ * Batter-specific strike zone outline wireframe at y = 1.417 ft.
+ */
+export function batterStrikeZoneSegments(
+  szTop: number = STRIKE_ZONE.zMax,
+  szBot: number = STRIKE_ZONE.zMin,
+): WireSegment[] {
+  const { y, halfWidth: w } = STRIKE_ZONE;
+  return [
+    [
+      [-w, y, szBot],
+      [w, y, szBot],
+      [w, y, szTop],
+      [-w, y, szTop],
+      [-w, y, szBot],
+    ],
+  ];
+}
+
+/**
  * Camera viewpoint presets (OrbitView view states, feet / degrees).
- * Catcher looks from behind the plate; Pitcher from the mound; Overhead is
- * top-down; Side is the dugout line. Zoom follows deck.gl OrbitView scale.
+ * Catcher looks from behind the plate; Pitcher from the mound; Batter looks
+ * from the batter's box straight toward the mound; Overhead is top-down;
+ * Side is the dugout line. Zoom follows deck.gl OrbitView scale.
  */
 export const CAMERA_VIEWS = {
   Catcher: { target: [0, 1.417, 2.5], rotationX: 12, rotationOrbit: 35, zoom: 6.2 },
   Pitcher: { target: [0, 25, 3], rotationX: 10, rotationOrbit: 215, zoom: 5.5 },
+  Batter: { target: [0, 25, 3], rotationX: 8, rotationOrbit: 0, zoom: 5.5 },
   Overhead: { target: [0, 27, 0], rotationX: 90, rotationOrbit: 0, zoom: 5.0 },
   Side: { target: [0, 25, 3], rotationX: 5, rotationOrbit: 90, zoom: 5.5 },
 } as const satisfies Record<string, OrbitViewState>;
@@ -259,6 +302,17 @@ export interface BuildLayersOpts {
   flightProgress?: number;
   showTunneling?: boolean;
   showGhostBreak?: boolean;
+  showReleasePoints?: boolean;
+  showPlateCrossings?: boolean;
+  pairedTypes?: [string, string] | null;
+  arsenalCentroids?: Map<string, ArsenalCentroid> | null;
+  showContactSim?: boolean;
+  batSpeed?: number;
+  attackAngleDeg?: number;
+  showDispersion?: boolean;
+  releaseDispersion?: ReleaseDispersion | null;
+  showHeatmap?: boolean;
+  heatmapCells?: HeatmapCell[] | null;
 }
 
 /** Base trajectory width in meters (the un-picked line width). */
@@ -288,6 +342,17 @@ export function buildLayers(opts: BuildLayersOpts) {
     flightProgress,
     showTunneling,
     showGhostBreak,
+    showReleasePoints,
+    showPlateCrossings,
+    pairedTypes,
+    arsenalCentroids,
+    showContactSim,
+    batSpeed,
+    attackAngleDeg,
+    showDispersion,
+    releaseDispersion,
+    showHeatmap,
+    heatmapCells,
   } = opts;
   const ext = dataFilterExtension();
 
@@ -307,7 +372,9 @@ export function buildLayers(opts: BuildLayersOpts) {
       const typePass = !hasTypeFilter || selectedTypes!.has(d.pitchType);
       const zonePass =
         !hasZoneFilter ||
-        (zoneFilter === "in_zone" ? isInsideStrikeZone(px, pz) : !isInsideStrikeZone(px, pz));
+        (zoneFilter === "in_zone"
+          ? isInsideStrikeZone(px, pz, d.szTop, d.szBot)
+          : !isInsideStrikeZone(px, pz, d.szTop, d.szBot));
       const outcomePass =
         !hasOutcomeFilter ||
         (outcomeFilter === "swings" ? Boolean(d.isSwing) : Boolean(d.isWhiff));
@@ -316,7 +383,7 @@ export function buildLayers(opts: BuildLayersOpts) {
     },
     filterRange: filterRange(speedRange, xRange, zRange, typeRange),
   };
-  const layers: (PathLayer<any> | ScatterplotLayer<any>)[] = [
+  const layers: (PathLayer<any> | ScatterplotLayer<any> | PolygonLayer<any>)[] = [
     new PathLayer<PitchDatum>({
       id: "pitch-trajectories",
       pickable: true,
@@ -364,6 +431,29 @@ export function buildLayers(opts: BuildLayersOpts) {
         widthMinPixels: 1,
         opacity: 0.85,
       }),
+      new ScatterplotLayer<PitchDatum>({
+        id: "tunnel-points",
+        coordinateSystem: "cartesian" as never,
+        data: pitches,
+        getPosition: (d: PitchDatum): [number, number, number] => {
+          if (d.commitmentPoint) return d.commitmentPoint;
+          if (d.kinematics) return commitmentPosition(d.kinematics);
+          return [0, 23.8, 3.0];
+        },
+        getRadius: 0.08,
+        radiusUnits: "meters",
+        stroked: true,
+        filled: true,
+        getFillColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 190],
+        getLineColor: [255, 255, 255, 200],
+        lineWidthMinPixels: 1,
+        extensions: [ext],
+        ...filteredProps,
+        updateTriggers: {
+          getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
+          filterRange: [speedRange, xRange, zRange, typeRange],
+        },
+      } as never),
     );
   }
 
@@ -414,6 +504,127 @@ export function buildLayers(opts: BuildLayersOpts) {
         widthMinPixels: 2.5,
         opacity: 1.0,
       }),
+      new ScatterplotLayer<PitchDatum>({
+        id: "picked-release-point",
+        coordinateSystem: "cartesian" as never,
+        data: [picked],
+        getPosition: () => [k.x0, k.y0, k.z0],
+        getRadius: 0.18,
+        radiusUnits: "meters",
+        stroked: true,
+        filled: true,
+        getFillColor: [255, 215, 0, 240],
+        getLineColor: [255, 255, 255, 255],
+        lineWidthMinPixels: 2.5,
+      } as never),
+      new ScatterplotLayer<PitchDatum>({
+        id: "picked-tunnel-point",
+        coordinateSystem: "cartesian" as never,
+        data: [picked],
+        getPosition: () => picked.commitmentPoint ?? commitmentPosition(k),
+        getRadius: 0.14,
+        radiusUnits: "meters",
+        stroked: true,
+        filled: true,
+        getFillColor: [255, 215, 0, 240],
+        getLineColor: [255, 255, 255, 255],
+        lineWidthMinPixels: 2.0,
+      } as never),
+    );
+  }
+
+  if (picked) {
+    const px = picked.plateX ?? picked.pfxX ?? 0;
+    const pz = picked.plateZ ?? picked.pfxZ ?? 2.5;
+    layers.push(
+      new ScatterplotLayer<PitchDatum>({
+        id: "picked-plate-crossing",
+        coordinateSystem: "cartesian" as never,
+        data: [picked],
+        getPosition: () => [px, STRIKE_ZONE.y, pz],
+        getRadius: 0.1,
+        radiusUnits: "meters",
+        stroked: true,
+        filled: true,
+        getFillColor: [255, 215, 0, 240],
+        getLineColor: [255, 255, 255, 255],
+        lineWidthMinPixels: 2.0,
+      } as never),
+    );
+    if (picked.szTop != null && picked.szBot != null) {
+      layers.push(
+        new PathLayer<WireSegment>({
+          id: "picked-batter-strike-zone",
+          coordinateSystem: "cartesian" as never,
+          data: batterStrikeZoneSegments(picked.szTop, picked.szBot),
+          getPath: (s) => s,
+          getColor: [0, 220, 255],
+          getWidth: 0.04,
+          widthUnits: "meters",
+          widthMinPixels: 2.0,
+          opacity: 0.9,
+        }),
+      );
+    }
+  }
+
+  if (showPlateCrossings) {
+    layers.push(
+      new ScatterplotLayer<PitchDatum>({
+        id: "plate-crossings",
+        coordinateSystem: "cartesian" as never,
+        data: pitches,
+        getPosition: (d: PitchDatum): [number, number, number] => [
+          d.plateX ?? d.pfxX ?? 0,
+          STRIKE_ZONE.y,
+          d.plateZ ?? d.pfxZ ?? 2.5,
+        ],
+        getRadius: 0.06,
+        radiusUnits: "meters",
+        stroked: true,
+        filled: true,
+        getFillColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 190],
+        getLineColor: [255, 255, 255, 200],
+        lineWidthMinPixels: 1,
+        extensions: [ext],
+        ...filteredProps,
+        updateTriggers: {
+          getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
+          filterRange: [speedRange, xRange, zRange, typeRange],
+        },
+      } as never),
+    );
+  }
+
+  if (showReleasePoints) {
+    layers.push(
+      new ScatterplotLayer<PitchDatum>({
+        id: "release-points",
+        coordinateSystem: "cartesian" as never,
+        data: pitches,
+        getPosition: (d: PitchDatum): [number, number, number] => {
+          if (d.kinematics) {
+            return [d.kinematics.x0, d.kinematics.y0, d.kinematics.z0];
+          }
+          if (d.path && d.path.length >= 3) {
+            return [d.path[0], d.path[1], d.path[2]];
+          }
+          return [0, 55, 5.5];
+        },
+        getRadius: 0.12,
+        radiusUnits: "meters",
+        stroked: true,
+        filled: true,
+        getFillColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 200],
+        getLineColor: [255, 255, 255, 200],
+        lineWidthMinPixels: 1.5,
+        extensions: [ext],
+        ...filteredProps,
+        updateTriggers: {
+          getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
+          filterRange: [speedRange, xRange, zRange, typeRange],
+        },
+      } as never),
     );
   }
 
@@ -446,6 +657,115 @@ export function buildLayers(opts: BuildLayersOpts) {
           filterRange: [speedRange, xRange, zRange, typeRange],
         },
       } as never),
+    );
+  }
+
+  if (pairedTypes && arsenalCentroids) {
+    const c1 = arsenalCentroids.get(pairedTypes[0]);
+    const c2 = arsenalCentroids.get(pairedTypes[1]);
+    if (c1 && c2) {
+      layers.push(
+        new PathLayer<WireSegment>({
+          id: "paired-tunnel-envelope",
+          coordinateSystem: "cartesian" as never,
+          data: tunnelingEnvelopeSegments(c1, c2),
+          getPath: (s) => s,
+          getColor: [255, 180, 0, 220],
+          getWidth: 0.04,
+          widthUnits: "meters",
+          widthMinPixels: 2.0,
+          opacity: 0.9,
+        }),
+        new PathLayer<ArsenalCentroid>({
+          id: "paired-centroid-paths",
+          coordinateSystem: "cartesian" as never,
+          data: [c1, c2],
+          getPath: (c) => trajectoryFlat(c.kinematics),
+          getColor: (c) => [...pitchColor(c.pitchType), 240],
+          getWidth: TRAJECTORY_WIDTH * 1.8,
+          widthUnits: "meters",
+          widthMinPixels: 2.5,
+          opacity: 0.95,
+        }),
+      );
+    }
+  }
+
+  if (showContactSim && picked && picked.kinematics) {
+    const col = computeCollision(picked.kinematics, batSpeed ?? 75.0, attackAngleDeg ?? 10.0);
+    if (col.contactQuality !== "Whiff" && col.distanceFt > 0) {
+      const tEnd = flightTime(picked.kinematics);
+      const origin = positionAt(picked.kinematics, tEnd);
+      const battedTrajectory = projectBattedTrajectory(
+        origin,
+        col.exitSpeedMph,
+        col.launchAngleDeg,
+        col.sprayAngleDeg,
+        col.hangTimeS,
+        40
+      );
+      const color = CONTACT_QUALITY_COLORS[col.contactQuality] ?? [255, 255, 255];
+      const landingPt = battedTrajectory[battedTrajectory.length - 1];
+
+      layers.push(
+        new PathLayer<[number, number, number][]>({
+          id: "simulated-batted-trajectory",
+          coordinateSystem: "cartesian" as never,
+          data: [battedTrajectory],
+          getPath: (d: [number, number, number][]) => d,
+          getColor: [...color, 240],
+          getWidth: TRAJECTORY_WIDTH * 1.6,
+          widthUnits: "meters",
+          widthMinPixels: 2.5,
+          opacity: 0.95,
+        }),
+        new ScatterplotLayer<[number, number, number]>({
+          id: "simulated-landing-spot",
+          coordinateSystem: "cartesian" as never,
+          data: [landingPt],
+          getPosition: (p: [number, number, number]) => p,
+          getRadius: 0.35,
+          radiusUnits: "meters",
+          stroked: true,
+          filled: true,
+          getFillColor: [...color, 180],
+          getLineColor: [255, 255, 255, 240],
+          lineWidthMinPixels: 1.5,
+        } as never),
+      );
+    }
+  }
+
+  if (showDispersion && releaseDispersion && releaseDispersion.wireframeSegments.length > 0) {
+    layers.push(
+      new PathLayer<[number, number, number][]>({
+        id: "release-dispersion-ellipsoid",
+        coordinateSystem: "cartesian" as never,
+        data: releaseDispersion.wireframeSegments,
+        getPath: (d: [number, number, number][]) => d,
+        getColor: [255, 215, 0, 220],
+        getWidth: 0.03,
+        widthUnits: "meters",
+        widthMinPixels: 1.5,
+        opacity: 0.85,
+      }),
+    );
+  }
+
+  if (showHeatmap && heatmapCells && heatmapCells.length > 0) {
+    layers.push(
+      new PolygonLayer<HeatmapCell>({
+        id: "strike-zone-heatmap",
+        coordinateSystem: "cartesian" as never,
+        data: heatmapCells,
+        getPolygon: (c: HeatmapCell) => c.polygon,
+        getFillColor: (c: HeatmapCell) => c.color,
+        getLineColor: [255, 255, 255, 60],
+        lineWidthMinPixels: 1.0,
+        stroked: true,
+        filled: true,
+        opacity: 0.8,
+      }),
     );
   }
 

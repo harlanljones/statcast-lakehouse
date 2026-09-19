@@ -131,3 +131,19 @@ class TestExistingInfraPreserved:
         resource_block(tf, "google_cloud_run_v2_job", "ingest")
         resource_block(tf, "google_storage_bucket", "arrow_batches")
         resource_block(tf, "google_cloud_scheduler_job", "ingest_daily")
+
+    def test_billing_budget_pubsub_alert_configured(self):
+        tf = read()
+        resource_block(tf, "google_pubsub_topic", "billing_alerts")
+        budget_block = resource_block(tf, "google_billing_budget", "hard_ceiling")
+        assert "all_updates_rule" in budget_block
+        assert "google_pubsub_topic.billing_alerts.id" in budget_block
+        assert 'schema_version = "1.0"' in budget_block
+
+    def test_serving_scaling_inside_template(self):
+        tf = read()
+        block = resource_block(tf, "google_cloud_run_v2_service", "serving")
+        template_block = hcl_block(block, "template")
+        scaling_block = hcl_block(template_block, "scaling")
+        assert "min_instance_count = 0" in scaling_block
+        assert "max_instance_count = 5" in scaling_block

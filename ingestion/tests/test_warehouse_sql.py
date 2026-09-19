@@ -173,7 +173,11 @@ class TestBronzeAndCurateDay:
 
 class TestBqml:
     def test_model_files_exist_and_nonempty(self):
-        for f in (BQML / "train_whiff_model.sql", BQML / "predict_live_game.sql"):
+        for f in (
+            BQML / "train_whiff_model.sql",
+            BQML / "predict_live_game.sql",
+            BQML / "evaluate_whiff_model.sql",
+        ):
             assert f.exists() and f.stat().st_size > 0
 
     def test_train_model_config(self):
@@ -228,6 +232,30 @@ class TestBqml:
         fct_cols = set(fct_columns_from_ddl())
         # Everything the model was trained on that isn't EXCEPTed must reach it.
         assert features - {"is_whiff"} <= (fct_cols - passed)
+
+    def test_evaluate_model_config(self):
+        sql = read(BQML / "evaluate_whiff_model.sql")
+        assert "ML.EVALUATE(" in sql
+        assert "`statcast_analytics.model_pitch_whiff`" in sql
+        for metric in ("roc_auc", "accuracy", "precision", "recall", "f1_score", "log_loss"):
+            assert metric in sql, f"{metric} missing from evaluate_whiff_model.sql"
+
+    def test_evaluate_scans_single_partition_and_swings(self):
+        sql = read(BQML / "evaluate_whiff_model.sql")
+        assert "@target_date" in sql
+        assert "is_swing = 1" in sql
+        assert "FROM `statcast_analytics.fct_pitches`" in sql
+
+    def test_evaluate_features_match_train_features(self):
+        eval_sql = read(BQML / "evaluate_whiff_model.sql")
+        inner_sel = re.search(r"ML\.EVALUATE\(\s*MODEL `[^`]+`,\s*\(\s*SELECT(.*?)FROM", eval_sql, re.S).group(1)
+        eval_features = self._selected_names(inner_sel)
+
+        train_sql = read(BQML / "train_whiff_model.sql")
+        train_sel = re.search(r"AS\nSELECT(.*?)FROM", train_sql, re.S).group(1)
+        train_features = self._selected_names(train_sel)
+
+        assert eval_features == train_features, f"Feature mismatch: {eval_features ^ train_features}"
 
 
 # ----------------------------------------------------- cost-guard invariants
@@ -293,8 +321,10 @@ class TestCostGuards:
             "01_bronze_pitches.sql",
             "02_fct_pitches.sql",
             "03_curate_day.sql",
+            "04_strike_zone_density.sql",
             "train_whiff_model.sql",
             "predict_live_game.sql",
+            "evaluate_whiff_model.sql",
         }
         assert expected <= names, f"missing from warehouse/ scan: {expected - names}"
         for f in files:
@@ -357,3 +387,10 @@ class TestCostGuards:
     def test_bronze_has_raw_json_staging_column(self):
         sql = read(DDL / "01_bronze_pitches.sql")
         assert re.search(r"\braw\s+(?:payload\s+)?json\b", sql, re.I)
+
+    def test_strike_zone_density_query_cost_guards(self):
+        sql = norm(read(DDL / "04_strike_zone_density.sql"))
+        assert re.search(r"from\s+zone_cells", sql)
+        assert re.search(r"f\.game_date\s*=\s*@target_date\b", sql)
+        assert re.search(r"st_contains\s*\(\s*z\.zone_geom\s*,\s*f\.plate_location\s*\)", sql)
+        assert re.search(r"statcast_analytics\.fct_pitches", sql)

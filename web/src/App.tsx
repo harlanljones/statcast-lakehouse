@@ -16,6 +16,9 @@ import {
   type OutcomeFilter,
   isInsideStrikeZone,
 } from "./lib/deck-layers";
+import { computeArsenalCentroids } from "./lib/arsenal";
+import { computeReleaseDispersion, computeFatigueBuckets } from "./lib/dispersion";
+import { computeStrikeZoneHeatmap, type HeatmapMode } from "./lib/heatmap";
 
 const [pitchData, setPitchData] = createSignal<PitchTable | null>(null);
 const [speedRange, setSpeedRange] = createSignal<[number, number]>([70, 105]);
@@ -31,6 +34,18 @@ const [flightProgress, setFlightProgress] = createSignal<number>(1.0);
 const [isPlaying, setIsPlaying] = createSignal<boolean>(false);
 const [showTunneling, setShowTunneling] = createSignal<boolean>(false);
 const [showGhostBreak, setShowGhostBreak] = createSignal<boolean>(false);
+const [showReleasePoints, setShowReleasePoints] = createSignal<boolean>(false);
+const [showPlateCrossings, setShowPlateCrossings] = createSignal<boolean>(false);
+const [showBreakChart, setShowBreakChart] = createSignal<boolean>(false);
+const [showPairComparison, setShowPairComparison] = createSignal<boolean>(false);
+const [pairedTypes, setPairedTypes] = createSignal<[string, string] | null>(null);
+const [showContactSim, setShowContactSim] = createSignal<boolean>(false);
+const [batSpeed, setBatSpeed] = createSignal<number>(75.0);
+const [attackAngleDeg, setAttackAngleDeg] = createSignal<number>(10.0);
+const [showDispersion, setShowDispersion] = createSignal<boolean>(false);
+const [showFatigue, setShowFatigue] = createSignal<boolean>(false);
+const [showHeatmap, setShowHeatmap] = createSignal<boolean>(false);
+const [heatmapMode, setHeatmapMode] = createSignal<HeatmapMode>("density");
 
 
 // Display-only derived values (badge + chips). These run once per signal
@@ -43,6 +58,22 @@ const gameDate = createMemo(() => {
 const whiffRate = createMemo(() => {
   const pitches = pitchData()?.pitches ?? [];
   return computeWhiffRate(pitches);
+});
+const arsenalCentroids = createMemo(() => {
+  const pitches = pitchData()?.pitches ?? [];
+  return computeArsenalCentroids(pitches);
+});
+const releaseDispersion = createMemo(() => {
+  const pitches = pitchData()?.pitches ?? [];
+  return computeReleaseDispersion(pitches, 1.5);
+});
+const fatigueBuckets = createMemo(() => {
+  const pitches = pitchData()?.pitches ?? [];
+  return computeFatigueBuckets(pitches, 25);
+});
+const heatmapCells = createMemo(() => {
+  const pitches = pitchData()?.pitches ?? [];
+  return computeStrikeZoneHeatmap(pitches, heatmapMode());
 });
 
 const activeCount = createMemo(() => {
@@ -133,6 +164,25 @@ export default function App() {
         flightProgress={flightProgress()}
         showTunneling={showTunneling()}
         showGhostBreak={showGhostBreak()}
+        showReleasePoints={showReleasePoints()}
+        showPlateCrossings={showPlateCrossings()}
+        showBreakChart={showBreakChart()}
+        showPairComparison={showPairComparison()}
+        pairedTypes={pairedTypes()}
+        onSelectPairedTypes={setPairedTypes}
+        arsenalCentroids={arsenalCentroids()}
+        availableTypes={availableTypes()}
+        onTogglePairComparison={setShowPairComparison}
+        showContactSim={showContactSim()}
+        batSpeed={batSpeed()}
+        attackAngleDeg={attackAngleDeg()}
+        showDispersion={showDispersion()}
+        releaseDispersion={releaseDispersion()}
+        showFatigue={showFatigue()}
+        fatigueBuckets={fatigueBuckets()}
+        onToggleFatigue={setShowFatigue}
+        showHeatmap={showHeatmap()}
+        heatmapCells={heatmapCells()}
       />
       <ControlPanel
         speed={speedRange()}
@@ -166,6 +216,28 @@ export default function App() {
         onToggleTunneling={setShowTunneling}
         showGhostBreak={showGhostBreak()}
         onToggleGhostBreak={setShowGhostBreak}
+        showReleasePoints={showReleasePoints()}
+        onToggleReleasePoints={setShowReleasePoints}
+        showPlateCrossings={showPlateCrossings()}
+        onTogglePlateCrossings={setShowPlateCrossings}
+        showBreakChart={showBreakChart()}
+        onToggleBreakChart={setShowBreakChart}
+        showPairComparison={showPairComparison()}
+        onTogglePairComparison={setShowPairComparison}
+        showContactSim={showContactSim()}
+        onToggleContactSim={setShowContactSim}
+        batSpeed={batSpeed()}
+        onBatSpeed={setBatSpeed}
+        attackAngleDeg={attackAngleDeg()}
+        onAttackAngleDeg={setAttackAngleDeg}
+        showDispersion={showDispersion()}
+        onToggleDispersion={setShowDispersion}
+        showFatigue={showFatigue()}
+        onToggleFatigue={setShowFatigue}
+        showHeatmap={showHeatmap()}
+        onToggleHeatmap={setShowHeatmap}
+        heatmapMode={heatmapMode()}
+        onHeatmapMode={setHeatmapMode}
       />
     </div>
   );

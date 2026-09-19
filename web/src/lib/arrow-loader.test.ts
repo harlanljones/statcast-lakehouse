@@ -24,6 +24,9 @@ function ipcBuffer(rows: {
   plateZ?: Float64Array | number[];
   isSwing?: Int32Array | number[];
   isWhiff?: Int32Array | number[];
+  releaseSpinRate?: Float64Array | number[];
+  szTop?: Float64Array | number[];
+  szBot?: Float64Array | number[];
 }): ArrayBuffer {
   const count = rows.count;
   // Release point ~55.5 ft from the plate front, moving toward it at 120 ft/s.
@@ -46,6 +49,9 @@ function ipcBuffer(rows: {
   if (rows.plateZ) arrays.plate_z = new Float64Array(rows.plateZ);
   if (rows.isSwing) arrays.is_swing = new Int32Array(rows.isSwing);
   if (rows.isWhiff) arrays.is_whiff = new Int32Array(rows.isWhiff);
+  if (rows.releaseSpinRate) arrays.release_spin_rate = new Float64Array(rows.releaseSpinRate);
+  if (rows.szTop) arrays.sz_top = new Float64Array(rows.szTop);
+  if (rows.szBot) arrays.sz_bot = new Float64Array(rows.szBot);
   return tableToIPC(tableFromArrays(arrays)).buffer as ArrayBuffer;
 }
 
@@ -117,6 +123,36 @@ describe("loadPitchTable", () => {
     expect(pitches[1].isWhiff).toBe(0);
   });
 
+  it("extracts release_spin_rate and derives extension from kinematics y0", () => {
+    const buf = ipcBuffer({
+      count: 2,
+      pitchTypes: ["FF", "SL"],
+      y0: [54.5, 55.0],
+      releaseSpinRate: [2420, 2680],
+    });
+    const { pitches } = loadPitchTable(buf);
+    expect(pitches).toHaveLength(2);
+    expect(pitches[0].spinRate).toBeCloseTo(2420);
+    expect(pitches[0].extension).toBeCloseTo(6.0); // 60.5 - 54.5
+    expect(pitches[1].spinRate).toBeCloseTo(2680);
+    expect(pitches[1].extension).toBeCloseTo(5.5); // 60.5 - 55.0
+  });
+
+  it("extracts sz_top and sz_bot when present", () => {
+    const buf = ipcBuffer({
+      count: 2,
+      pitchTypes: ["FF", "SL"],
+      szTop: [3.5, 3.2],
+      szBot: [1.6, 1.4],
+    });
+    const { pitches } = loadPitchTable(buf);
+    expect(pitches).toHaveLength(2);
+    expect(pitches[0].szTop).toBeCloseTo(3.5);
+    expect(pitches[0].szBot).toBeCloseTo(1.6);
+    expect(pitches[1].szTop).toBeCloseTo(3.2);
+    expect(pitches[1].szBot).toBeCloseTo(1.4);
+  });
+
   it("falls back to terminal path coordinates when plate_x/plate_z are absent", () => {
     const buf = ipcBuffer({ count: 1, pitchTypes: ["FF"] });
     const { pitches } = loadPitchTable(buf);
@@ -130,6 +166,15 @@ describe("loadPitchTable", () => {
     expect(p.pfxZ).toBe(termZ);
     expect(p.isSwing).toBeUndefined();
     expect(p.isWhiff).toBeUndefined();
+  });
+
+  it("computes commitmentPoint at y = 23.8 ft when kinematics are parsed", () => {
+    const buf = ipcBuffer({ count: 1, pitchTypes: ["FF"] });
+    const { pitches } = loadPitchTable(buf);
+    expect(pitches).toHaveLength(1);
+    const cp = pitches[0].commitmentPoint;
+    expect(cp).toBeDefined();
+    expect(cp![1]).toBeCloseTo(23.8, 5);
   });
 });
 
