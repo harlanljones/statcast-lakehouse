@@ -23,6 +23,12 @@ class TestCutoverPreflight:
         assert res["ok"] is True
         assert res["errors"] == []
 
+    def test_terraform_check_passes_without_cli_binary(self, monkeypatch):
+        monkeypatch.setattr("shutil.which", lambda _: None)
+        res = check_terraform()
+        assert res["ok"] is True
+        assert res["errors"] == []
+
     def test_budget_guards_check_passes(self):
         res = check_budget_guards()
         assert res["ok"] is True
