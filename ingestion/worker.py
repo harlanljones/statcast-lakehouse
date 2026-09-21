@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import random
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -668,7 +669,15 @@ def _live_day(game_day: date, project: str) -> int:
     """One day of the live path: fetch -> write. Returns rows written."""
     from ingestion.mlb_client import fetch_game_day
 
-    rows = fetch_game_day(game_day)
+    default_ts = datetime.combine(game_day, datetime.min.time(), tzinfo=timezone.utc).isoformat()
+
+    def _with_ts(records):
+        for r in records:
+            if not r.get("ingestion_time"):
+                r["ingestion_time"] = default_ts
+            yield r
+
+    rows = _with_ts(fetch_game_day(game_day))
     return write_bq(rows, project, "bronze_pitches")
 
 
@@ -734,8 +743,15 @@ def main(argv: list[str] | None = None) -> int:
             ap.error(f"--backfill START {start} is after END {end}")
         return run_backfill(start, end, args.project)
 
-    if args.date is None:
-        args.date = str(date.today() - timedelta(days=1))
+    if not args.project:
+        args.project = os.environ.get("GCP_PROJECT")
+
+    if args.date is None or args.date == "$(JOB_DATE)":
+        args.date = os.environ.get("JOB_DATE") or str(date.today() - timedelta(days=1))
+    elif args.date.startswith("$"):
+        var_name = args.date.strip("$() ")
+        args.date = os.environ.get(var_name) or str(date.today() - timedelta(days=1))
+
     try:
         game_day = date.fromisoformat(args.date)
     except ValueError:

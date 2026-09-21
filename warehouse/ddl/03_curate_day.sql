@@ -13,6 +13,6 @@ USING (
   WHERE DATE(ingestion_time) = @target_date
     AND pitch_id IS NOT NULL
 ) b
-ON f.pitch_id = b.pitch_id
+ON f.game_date = @target_date AND f.pitch_id = b.pitch_id
 WHEN NOT MATCHED THEN
   INSERT ROW

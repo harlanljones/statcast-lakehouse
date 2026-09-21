@@ -15,7 +15,7 @@ from typing import Any, Callable, Iterator
 
 import httpx
 
-STATCAST_URL = "https://baseballsavant.mlb.com/api/statcast/search/csv"
+STATCAST_URL = "https://baseballsavant.mlb.com/statcast_search/csv"
 GAME_DAY_FMT = "%Y-%m-%d"
 
 # Transient failures worth retrying: rate limiting and server errors.
@@ -141,6 +141,14 @@ def _row(record: dict[str, Any]) -> dict[str, Any] | None:
             out[dst] = _to_float(record.get(src))
     if out.get("game_id") is None:
         return None
+    # Upstream Statcast fallback: if pitch_id is missing, synthesize from game_pk + at_bat + pitch_number
+    if not out.get("pitch_id") and record.get("at_bat_number") and record.get("pitch_number"):
+        out["pitch_id"] = f"{record.get('game_pk')}_{record.get('at_bat_number')}_{record.get('pitch_number')}"
+    # Upstream Statcast fallback: release_pos_x/z when api_release_pos_x/z is absent
+    if out.get("x0") is None and "release_pos_x" in record:
+        out["x0"] = _to_float(record.get("release_pos_x"))
+    if out.get("z0") is None and "release_pos_z" in record:
+        out["z0"] = _to_float(record.get("release_pos_z"))
     out["is_swing"] = int(out.get("description") in ("swinging_strike", "foul", "hit_into_play", "swinging_strike_blocked"))
     out["is_whiff"] = int(out.get("description") == "swinging_strike")
     out.pop("description", None)
@@ -215,13 +223,18 @@ def fetch_game_day(
     policy = retry or RetryPolicy()
     own_client = client or httpx.Client(timeout=60)
     try:
-        params = {"all": "true", "game_date_gt": day.isoformat(), "game_date_lt": (day + dt.timedelta(days=1)).isoformat()}
+        params = {
+            "all": "true",
+            "type": "details",
+            "game_date_gt": day.isoformat(),
+            "game_date_lt": day.isoformat(),
+        }
         resp = _open_stream(own_client, params, policy)
         try:
             import csv
             import io
 
-            text = io.TextIOWrapper(io.BufferedReader(_RawReader(resp.iter_bytes())), encoding="utf-8")
+            text = io.TextIOWrapper(io.BufferedReader(_RawReader(resp.iter_bytes())), encoding="utf-8-sig")
             for record in csv.DictReader(text):
                 row = _row(record)
                 if row is not None:

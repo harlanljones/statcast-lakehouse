@@ -114,8 +114,9 @@ class TestFetchGameDay:
 
         def handler(request: httpx.Request) -> httpx.Response:
             query = str(request.url.query)
+            assert "type=details" in query
             assert "game_date_gt=2026-09-14" in query
-            assert "game_date_lt=2026-09-15" in query
+            assert "game_date_lt=2026-09-14" in query
             return httpx.Response(200, headers=headers, content=body)
 
         return httpx.Client(transport=httpx.MockTransport(handler))
