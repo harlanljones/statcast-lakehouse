@@ -39,6 +39,7 @@ uvicorn; the live BigQuery/Storage Write paths need GOOGLE_APPLICATION_CREDENTIA
 - `infra/main.tf` — dataset, budget guard, Cloud Run job, scheduler. Cloud
   Run lives in main.tf (not a separate cloud_run.tf).
 - `serving/` — FastAPI Arrow endpoints (`/pitches?date=`, `/pitches/sample`).
+- `ingestion/scenarios.py` — seeded 500-pitch demo groups; `web/src/lib/scenarios.ts` holds their UI presets (keep ids in sync; a vitest guard checks).
 - `web/src/lib/` — kinematics solver (TS), Arrow loader, deck layer config.
   `web/src/components/` — Solid components. Tests live next to the code
   (`*.test.ts`).
