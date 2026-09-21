@@ -111,3 +111,11 @@ def test_corpus_slice_mixes_pitchers_and_release_points(rows):
     assert len({x["pitcher_id"] for x in r}) == 10
     x0 = [x["x0"] for x in r]
     assert max(x0) - min(x0) > 4.0
+
+
+@pytest.mark.parametrize("sid", EXPECTED_IDS)
+def test_every_pitch_inside_default_filters(sid, rows):
+    for r in rows[sid]:
+        assert -2.5 <= r["plate_x"] <= 2.5
+        assert 0 <= r["plate_z"] <= 5
+        assert 70 <= r["release_speed"] <= 105

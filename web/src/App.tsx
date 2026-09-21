@@ -22,6 +22,7 @@ import { computeStrikeZoneHeatmap, type HeatmapMode } from "./lib/heatmap";
 
 import ScenarioRail from "./components/ScenarioRail";
 import StoryCaption from "./components/StoryCaption";
+import { SCENE_ACCENT } from "./components/ui";
 import LensPanel from "./components/LensPanel";
 import {
   DEFAULT_SCENARIO_ID,
@@ -275,7 +276,7 @@ export default function App() {
   });
 
   return (
-    <div style={{ width: "100vw", height: "100vh", display: "flex", "flex-direction": "column", overflow: "hidden" }}>
+    <div style={{ width: "100vw", height: "100vh", display: "flex", "flex-direction": "column", overflow: "hidden", "--accent": SCENE_ACCENT[activeScenarioId() ?? ""] ?? "#60a5fa" }}>
       <header
         style={{
           position: "relative",
@@ -298,7 +299,7 @@ export default function App() {
             <span role="alert" style={{ color: "#f87171", "font-size": "12px" }}>{errorMessage()}</span>
           </Show>
         </div>
-        <button aria-pressed={showAllControls()} onClick={() => setShowAllControls((v) => !v)}>
+        <button class="ui-ctl ui-ghost" aria-pressed={showAllControls()} onClick={() => setShowAllControls((v) => !v)}>
           {showAllControls() ? "Hide all controls" : "All controls"}
         </button>
       </header>

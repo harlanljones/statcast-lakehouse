@@ -10,6 +10,16 @@ export const THEME = {
   gold: "#fbbf24",
 } as const;
 
+/** Type scale (px): meta 11, body 12-13, title 16, figure 26. */
+export const SCENE_ACCENT: Record<string, string> = {
+  "tunnel-vision": "#38bdf8",
+  "fatigue-arc": "#fb923c",
+  "ghost-break": "#c4b5fd",
+  "chase-map": "#f87171",
+  "contact-lab": "#4ade80",
+  "corpus-slice": "#60a5fa",
+};
+
 export interface SegmentedProps<T extends string> {
   label: string;
   value: T;
@@ -20,22 +30,22 @@ export interface SegmentedProps<T extends string> {
 export function Segmented<T extends string>(props: SegmentedProps<T>): JSX.Element {
   return (
     <div role="group" aria-label={props.label} style={{ display: "flex", "align-items": "center", gap: "6px" }}>
-      <span style={{ color: THEME.muted, "font-size": "11px", "text-transform": "uppercase", "letter-spacing": "0.06em" }}>
+      <span style={{ color: THEME.muted, "font-size": "11px", "letter-spacing": "0.02em" }}>
         {props.label}
       </span>
       <div style={{ display: "flex", gap: "2px" }}>
         <For each={props.options}>
           {(o) => (
             <button
+              class="ui-ctl"
               aria-pressed={props.value === o.value}
               onClick={() => props.onChange(o.value)}
               style={{
                 padding: "3px 9px",
                 "font-size": "12px",
                 color: props.value === o.value ? "#0b1220" : THEME.text,
-                background: props.value === o.value ? THEME.accent : "transparent",
-                border: `1px solid ${props.value === o.value ? THEME.accent : THEME.border}`,
-                cursor: "pointer",
+                background: props.value === o.value ? "var(--accent, #60a5fa)" : "transparent",
+                border: `1px solid ${props.value === o.value ? "var(--accent, #60a5fa)" : THEME.border}`,
               }}
             >
               {o.label}

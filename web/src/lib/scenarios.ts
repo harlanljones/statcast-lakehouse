@@ -169,7 +169,7 @@ export const SCENARIOS: readonly Scenario[] = [
     lens: ["camera", "zone", "outcome", "heatmapMode"],
     preset: preset({
       view: "Catcher",
-      layers: { heatmap: true, plateCrossings: true },
+      layers: { heatmap: true },
       heatmapMode: "whiff_rate",
     }),
   },
@@ -184,7 +184,7 @@ export const SCENARIOS: readonly Scenario[] = [
     lens: ["camera", "contact", "types"],
     preset: preset({
       view: "Batter",
-      layers: { contactSim: true, plateCrossings: true },
+      layers: { contactSim: true },
       batSpeed: 72,
       attackAngleDeg: 18,
     }),

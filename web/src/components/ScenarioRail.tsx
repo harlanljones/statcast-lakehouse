@@ -16,10 +16,10 @@ const card = (active: boolean): JSX.CSSProperties => ({
   "text-align": "left",
   padding: "10px 12px",
   color: THEME.text,
-  background: active ? "rgba(96, 165, 250, 0.14)" : "transparent",
-  border: `1px solid ${active ? THEME.accent : THEME.border}`,
+  background: active ? "rgba(255, 255, 255, 0.07)" : "transparent",
+  border: `1px solid ${active ? "var(--accent)" : THEME.border}`,
   "border-left-width": "3px",
-  cursor: "pointer",
+  "border-left-color": active ? "var(--accent)" : THEME.border,
 });
 
 export default function ScenarioRail(props: ScenarioRailProps): JSX.Element {
@@ -27,7 +27,7 @@ export default function ScenarioRail(props: ScenarioRailProps): JSX.Element {
     <nav
       aria-label="demo scenarios"
       style={{
-        width: "248px",
+        width: "232px",
         "flex-shrink": "0",
         display: "flex",
         "flex-direction": "column",
@@ -40,7 +40,7 @@ export default function ScenarioRail(props: ScenarioRailProps): JSX.Element {
     >
       <For each={props.scenarios}>
         {(s) => (
-          <button aria-pressed={props.activeId === s.id} onClick={() => props.onSelect(s.id)} style={card(props.activeId === s.id)}>
+          <button class="ui-ctl" aria-pressed={props.activeId === s.id} onClick={() => props.onSelect(s.id)} style={card(props.activeId === s.id)}>
             <div style={{ display: "flex", "justify-content": "space-between", "align-items": "baseline" }}>
               <strong style={{ "font-size": "14px" }}>{s.title}</strong>
               <span style={{ color: THEME.muted, "font-size": "11px" }}>{s.sprint}</span>
@@ -49,7 +49,7 @@ export default function ScenarioRail(props: ScenarioRailProps): JSX.Element {
           </button>
         )}
       </For>
-      <button aria-pressed={props.liveActive} onClick={props.onLive} style={{ ...card(props.liveActive), "margin-top": "auto" }}>
+      <button class="ui-ctl" aria-pressed={props.liveActive} onClick={props.onLive} style={{ ...card(props.liveActive), "margin-top": "auto" }}>
         <strong style={{ "font-size": "13px" }}>Live data</strong>
         <div style={{ color: THEME.muted, "font-size": "12px", "margin-top": "4px" }}>Browse real date partitions</div>
       </button>

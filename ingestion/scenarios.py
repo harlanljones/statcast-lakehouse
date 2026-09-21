@@ -176,8 +176,8 @@ def fatigue_arc(seed: int = 802) -> pa.Table:
             z0=5.9 - 0.25 * p + rng.gauss(0, 0.04 + 0.10 * p),
             spin=spin - 120 * p + rng.gauss(0, 60),
             ax=ax + rng.gauss(0, 0.8), lift=lift + rng.gauss(0, 1.0),
-            plate_x=rng.gauss(0, 0.45 + 0.45 * p),
-            plate_z=2.5 + rng.gauss(0, 0.5 + 0.4 * p),
+            plate_x=max(-2.4, min(2.4, rng.gauss(0, 0.45 + 0.45 * p))),
+            plate_z=max(0.2, min(4.8, 2.5 + rng.gauss(0, 0.5 + 0.4 * p))),
             whiff_p=0.30 - 0.14 * p,
         ))
     return _table(rows)

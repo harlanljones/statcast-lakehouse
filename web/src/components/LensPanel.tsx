@@ -45,8 +45,8 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
         display: "flex",
         "flex-wrap": "wrap",
         "align-items": "center",
-        gap: "10px 24px",
-        padding: "10px 16px",
+        gap: "8px 20px",
+        padding: "8px 16px",
         background: THEME.panel,
         "border-top": `1px solid ${THEME.border}`,
       }}
@@ -57,7 +57,7 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
 
       <Show when={has("flight")}>
         <div style={{ display: "flex", "align-items": "center", gap: "8px", "font-size": "12px" }}>
-          <button onClick={props.onTogglePlay} aria-pressed={props.isPlaying}>
+          <button class="ui-ctl ui-ghost" onClick={props.onTogglePlay} aria-label="Play flight" aria-pressed={props.isPlaying}>
             {props.isPlaying ? "Pause" : "Play"}
           </button>
           <RangeField
@@ -80,7 +80,8 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
               const on = () => props.selectedTypes.size === 0 || props.selectedTypes.has(code);
               return (
                 <button
-                  aria-pressed={props.selectedTypes.has(code)}
+                  class="ui-ctl"
+                  aria-pressed={on()}
                   onClick={() => props.onToggleType(code)}
                   style={{
                     padding: "3px 9px",
@@ -89,7 +90,6 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
                     opacity: on() ? "1" : "0.4",
                     background: `rgba(${r}, ${g}, ${b}, 0.18)`,
                     border: `1px solid rgb(${r}, ${g}, ${b})`,
-                    cursor: "pointer",
                   }}
                 >
                   {code}

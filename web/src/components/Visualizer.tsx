@@ -100,7 +100,64 @@ export default function Visualizer(props: VisualizerProps) {
       controller: true,
       layers: [],
     });
-    onCleanup(() => deck?.finalize());
+    (window as any).__deck = deck;
+
+    // Debounce hover picking pass to eliminate pointermove micro-stalls
+    // during continuous mouse movement or camera orbiting (gl.readPixels GPU flush).
+    const origPick = (deck as any)._pickAndCallback.bind(deck);
+    let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+
+    (deck as any)._pickAndCallback = function () {
+      const req = (this as any)._pickRequest;
+      if (!req || !req.event) return;
+
+      // Pointer left canvas — clear hover immediately
+      if (req.event.type === "pointerleave" || req.x === -1) {
+        if (hoverTimer) {
+          clearTimeout(hoverTimer);
+          hoverTimer = null;
+        }
+        origPick();
+        return;
+      }
+
+      // Drag / orbit active — never pick during camera navigation
+      if (req.event.leftButton || req.event.rightButton) {
+        if (hoverTimer) {
+          clearTimeout(hoverTimer);
+          hoverTimer = null;
+        }
+        req.event = null;
+        return;
+      }
+
+      const savedX = req.x;
+      const savedY = req.y;
+      const savedRadius = req.radius;
+      const savedCanvasId = req.canvasId;
+      const savedEvent = req.event;
+      req.event = null;
+
+      if (hoverTimer) clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => {
+        hoverTimer = null;
+        const currentReq = (this as any)._pickRequest;
+        if (currentReq) {
+          currentReq.x = savedX;
+          currentReq.y = savedY;
+          currentReq.radius = savedRadius;
+          currentReq.canvasId = savedCanvasId;
+          currentReq.event = savedEvent;
+          origPick();
+          (deck as any)?.redraw();
+        }
+      }, 75);
+    };
+
+    onCleanup(() => {
+      if (hoverTimer) clearTimeout(hoverTimer);
+      deck?.finalize();
+    });
   });
 
   // Tracks props.data, props.filter, props.plateXRange, props.plateZRange,
@@ -149,13 +206,13 @@ export default function Visualizer(props: VisualizerProps) {
     if (deck && vs) deck.setProps({ viewState: vs });
   });
 
-  const tooltip = () => pitchTooltip(picked());
+  const tooltip = () => pitchTooltip(picked(), props.batSpeed, props.attackAngleDeg);
 
   return (
-    <div style={{ position: "relative", flex: "1", width: "100%" }}>
+    <div style={{ position: "relative", flex: "1", width: "100%", overflow: "hidden" }}>
       <div
         ref={container}
-        style={{ flex: "1", width: "100%", height: "100%" }}
+        style={{ width: "100%", height: "100%", overflow: "hidden" }}
         aria-label={`orbit-target:${ORBIT_TARGET.join(",")}`}
       />
       <Show when={props.showBreakChart && props.data?.pitches}>
@@ -198,7 +255,7 @@ export default function Visualizer(props: VisualizerProps) {
           border: "0",
         }}
       >
-        {picked() ? pitchTooltipSummary(picked()!) : ""}
+        {picked() ? pitchTooltipSummary(picked()!, props.batSpeed, props.attackAngleDeg) : ""}
       </span>
       {tooltip() && (
         <div
