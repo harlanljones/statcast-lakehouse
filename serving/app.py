@@ -61,19 +61,25 @@ def _serialize(table) -> tuple[bytes, str]:
     return body, _etag_for(body)
 
 
-def _respond(body: bytes, etag: str, if_none_match: str | None) -> Response:
+def _respond(
+    body: bytes,
+    etag: str,
+    if_none_match: str | None,
+    *,
+    cache_control: str = "public, max-age=86400",
+) -> Response:
     if if_none_match and _etag_matches(if_none_match, etag):
         # RFC 9111 4.3.4: 304 should carry the Cache-Control of the stored
         # response so caches refresh with the same directives.
         return Response(
             status_code=304,
-            headers={"ETag": etag, "Cache-Control": "public, max-age=86400"},
+            headers={"ETag": etag, "Cache-Control": cache_control},
         )
     return Response(
         content=body,
         media_type=MEDIA_ARROW,
         headers={
-            "Cache-Control": "public, max-age=86400",
+            "Cache-Control": cache_control,
             "ETag": etag,
         },
     )
@@ -134,7 +140,9 @@ def scenario(request: Request, scenario_id: str) -> Response:
     if scenario_id not in SCENARIOS:
         raise HTTPException(404, f"unknown scenario {scenario_id!r}")
     body, etag = _scenario_body(scenario_id)
-    return _respond(body, etag, request.headers.get("if-none-match"))
+    return _respond(
+        body, etag, request.headers.get("if-none-match"), cache_control="no-cache"
+    )
 
 
 def _bq_client():

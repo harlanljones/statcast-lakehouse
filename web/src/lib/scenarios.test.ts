@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CAMERA_VIEWS } from "./deck-layers";
 import {
   DEFAULT_SCENARIO_ID,
+  LIVE_PRESET,
   SCENARIOS,
   parseScenarioParam,
   scenarioById,
@@ -68,5 +69,12 @@ describe("scenario urls", () => {
     expect(parseScenarioParam("?a=1&scenario=contact-lab")).toBe("contact-lab");
     expect(parseScenarioParam("?scenario=nope")).toBeNull();
     expect(parseScenarioParam("")).toBeNull();
+  });
+
+  it("LIVE_PRESET is neutral", () => {
+    expect(Object.values(LIVE_PRESET.layers).some(Boolean)).toBe(false);
+    expect(LIVE_PRESET.pairedTypes).toBeNull();
+    expect(LIVE_PRESET.zoneFilter).toBe("all");
+    expect(LIVE_PRESET.outcomeFilter).toBe("all");
   });
 });

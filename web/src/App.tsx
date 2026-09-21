@@ -26,6 +26,7 @@ import { SCENE_ACCENT } from "./components/ui";
 import LensPanel from "./components/LensPanel";
 import {
   DEFAULT_SCENARIO_ID,
+  LIVE_PRESET,
   SCENARIOS,
   parseScenarioParam,
   scenarioById,
@@ -136,9 +137,19 @@ export default function App() {
   // Latest-request-wins token shared by every loader.
   let loadSeq = 0;
 
+  const exitScenarioMode = () => {
+    setActiveScenarioId(null);
+    try {
+      history.replaceState(null, "", location.pathname);
+    } catch {
+      /* non-browser test env */
+    }
+  };
+
   const handleSelectDate = (date: string) => {
     setSelectedDate(date);
     if (!date) return;
+    exitScenarioMode();
     const seq = ++loadSeq;
     setIsLoading(true);
     setErrorMessage(null);
@@ -205,6 +216,7 @@ export default function App() {
     batch(() => {
       setActiveScenarioId(id);
       applyPreset(sc.preset);
+      setPitchData(null);
       setIsPlaying(false);
       setFlightProgress(1.0);
       setSelectedDate("");
@@ -231,14 +243,10 @@ export default function App() {
 
   const selectLive = () => {
     batch(() => {
-      setActiveScenarioId(null);
+      exitScenarioMode();
+      applyPreset(LIVE_PRESET);
       setShowAllControls(true);
     });
-    try {
-      history.replaceState(null, "", location.pathname);
-    } catch {
-      /* non-browser test env */
-    }
     handleLoadSample();
   };
 

@@ -93,6 +93,9 @@ const BASE: ScenarioPreset = {
   pairedTypes: null,
 };
 
+/** Neutral preset applied when leaving scenario mode for the live sample. */
+export const LIVE_PRESET: ScenarioPreset = BASE;
+
 interface PresetOverride {
   view?: CameraViewName;
   speedRange?: [number, number];
@@ -180,7 +183,7 @@ export const SCENARIOS: readonly Scenario[] = [
     hook: "Same swing, different pitch, different result.",
     lookFor:
       "Pitch speeds from 70 to 100 mph meet a fixed bat. Hover a pitch to see the simulated exit velocity, launch angle, and contact quality. At 72 mph bat speed and 18 degrees, the harder pitches barrel first.",
-    tryThis: "Nudge attack angle from 16 to 20 degrees and watch barrels appear across the set.",
+    tryThis: "Drag attack angle down to 16 degrees and the barrels disappear; push it to 20 and nearly every pitch barrels.",
     lens: ["camera", "contact", "types"],
     preset: preset({
       view: "Batter",

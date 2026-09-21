@@ -39,10 +39,12 @@ def test_scenario_is_byte_stable_with_etag_and_304(client):
     b = client.get("/pitches/scenario/tunnel-vision")
     assert a.content == b.content
     etag = a.headers["etag"]
-    assert etag.startswith('"') and "max-age" in a.headers["cache-control"]
+    assert etag.startswith('"')
+    assert a.headers["cache-control"] == "no-cache"
     r304 = client.get("/pitches/scenario/tunnel-vision", headers={"If-None-Match": etag})
     assert r304.status_code == 304
     assert r304.content == b""
+    assert r304.headers["cache-control"] == "no-cache"
 
 
 def test_scenarios_have_distinct_bodies(client):

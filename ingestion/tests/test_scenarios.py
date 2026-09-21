@@ -59,7 +59,7 @@ def test_tunnel_vision_tunnels_then_diverges(rows):
     for other in ("SL", "CH"):
         m = compute_pitch_pair_metrics(c["FF"], c[other])
         assert m["tunneling_separation_inches"] < 3.0
-        assert m["plate_divergence_inches"] > 8.0
+        assert m["plate_divergence_inches"] > 12.0
         assert m["tunnel_ratio"] > 5.0
 
 
@@ -89,6 +89,8 @@ def test_chase_map_whiffs_cluster_low_and_away(rows):
             r for r in rows["chase-map"]
             if r["is_swing"] and scenarios.in_chase_box(r["plate_x"], r["plate_z"]) == inside
         ]
+        if not sw:
+            return 0, 0.0
         return len(sw), sum(r["is_whiff"] for r in sw) / len(sw)
 
     n_in, rate_in = whiff_rate(True)
