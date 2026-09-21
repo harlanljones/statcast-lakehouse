@@ -12,6 +12,7 @@ import {
   type OutcomeFilter,
 } from "../lib/deck-layers";
 import { pitchTooltip, pitchTooltipSummary, clampTooltipPos } from "../lib/pitch-tooltip";
+import { clampViewState, controllerOptions, withLimits, type DragMode } from "../lib/camera";
 import BreakChart from "./BreakChart";
 import PairComparisonPanel from "./PairComparisonPanel";
 import FatiguePanel from "./FatiguePanel";
@@ -28,6 +29,10 @@ export interface VisualizerProps {
   outcomeFilter?: OutcomeFilter;
   selectedTypes?: ReadonlySet<string> | null;
   viewState?: OrbitViewState | null;
+  /** What a plain drag does; shift/right-drag does the other one. */
+  dragMode?: DragMode;
+  /** Bump to snap the camera back to the current preset. */
+  resetKey?: number;
   flightProgress?: number;
   showTunneling?: boolean;
   showGhostBreak?: boolean;
@@ -93,12 +98,29 @@ export default function Visualizer(props: VisualizerProps) {
     }
   };
 
+  // Expose the live camera as data attributes: handy for debugging and lets
+  // browser tests assert that scroll / drag really moved the view.
+  const publishCamera = (vs: OrbitViewState) => {
+    if (!container) return;
+    container.dataset.zoom = vs.zoom.toFixed(2);
+    container.dataset.rotationX = (vs.rotationX ?? 0).toFixed(1);
+    container.dataset.rotationOrbit = (vs.rotationOrbit ?? 0).toFixed(1);
+    container.dataset.target = vs.target.map((n) => n.toFixed(2)).join(",");
+  };
+
   onMount(() => {
     deck = new Deck({
       parent: container,
       views: new OrbitView({}),
-      viewState: effectiveViewState(props.viewState, props.showHeatmap) ?? INITIAL_VIEW,
-      controller: true,
+      viewState: withLimits(effectiveViewState(props.viewState, props.showHeatmap) ?? INITIAL_VIEW),
+      controller: controllerOptions(props.dragMode ?? "rotate"),
+      // Controlled camera: deck.gl only reports what the user did; we apply it
+      // (clamped so the field cannot be panned or zoomed out of reach).
+      onViewStateChange: ({ viewState }: { viewState: any }) => {
+        const next = clampViewState(viewState as OrbitViewState);
+        deck?.setProps({ viewState: next });
+        publishCamera(next);
+      },
       layers: [],
     });
 
@@ -207,9 +229,20 @@ export default function Visualizer(props: VisualizerProps) {
 
   // Camera preset snap: pushing a new viewState into the Deck viewState prop
   // re-targets OrbitView without touching layers or data.
+  // `resetKey` re-applies the same preset after the user has moved the camera.
   createEffect(() => {
+    void props.resetKey;
     const vs = effectiveViewState(props.viewState, props.showHeatmap);
-    if (deck && vs) deck.setProps({ viewState: vs });
+    if (deck && vs) {
+      const limited = withLimits(vs);
+      deck.setProps({ viewState: limited });
+      publishCamera(limited);
+    }
+  });
+
+  createEffect(() => {
+    const mode = props.dragMode ?? "rotate";
+    deck?.setProps({ controller: controllerOptions(mode) });
   });
 
   const tooltip = () => pitchTooltip(picked(), props.batSpeed, props.attackAngleDeg, props.showContactSim);
@@ -221,6 +254,22 @@ export default function Visualizer(props: VisualizerProps) {
         style={{ width: "100%", height: "100%", overflow: "hidden" }}
         aria-label={`orbit-target:${ORBIT_TARGET.join(",")}`}
       />
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          left: "12px",
+          bottom: "10px",
+          "z-index": "5",
+          "pointer-events": "none",
+          "font-size": "11px",
+          color: "rgba(148, 163, 184, 0.85)",
+        }}
+      >
+        {props.dragMode === "pan"
+          ? "Scroll: zoom · Drag: pan · Shift+drag: rotate"
+          : "Scroll: zoom · Drag: rotate · Shift+drag: pan"}
+      </div>
       <Show when={props.showBreakChart && props.data?.pitches}>
         <BreakChart
           pitches={props.data!.pitches}

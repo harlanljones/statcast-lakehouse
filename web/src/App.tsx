@@ -38,6 +38,7 @@ import {
   type ScenarioPreset,
 } from "./lib/scenarios";
 import { applyPresetTo } from "./lib/scenario-state";
+import type { DragMode } from "./lib/camera";
 export default function App() {
   const [pitchData, setPitchData] = createSignal<PitchTable | null>(null);
   const [speedRange, setSpeedRange] = createSignal<[number, number]>([70, 105]);
@@ -46,6 +47,15 @@ export default function App() {
   const [zoneFilter, setZoneFilter] = createSignal<ZoneFilter>("all");
   const [outcomeFilter, setOutcomeFilter] = createSignal<OutcomeFilter>("all");
   const [view, setView] = createSignal<CameraViewName>("Catcher");
+  const [dragMode, setDragMode] = createSignal<DragMode>("rotate");
+  // Bumped to snap the camera back to the current preset, even when the preset
+  // did not change (the user may have moved the camera by hand).
+  const [resetKey, setResetKey] = createSignal(0);
+  const resetView = () => setResetKey((k) => k + 1);
+  const selectView = (v: CameraViewName) => {
+    setView(v);
+    resetView();
+  };
   const [selectedTypes, setSelectedTypes] = createSignal<ReadonlySet<string>>(new Set());
   const [datePartitions, setDatePartitions] = createSignal<DatePartition[]>([]);
   const [selectedDate, setSelectedDate] = createSignal<string>("");
@@ -225,6 +235,7 @@ export default function App() {
     batch(() => {
       setActiveScenarioId(id);
       applyPreset(sc.preset);
+      resetView();
       setPitchData(null);
       setIsPlaying(false);
       setFlightProgress(1.0);
@@ -346,6 +357,8 @@ export default function App() {
             outcomeFilter={outcomeFilter()}
             selectedTypes={selectedTypes()}
             viewState={CAMERA_VIEWS[view()]}
+            dragMode={dragMode()}
+            resetKey={resetKey()}
             flightProgress={isPlaying() || flightProgress() < 1.0 ? flightProgress() : undefined}
             showTunneling={showTunneling()}
             showGhostBreak={showGhostBreak()}
@@ -374,7 +387,10 @@ export default function App() {
               <LensPanel
                 lens={s().lens}
                 view={view()}
-                onView={setView}
+                onView={selectView}
+                dragMode={dragMode()}
+                onDragMode={setDragMode}
+                onResetView={resetView}
                 isPlaying={isPlaying()}
                 onTogglePlay={togglePlay}
                 flightProgress={flightProgress()}
@@ -420,7 +436,7 @@ export default function App() {
             selectedDate={selectedDate()}
             onSelectDate={handleSelectDate}
             view={view()}
-            onView={setView}
+            onView={selectView}
             zoneFilter={zoneFilter()}
             onZoneFilter={setZoneFilter}
             outcomeFilter={outcomeFilter()}

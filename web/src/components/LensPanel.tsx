@@ -2,12 +2,16 @@ import { For, Show, type JSX } from "solid-js";
 import { CAMERA_VIEWS, pitchColor, type CameraViewName, type OutcomeFilter, type ZoneFilter } from "../lib/deck-layers";
 import type { HeatmapMode } from "../lib/heatmap";
 import type { LensId } from "../lib/scenarios";
+import type { DragMode } from "../lib/camera";
 import { RangeField, Segmented, THEME } from "./ui";
 
 export interface LensPanelProps {
   lens: readonly LensId[];
   view: CameraViewName;
   onView: (v: CameraViewName) => void;
+  dragMode: DragMode;
+  onDragMode: (m: DragMode) => void;
+  onResetView: () => void;
   isPlaying: boolean;
   onTogglePlay: () => void;
   flightProgress: number;
@@ -53,6 +57,18 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
     >
       <Show when={has("camera")}>
         <Segmented label="View" value={props.view} options={VIEWS} onChange={props.onView} />
+        <Segmented
+          label="Drag"
+          value={props.dragMode}
+          options={[
+            { value: "rotate", label: "Rotate" },
+            { value: "pan", label: "Pan" },
+          ]}
+          onChange={props.onDragMode}
+        />
+        <button class="ui-ctl ui-ghost" onClick={props.onResetView} aria-label="Reset camera to the current view">
+          Reset view
+        </button>
       </Show>
 
       <Show when={has("flight")}>
