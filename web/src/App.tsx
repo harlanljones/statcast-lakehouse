@@ -28,13 +28,16 @@ import {
   DEFAULT_SCENARIO_ID,
   LIVE_PRESET,
   SCENARIOS,
+  STATIC_SCENARIOS,
   parseScenarioParam,
   scenarioById,
   scenarioSearch,
   scenarioUrl,
   type ScenarioId,
+  type LayerKey,
   type ScenarioPreset,
 } from "./lib/scenarios";
+import { applyPresetTo } from "./lib/scenario-state";
 export default function App() {
   const [pitchData, setPitchData] = createSignal<PitchTable | null>(null);
   const [speedRange, setSpeedRange] = createSignal<[number, number]>([70, 105]);
@@ -150,6 +153,7 @@ export default function App() {
     setSelectedDate(date);
     if (!date) return;
     exitScenarioMode();
+    setPitchData(null);
     const seq = ++loadSeq;
     setIsLoading(true);
     setErrorMessage(null);
@@ -185,29 +189,34 @@ export default function App() {
       });
   };
 
-  const applyPreset = (p: ScenarioPreset) => {
-    setView(p.view);
-    setSpeedRange(p.speedRange);
-    setPlateXRange(p.plateXRange);
-    setPlateZRange(p.plateZRange);
-    setZoneFilter(p.zoneFilter);
-    setOutcomeFilter(p.outcomeFilter);
-    setSelectedTypes(new Set(p.selectedTypes));
-    setShowTunneling(p.layers.tunneling);
-    setShowGhostBreak(p.layers.ghostBreak);
-    setShowReleasePoints(p.layers.releasePoints);
-    setShowPlateCrossings(p.layers.plateCrossings);
-    setShowBreakChart(p.layers.breakChart);
-    setShowPairComparison(p.layers.pairComparison);
-    setShowContactSim(p.layers.contactSim);
-    setShowDispersion(p.layers.dispersion);
-    setShowFatigue(p.layers.fatigue);
-    setShowHeatmap(p.layers.heatmap);
-    setHeatmapMode(p.heatmapMode);
-    setBatSpeed(p.batSpeed);
-    setAttackAngleDeg(p.attackAngleDeg);
-    setPairedTypes(p.pairedTypes);
+  const layerSetters: Record<LayerKey, (on: boolean) => void> = {
+    tunneling: setShowTunneling,
+    ghostBreak: setShowGhostBreak,
+    releasePoints: setShowReleasePoints,
+    plateCrossings: setShowPlateCrossings,
+    breakChart: setShowBreakChart,
+    pairComparison: setShowPairComparison,
+    contactSim: setShowContactSim,
+    dispersion: setShowDispersion,
+    fatigue: setShowFatigue,
+    heatmap: setShowHeatmap,
   };
+
+  const applyPreset = (p: ScenarioPreset) =>
+    applyPresetTo(p, {
+      setView,
+      setSpeedRange,
+      setPlateXRange,
+      setPlateZRange,
+      setZoneFilter,
+      setOutcomeFilter,
+      setSelectedTypes,
+      setLayer: (key, on) => layerSetters[key](on),
+      setHeatmapMode,
+      setBatSpeed,
+      setAttackAngleDeg,
+      setPairedTypes,
+    });
 
   const selectScenario = (id: ScenarioId) => {
     const sc = scenarioById(id);
@@ -245,6 +254,7 @@ export default function App() {
     batch(() => {
       exitScenarioMode();
       applyPreset(LIVE_PRESET);
+      setPitchData(null);
       setShowAllControls(true);
     });
     handleLoadSample();
@@ -257,7 +267,7 @@ export default function App() {
 
   onMount(() => {
     // Date partitions only feed the Live data drawer; failure is non-fatal.
-    fetchDatePartitions().then(setDatePartitions).catch(() => {});
+    if (!STATIC_SCENARIOS) fetchDatePartitions().then(setDatePartitions).catch(() => {});
     selectScenario(parseScenarioParam(location.search) ?? DEFAULT_SCENARIO_ID);
   });
 
@@ -319,6 +329,7 @@ export default function App() {
           onSelect={selectScenario}
           liveActive={activeScenarioId() === null}
           onLive={selectLive}
+          showLive={!STATIC_SCENARIOS}
         />
         <main style={{ flex: "1", display: "flex", "flex-direction": "column", "min-width": "0" }}>
           <StoryCaption
@@ -402,7 +413,8 @@ export default function App() {
             onPlateX={setPlateXRange}
             plateZ={plateZRange()}
             onPlateZ={setPlateZRange}
-            onLoad={handleLoadSample}
+            // Static build has no /pitches/sample: the drawer's load button reloads the active scenario.
+            onLoad={STATIC_SCENARIOS ? () => selectScenario(activeScenarioId() ?? DEFAULT_SCENARIO_ID) : handleLoadSample}
             loading={isLoading()}
             datePartitions={datePartitions()}
             selectedDate={selectedDate()}

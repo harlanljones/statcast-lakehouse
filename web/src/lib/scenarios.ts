@@ -211,7 +211,15 @@ export function scenarioById(id: string): Scenario | undefined {
   return SCENARIOS.find((s) => s.id === id);
 }
 
-export const scenarioUrl = (id: ScenarioId): string => `/pitches/scenario/${id}`;
+/**
+ * Static hosting (Cloudflare Pages) has no API: the build sets
+ * VITE_STATIC_SCENARIOS=1 and each scenario is a pre-exported Arrow asset
+ * (`npm run export:scenarios`), byte-identical to the API response.
+ */
+export const STATIC_SCENARIOS: boolean = import.meta.env.VITE_STATIC_SCENARIOS === "1";
+
+export const scenarioUrl = (id: ScenarioId, staticMode: boolean = STATIC_SCENARIOS): string =>
+  staticMode ? `/scenarios/${id}.arrow` : `/pitches/scenario/${id}`;
 export const scenarioSearch = (id: ScenarioId): string => `?scenario=${id}`;
 
 export function parseScenarioParam(search: string): ScenarioId | null {

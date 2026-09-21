@@ -111,10 +111,30 @@ export function batterStrikeZoneSegments(
 export const CAMERA_VIEWS = {
   Catcher: { target: [0, 14, 1.8], rotationX: 8, rotationOrbit: 0, zoom: 4.8 },
   Pitcher: { target: [0, 24, 2.5], rotationX: 12, rotationOrbit: 180, zoom: 3.7 },
-  Batter: { target: [2.5, 24, 2.5], rotationX: 9, rotationOrbit: 8, zoom: 4.6 },
+  Batter: { target: [2.5, 24, 1.2], rotationX: 9, rotationOrbit: 8, zoom: 3.9 },
   Overhead: { target: [0, 31, 0], rotationX: 90, rotationOrbit: 90, zoom: 3.9 },
   Side: { target: [0, 31, 3.0], rotationX: 0, rotationOrbit: 90, zoom: 3.9 },
 } as const satisfies Record<string, OrbitViewState>;
+
+/**
+ * Tighter Catcher framing used while the strike-zone heatmap is on (Chase Map):
+ * the zone fills the canvas. Kept separate so ghost-break / corpus-slice keep
+ * the shared Catcher preset.
+ */
+export const CATCHER_HEATMAP_VIEW = {
+  target: [0, 14, 1.6],
+  rotationX: 8,
+  rotationOrbit: 0,
+  zoom: 5.0,
+} as const satisfies OrbitViewState;
+
+/** Camera to render: Catcher swaps to the heatmap framing when the heatmap is on. */
+export function effectiveViewState(
+  vs: OrbitViewState | null | undefined,
+  showHeatmap: boolean | undefined,
+): OrbitViewState | null | undefined {
+  return showHeatmap && vs === CAMERA_VIEWS.Catcher ? CATCHER_HEATMAP_VIEW : vs;
+}
 
 export type CameraViewName = keyof typeof CAMERA_VIEWS;
 
@@ -398,7 +418,8 @@ export function buildLayers(opts: BuildLayersOpts) {
       widthUnits: "meters",
       widthMinPixels: 1.5,
       billboard: true,
-      opacity: 0.9,
+      // Fade the bundle when the heatmap is on so the zone stays legible.
+      opacity: showHeatmap && heatmapCells && heatmapCells.length > 0 ? 0.35 : 0.9,
       ...filteredProps,
       extensions: [ext],
       updateTriggers: {
@@ -789,7 +810,9 @@ export function buildLayers(opts: BuildLayersOpts) {
         lineWidthMinPixels: 1.0,
         stroked: true,
         filled: true,
-        opacity: 0.8,
+        opacity: 0.85,
+        // Draw over the pitch-path bundle instead of being depth-occluded by it.
+        parameters: { depthCompare: "always" } as never,
       }),
     );
   }

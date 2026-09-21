@@ -1,4 +1,4 @@
-import { For, type JSX } from "solid-js";
+import { For, Show, type JSX } from "solid-js";
 import type { Scenario, ScenarioId } from "../lib/scenarios";
 import { THEME } from "./ui";
 
@@ -8,6 +8,8 @@ export interface ScenarioRailProps {
   onSelect: (id: ScenarioId) => void;
   liveActive: boolean;
   onLive: () => void;
+  /** Live data needs the API; the static (Cloudflare Pages) build hides it. */
+  showLive?: boolean;
 }
 
 const card = (active: boolean): JSX.CSSProperties => ({
@@ -49,10 +51,12 @@ export default function ScenarioRail(props: ScenarioRailProps): JSX.Element {
           </button>
         )}
       </For>
-      <button class="ui-ctl" aria-pressed={props.liveActive} onClick={props.onLive} style={{ ...card(props.liveActive), "margin-top": "auto" }}>
-        <strong style={{ "font-size": "13px" }}>Live data</strong>
-        <div style={{ color: THEME.muted, "font-size": "12px", "margin-top": "4px" }}>Browse real date partitions</div>
-      </button>
+      <Show when={props.showLive ?? true}>
+        <button class="ui-ctl" aria-pressed={props.liveActive} onClick={props.onLive} style={{ ...card(props.liveActive), "margin-top": "auto" }}>
+          <strong style={{ "font-size": "13px" }}>Live data</strong>
+          <div style={{ color: THEME.muted, "font-size": "12px", "margin-top": "4px" }}>Browse real date partitions</div>
+        </button>
+      </Show>
     </nav>
   );
 }

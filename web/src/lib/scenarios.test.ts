@@ -4,6 +4,7 @@ import {
   DEFAULT_SCENARIO_ID,
   LIVE_PRESET,
   SCENARIOS,
+  STATIC_SCENARIOS,
   parseScenarioParam,
   scenarioById,
   scenarioSearch,
@@ -61,7 +62,16 @@ describe("scenario catalog", () => {
 describe("scenario urls", () => {
   it("builds the serving url and the deep-link query", () => {
     expect(scenarioUrl("fatigue-arc")).toBe("/pitches/scenario/fatigue-arc");
+    expect(scenarioUrl("fatigue-arc", false)).toBe("/pitches/scenario/fatigue-arc");
     expect(scenarioSearch("fatigue-arc")).toBe("?scenario=fatigue-arc");
+  });
+
+  it("points at the pre-exported .arrow asset in static (Cloudflare Pages) mode", () => {
+    expect(scenarioUrl("fatigue-arc", true)).toBe("/scenarios/fatigue-arc.arrow");
+  });
+
+  it("is not in static mode unless the build asks for it", () => {
+    expect(STATIC_SCENARIOS).toBe(false);
   });
 
   it("parses a known deep link and rejects unknown or missing ones", () => {

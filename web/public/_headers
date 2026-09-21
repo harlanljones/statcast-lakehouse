@@ -1,0 +1,6 @@
+# Cloudflare Pages response headers (copied to dist/ by Vite).
+# Scenario bodies are static Arrow files; always revalidate so a redeploy is
+# picked up immediately (Pages serves an ETag, so unchanged files still 304).
+/scenarios/*
+  Content-Type: application/vnd.apache.arrow.file
+  Cache-Control: public, max-age=0, must-revalidate

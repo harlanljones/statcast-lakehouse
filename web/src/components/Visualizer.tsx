@@ -6,6 +6,7 @@ import {
   INITIAL_VIEW,
   ORBIT_TARGET,
   buildLayers,
+  effectiveViewState,
   type PitchDatum,
   type ZoneFilter,
   type OutcomeFilter,
@@ -96,7 +97,7 @@ export default function Visualizer(props: VisualizerProps) {
     deck = new Deck({
       parent: container,
       views: new OrbitView({}),
-      viewState: props.viewState ?? INITIAL_VIEW,
+      viewState: effectiveViewState(props.viewState, props.showHeatmap) ?? INITIAL_VIEW,
       controller: true,
       layers: [],
     });
@@ -207,11 +208,11 @@ export default function Visualizer(props: VisualizerProps) {
   // Camera preset snap: pushing a new viewState into the Deck viewState prop
   // re-targets OrbitView without touching layers or data.
   createEffect(() => {
-    const vs = props.viewState;
+    const vs = effectiveViewState(props.viewState, props.showHeatmap);
     if (deck && vs) deck.setProps({ viewState: vs });
   });
 
-  const tooltip = () => pitchTooltip(picked(), props.batSpeed, props.attackAngleDeg);
+  const tooltip = () => pitchTooltip(picked(), props.batSpeed, props.attackAngleDeg, props.showContactSim);
 
   return (
     <div style={{ position: "relative", flex: "1", width: "100%", overflow: "hidden" }}>
@@ -260,7 +261,7 @@ export default function Visualizer(props: VisualizerProps) {
           border: "0",
         }}
       >
-        {picked() ? pitchTooltipSummary(picked()!, props.batSpeed, props.attackAngleDeg) : ""}
+        {picked() ? pitchTooltipSummary(picked()!, props.batSpeed, props.attackAngleDeg, props.showContactSim) : ""}
       </span>
       {tooltip() && (
         <div

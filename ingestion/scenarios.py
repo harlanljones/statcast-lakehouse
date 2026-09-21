@@ -8,8 +8,11 @@ induced vertical break and ax is horizontal break acceleration.
 """
 from __future__ import annotations
 
+import argparse
 import random
+import sys
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Callable
 
 import pyarrow as pa
@@ -299,3 +302,34 @@ SCENARIOS: dict[str, Callable[[], pa.Table]] = {
     "contact-lab": contact_lab,
     "corpus-slice": corpus_slice,
 }
+
+
+def export_scenarios(out_dir: str | Path) -> list[Path]:
+    """Write every scenario as `<id>.arrow` (Arrow IPC file) for static hosting.
+
+    Uses the same serialization as serving/app.py `_serialize`, so the files are
+    byte-identical to the /pitches/scenario/{id} response bodies.
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    written = []
+    for scenario_id, build in SCENARIOS.items():
+        table = build()
+        path = out / f"{scenario_id}.arrow"
+        with pa.ipc.new_file(str(path), table.schema) as writer:
+            writer.write_table(table)
+        written.append(path)
+    return written
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Export the demo scenarios as static Arrow files.")
+    parser.add_argument("--out", required=True, help="output directory (created if missing)")
+    args = parser.parse_args(argv)
+    for path in export_scenarios(args.out):
+        print(f"wrote {path} ({path.stat().st_size} bytes)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -3,6 +3,8 @@ import { DataFilterExtension } from "@deck.gl/extensions";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import {
   CAMERA_VIEWS,
+  CATCHER_HEATMAP_VIEW,
+  effectiveViewState,
   FALLBACK_COLOR,
   FILTER_SIZE,
   PITCH_COLORS,
@@ -103,10 +105,10 @@ describe("CAMERA_VIEWS", () => {
       zoom: 3.7,
     });
     expect(CAMERA_VIEWS.Batter).toEqual({
-      target: [2.5, 24, 2.5],
+      target: [2.5, 24, 1.2],
       rotationX: 9,
       rotationOrbit: 8,
-      zoom: 4.6,
+      zoom: 3.9,
     });
     expect(CAMERA_VIEWS.Overhead).toEqual({
       target: [0, 31, 0],
@@ -120,6 +122,12 @@ describe("CAMERA_VIEWS", () => {
       rotationOrbit: 90,
       zoom: 3.9,
     });
+  });
+
+  it("swaps Catcher for the tighter heatmap framing only when the heatmap is on", () => {
+    expect(effectiveViewState(CAMERA_VIEWS.Catcher, true)).toBe(CATCHER_HEATMAP_VIEW);
+    expect(effectiveViewState(CAMERA_VIEWS.Catcher, false)).toBe(CAMERA_VIEWS.Catcher);
+    expect(effectiveViewState(CAMERA_VIEWS.Pitcher, true)).toBe(CAMERA_VIEWS.Pitcher);
   });
 
   it("exposes the five preset keys", () => {
