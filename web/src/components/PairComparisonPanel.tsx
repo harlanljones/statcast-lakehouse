@@ -103,7 +103,11 @@ export default function PairComparisonPanel(props: PairComparisonPanelProps): JS
             }}
           >
             <For each={props.availableTypes}>
-              {(code) => <option value={code}>{code}</option>}
+              {(code) => (
+                <option value={code} selected={code === typeA()}>
+                  {code}
+                </option>
+              )}
             </For>
           </select>
         </div>
@@ -123,7 +127,11 @@ export default function PairComparisonPanel(props: PairComparisonPanelProps): JS
             }}
           >
             <For each={props.availableTypes}>
-              {(code) => <option value={code}>{code}</option>}
+              {(code) => (
+                <option value={code} selected={code === typeB()}>
+                  {code}
+                </option>
+              )}
             </For>
           </select>
         </div>
