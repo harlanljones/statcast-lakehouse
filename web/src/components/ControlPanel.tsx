@@ -19,6 +19,7 @@ export interface ControlPanelProps {
   plateZ?: [number, number];
   onPlateZ?: (v: [number, number]) => void;
   onLoad: () => void;
+  loading?: boolean;
   datePartitions?: DatePartition[];
   selectedDate?: string;
   onSelectDate?: (date: string) => void;
@@ -118,10 +119,22 @@ export default function ControlPanel(props: ControlPanelProps): JSX.Element {
   return (
     <footer
       role="contentinfo"
-      style={{ display: "flex", "align-items": "center", "flex-wrap": "wrap", gap: "16px", padding: "8px" }}
+      style={{
+        position: "relative",
+        "z-index": "20",
+        background: "rgba(10, 15, 30, 0.95)",
+        "border-top": "1px solid rgba(255, 255, 255, 0.12)",
+        display: "flex",
+        "align-items": "center",
+        "flex-wrap": "wrap",
+        gap: "16px",
+        padding: "10px 14px",
+      }}
     >
       <div role="group" aria-label="date selector" style={{ display: "flex", "align-items": "center", gap: "6px" }}>
-        <button onClick={props.onLoad}>Load sample day</button>
+        <button onClick={props.onLoad} disabled={props.loading}>
+          {props.loading ? "Loading..." : "Load sample day"}
+        </button>
         <Show when={props.datePartitions && props.datePartitions.length > 0}>
           <select
             aria-label="date partition selector"
