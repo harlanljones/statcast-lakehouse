@@ -6,6 +6,7 @@ import {
   INITIAL_VIEW,
   ORBIT_TARGET,
   buildLayers,
+  effectiveViewState,
   type PitchDatum,
   type ZoneFilter,
   type OutcomeFilter,
@@ -96,11 +97,73 @@ export default function Visualizer(props: VisualizerProps) {
     deck = new Deck({
       parent: container,
       views: new OrbitView({}),
-      viewState: props.viewState ?? INITIAL_VIEW,
+      viewState: effectiveViewState(props.viewState, props.showHeatmap) ?? INITIAL_VIEW,
       controller: true,
       layers: [],
     });
-    onCleanup(() => deck?.finalize());
+
+    // Debounce hover picking pass to eliminate pointermove micro-stalls
+    // during continuous mouse movement or camera orbiting (gl.readPixels GPU flush).
+    let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+    // deck.gl's picking pass is a private API: only patch it when present, so a
+    // deck.gl upgrade that renames it degrades to un-debounced hover instead of
+    // failing the whole mount.
+    const rawPick = (deck as any)._pickAndCallback;
+    if (typeof rawPick === "function") {
+      const origPick = rawPick.bind(deck);
+
+      (deck as any)._pickAndCallback = function () {
+        const req = (this as any)._pickRequest;
+        if (!req || !req.event) return;
+
+        // Pointer left canvas — clear hover immediately
+        if (req.event.type === "pointerleave" || req.x === -1) {
+          if (hoverTimer) {
+            clearTimeout(hoverTimer);
+            hoverTimer = null;
+          }
+          origPick();
+          return;
+        }
+
+        // Drag / orbit active — never pick during camera navigation
+        if (req.event.leftButton || req.event.rightButton) {
+          if (hoverTimer) {
+            clearTimeout(hoverTimer);
+            hoverTimer = null;
+          }
+          req.event = null;
+          return;
+        }
+
+        const savedX = req.x;
+        const savedY = req.y;
+        const savedRadius = req.radius;
+        const savedCanvasId = req.canvasId;
+        const savedEvent = req.event;
+        req.event = null;
+
+        if (hoverTimer) clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => {
+          hoverTimer = null;
+          const currentReq = (this as any)._pickRequest;
+          if (currentReq) {
+            currentReq.x = savedX;
+            currentReq.y = savedY;
+            currentReq.radius = savedRadius;
+            currentReq.canvasId = savedCanvasId;
+            currentReq.event = savedEvent;
+            origPick();
+            (deck as any)?.redraw();
+          }
+        }, 75);
+      };
+    }
+
+    onCleanup(() => {
+      if (hoverTimer) clearTimeout(hoverTimer);
+      deck?.finalize();
+    });
   });
 
   // Tracks props.data, props.filter, props.plateXRange, props.plateZRange,
@@ -145,17 +208,17 @@ export default function Visualizer(props: VisualizerProps) {
   // Camera preset snap: pushing a new viewState into the Deck viewState prop
   // re-targets OrbitView without touching layers or data.
   createEffect(() => {
-    const vs = props.viewState;
+    const vs = effectiveViewState(props.viewState, props.showHeatmap);
     if (deck && vs) deck.setProps({ viewState: vs });
   });
 
-  const tooltip = () => pitchTooltip(picked());
+  const tooltip = () => pitchTooltip(picked(), props.batSpeed, props.attackAngleDeg, props.showContactSim);
 
   return (
-    <div style={{ position: "relative", flex: "1", width: "100%" }}>
+    <div style={{ position: "relative", flex: "1", width: "100%", overflow: "hidden" }}>
       <div
         ref={container}
-        style={{ flex: "1", width: "100%", height: "100%" }}
+        style={{ width: "100%", height: "100%", overflow: "hidden" }}
         aria-label={`orbit-target:${ORBIT_TARGET.join(",")}`}
       />
       <Show when={props.showBreakChart && props.data?.pitches}>
@@ -198,7 +261,7 @@ export default function Visualizer(props: VisualizerProps) {
           border: "0",
         }}
       >
-        {picked() ? pitchTooltipSummary(picked()!) : ""}
+        {picked() ? pitchTooltipSummary(picked()!, props.batSpeed, props.attackAngleDeg, props.showContactSim) : ""}
       </span>
       {tooltip() && (
         <div

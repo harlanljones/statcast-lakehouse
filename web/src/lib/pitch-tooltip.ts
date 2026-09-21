@@ -42,7 +42,13 @@ function round1(value: number): string {
 }
 
 /** Format a hovered pitch into tooltip fields; null when nothing is picked. */
-export function pitchTooltip(d: PitchDatum | null | undefined): PitchTooltipInfo | null {
+export function pitchTooltip(
+  d: PitchDatum | null | undefined,
+  batSpeed?: number,
+  attackAngleDeg?: number,
+  /** Include the simulated-contact line (default true; Visualizer passes the Contact Sim layer state). */
+  includeContactSim: boolean = true,
+): PitchTooltipInfo | null {
   if (!d) return null;
   const px = d.plateX ?? d.pfxX ?? 0;
   const pz = d.plateZ ?? d.pfxZ ?? 0;
@@ -97,8 +103,8 @@ export function pitchTooltip(d: PitchDatum | null | undefined): PitchTooltipInfo
   }
 
   let simulatedContact: string | undefined;
-  if (d.kinematics) {
-    const col = computeCollision(d.kinematics);
+  if (includeContactSim && d.kinematics) {
+    const col = computeCollision(d.kinematics, batSpeed, attackAngleDeg);
     if (col.contactQuality === "Whiff") {
       simulatedContact = "Sim: Whiff";
     } else {
@@ -148,8 +154,13 @@ export function clampTooltipPos(
 }
 
 /** One-line accessible summary for the aria-live region. */
-export function pitchTooltipSummary(d: PitchDatum | null | undefined): string {
-  const info = pitchTooltip(d);
+export function pitchTooltipSummary(
+  d: PitchDatum | null | undefined,
+  batSpeed?: number,
+  attackAngleDeg?: number,
+  includeContactSim: boolean = true,
+): string {
+  const info = pitchTooltip(d, batSpeed, attackAngleDeg, includeContactSim);
   if (!info) return "";
   const parts = [`${info.pitchType}: ${info.speed}`];
   if (info.spin) parts.push(info.spin);

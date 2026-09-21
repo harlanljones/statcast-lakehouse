@@ -3,6 +3,8 @@ import { DataFilterExtension } from "@deck.gl/extensions";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import {
   CAMERA_VIEWS,
+  CATCHER_HEATMAP_VIEW,
+  effectiveViewState,
   FALLBACK_COLOR,
   FILTER_SIZE,
   PITCH_COLORS,
@@ -91,35 +93,41 @@ describe("dataFilterExtension", () => {
 describe("CAMERA_VIEWS", () => {
   it("defines the broadcast and batter presets with exact view states", () => {
     expect(CAMERA_VIEWS.Catcher).toEqual({
-      target: [0, 1.417, 2.5],
-      rotationX: 12,
-      rotationOrbit: 35,
-      zoom: 6.2,
-    });
-    expect(CAMERA_VIEWS.Pitcher).toEqual({
-      target: [0, 25, 3],
-      rotationX: 10,
-      rotationOrbit: 215,
-      zoom: 5.5,
-    });
-    expect(CAMERA_VIEWS.Batter).toEqual({
-      target: [0, 25, 3],
+      target: [0, 14, 1.8],
       rotationX: 8,
       rotationOrbit: 0,
-      zoom: 5.5,
+      zoom: 4.8,
+    });
+    expect(CAMERA_VIEWS.Pitcher).toEqual({
+      target: [0, 24, 2.5],
+      rotationX: 12,
+      rotationOrbit: 180,
+      zoom: 3.7,
+    });
+    expect(CAMERA_VIEWS.Batter).toEqual({
+      target: [2.5, 24, 1.2],
+      rotationX: 9,
+      rotationOrbit: 8,
+      zoom: 3.9,
     });
     expect(CAMERA_VIEWS.Overhead).toEqual({
-      target: [0, 27, 0],
+      target: [0, 31, 0],
       rotationX: 90,
-      rotationOrbit: 0,
-      zoom: 5.0,
+      rotationOrbit: 90,
+      zoom: 3.9,
     });
     expect(CAMERA_VIEWS.Side).toEqual({
-      target: [0, 25, 3],
-      rotationX: 5,
+      target: [0, 31, 3.0],
+      rotationX: 0,
       rotationOrbit: 90,
-      zoom: 5.5,
+      zoom: 3.9,
     });
+  });
+
+  it("swaps Catcher for the tighter heatmap framing only when the heatmap is on", () => {
+    expect(effectiveViewState(CAMERA_VIEWS.Catcher, true)).toBe(CATCHER_HEATMAP_VIEW);
+    expect(effectiveViewState(CAMERA_VIEWS.Catcher, false)).toBe(CAMERA_VIEWS.Catcher);
+    expect(effectiveViewState(CAMERA_VIEWS.Pitcher, true)).toBe(CAMERA_VIEWS.Pitcher);
   });
 
   it("exposes the five preset keys", () => {
@@ -324,30 +332,41 @@ describe("buildLayers", () => {
     expect(get(pitches[1])).toEqual([85, 0, 0, 1]); // SL selected
   });
 
-  it("emphasizes the picked trajectory via a per-datum GPU width accessor", () => {
-    const layer = buildLayers({
+  it("keeps trajectory layer width static and emphasizes the picked pitch via a dedicated highlight layer", () => {
+    const layers = buildLayers({
       pitches,
       speedRange: [60, 105],
       picked: pitches[1],
-    })[0] as unknown as {
+    });
+    const trajLayer = layers[0] as unknown as {
       props: {
-        getWidth: (d: PitchDatum) => number;
+        getWidth: number;
         updateTriggers: Record<string, unknown>;
       };
     };
     const BASE = 0.08;
-    // Per-datum accessor on the GPU path — data stays unfiltered.
-    expect(layer.props.getWidth(pitches[1])).toBeCloseTo(BASE * 2.5, 9);
-    expect(layer.props.getWidth(pitches[0])).toBeCloseTo(BASE, 9);
-    // Layer re-evaluation is triggered by the picked datum reference.
-    expect(layer.props.updateTriggers.getWidth).toBe(pitches[1]);
+    // Trajectory layer stays static to avoid CPU re-tesselation of all paths
+    expect(trajLayer.props.getWidth).toBeCloseTo(BASE, 9);
+    expect(trajLayer.props.updateTriggers.getWidth).toBeUndefined();
+
+    // Dedicated highlight layer renders the picked pitch with expanded width
+    const highlightLayer = layers.find((l) => l.id === "picked-pitch-highlight") as unknown as {
+      props: {
+        data: PitchDatum[];
+        getWidth: number;
+      };
+    };
+    expect(highlightLayer).toBeDefined();
+    expect(highlightLayer.props.data).toEqual([pitches[1]]);
+    expect(highlightLayer.props.getWidth).toBeCloseTo(BASE * 2.5, 9);
   });
 
-  it("uses base width everywhere when nothing is picked", () => {
-    const layer = buildLayers({ pitches, speedRange: [60, 105], picked: null })[0] as unknown as {
-      props: { getWidth: (d: PitchDatum) => number };
-    };
-    for (const p of pitches) expect(layer.props.getWidth(p)).toBeCloseTo(0.08, 9);
+  it("omits the highlight layer when nothing is picked", () => {
+    const layers = buildLayers({ pitches, speedRange: [60, 105], picked: null });
+    const trajLayer = layers[0] as unknown as { props: { getWidth: number } };
+    expect(trajLayer.props.getWidth).toBeCloseTo(0.08, 9);
+    const highlightLayer = layers.find((l) => l.id === "picked-pitch-highlight");
+    expect(highlightLayer).toBeUndefined();
   });
 
   it("colors trajectories by pitch type", () => {

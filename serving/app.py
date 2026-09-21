@@ -2,6 +2,7 @@
 
   GET /pitches?date=YYYY-MM-DD  -> Arrow IPC stream from BigQuery
   GET /pitches/sample           -> synthetic Arrow day (no GCP creds)
+  GET /pitches/scenario/{id}  -> curated 500-pitch demo group (Arrow)
 
 The client parses this with the apache-arrow JS SDK — zero JSON overhead.
 Run: uvicorn serving.app:app --port 8000  (matches web/vite.config.ts proxy; Docker/Cloud Run keeps $PORT, default 8080)
@@ -22,6 +23,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 
+from ingestion.scenarios import SCENARIOS
 from ingestion.worker import synth_day
 
 app = FastAPI(title="statcast-lakehouse serving", version="0.1.0")
@@ -59,19 +61,25 @@ def _serialize(table) -> tuple[bytes, str]:
     return body, _etag_for(body)
 
 
-def _respond(body: bytes, etag: str, if_none_match: str | None) -> Response:
+def _respond(
+    body: bytes,
+    etag: str,
+    if_none_match: str | None,
+    *,
+    cache_control: str = "public, max-age=86400",
+) -> Response:
     if if_none_match and _etag_matches(if_none_match, etag):
         # RFC 9111 4.3.4: 304 should carry the Cache-Control of the stored
         # response so caches refresh with the same directives.
         return Response(
             status_code=304,
-            headers={"ETag": etag, "Cache-Control": "public, max-age=86400"},
+            headers={"ETag": etag, "Cache-Control": cache_control},
         )
     return Response(
         content=body,
         media_type=MEDIA_ARROW,
         headers={
-            "Cache-Control": "public, max-age=86400",
+            "Cache-Control": cache_control,
             "ETag": etag,
         },
     )
@@ -118,6 +126,23 @@ def sample(request: Request, pitches: int = 300) -> Response:
     n = max(1, min(pitches, SAMPLE_PITCHES_CAP))
     body, etag = _sample_body(n)
     return _respond(body, etag, request.headers.get("if-none-match"))
+
+
+# Scenario bodies are fully deterministic (fixed seeds + fixed ingestion_time),
+# so serialize each once. maxsize == number of scenarios: nothing is evicted.
+@functools.lru_cache(maxsize=len(SCENARIOS))
+def _scenario_body(scenario_id: str) -> tuple[bytes, str]:
+    return _serialize(SCENARIOS[scenario_id]())
+
+
+@app.get("/pitches/scenario/{scenario_id}")
+def scenario(request: Request, scenario_id: str) -> Response:
+    if scenario_id not in SCENARIOS:
+        raise HTTPException(404, f"unknown scenario {scenario_id!r}")
+    body, etag = _scenario_body(scenario_id)
+    return _respond(
+        body, etag, request.headers.get("if-none-match"), cache_control="no-cache"
+    )
 
 
 def _bq_client():

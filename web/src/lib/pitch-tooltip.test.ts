@@ -250,3 +250,26 @@ describe("pitchTooltip", () => {
   });
 });
 
+
+describe("pitchTooltip contact sim parameters", () => {
+  it("responds to bat speed and attack angle", () => {
+    const k = { x0: 0, y0: 55, z0: 6, vx0: 0, vy0: -130, vz0: -3, ax: 0, ay: 20, az: -20 };
+    const low = pitchTooltip(pitch({ kinematics: k }), 72, 2)!.simulatedContact;
+    const high = pitchTooltip(pitch({ kinematics: k }), 72, 18)!.simulatedContact;
+    expect(low).not.toEqual(high);
+    expect(high).toContain("Barrel");
+  });
+});
+
+describe("pitchTooltip contact sim toggle", () => {
+  const k = { x0: 0, y0: 55, z0: 6, vx0: 0, vy0: -130, vz0: -3, ax: 0, ay: 20, az: -20 };
+  it("omits the Sim line when includeContactSim is false", () => {
+    expect(pitchTooltip(pitch({ kinematics: k }), 72, 18, false)!.simulatedContact).toBeUndefined();
+    expect(pitchTooltipSummary(pitch({ kinematics: k }), 72, 18, false)).not.toContain("Sim:");
+  });
+  it("keeps the Sim line when true or omitted", () => {
+    expect(pitchTooltip(pitch({ kinematics: k }), 72, 18, true)!.simulatedContact).toContain("Sim:");
+    expect(pitchTooltip(pitch({ kinematics: k }), 72, 18)!.simulatedContact).toContain("Sim:");
+    expect(pitchTooltipSummary(pitch({ kinematics: k }), 72, 18, true)).toContain("Sim:");
+  });
+});

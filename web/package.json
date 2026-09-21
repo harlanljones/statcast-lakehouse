@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "export:scenarios": "cd .. && python3 -m ingestion.scenarios --out web/public/scenarios",
+    "build:static": "npm run export:scenarios && VITE_STATIC_SCENARIOS=1 vite build",
+    "deploy": "npm run build:static && npx wrangler pages deploy dist",
     "preview": "vite preview",
     "test": "vitest run"
   },

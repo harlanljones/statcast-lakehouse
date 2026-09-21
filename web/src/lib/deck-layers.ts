@@ -28,12 +28,12 @@ import {
 import type { ReleaseDispersion } from "./dispersion";
 import type { HeatmapCell } from "./heatmap";
 
-export const ORBIT_TARGET: [number, number, number] = [0, 1.417, 2.5];
+export const ORBIT_TARGET: [number, number, number] = [0, 14, 1.8];
 export const INITIAL_VIEW: OrbitViewState = {
   target: ORBIT_TARGET,
-  rotationX: 12,
-  rotationOrbit: 35,
-  zoom: 6.2,
+  rotationX: 8,
+  rotationOrbit: 0,
+  zoom: 4.8,
 };
 
 export interface PitchDatum {
@@ -109,12 +109,32 @@ export function batterStrikeZoneSegments(
  * Side is the dugout line. Zoom follows deck.gl OrbitView scale.
  */
 export const CAMERA_VIEWS = {
-  Catcher: { target: [0, 1.417, 2.5], rotationX: 12, rotationOrbit: 35, zoom: 6.2 },
-  Pitcher: { target: [0, 25, 3], rotationX: 10, rotationOrbit: 215, zoom: 5.5 },
-  Batter: { target: [0, 25, 3], rotationX: 8, rotationOrbit: 0, zoom: 5.5 },
-  Overhead: { target: [0, 27, 0], rotationX: 90, rotationOrbit: 0, zoom: 5.0 },
-  Side: { target: [0, 25, 3], rotationX: 5, rotationOrbit: 90, zoom: 5.5 },
+  Catcher: { target: [0, 14, 1.8], rotationX: 8, rotationOrbit: 0, zoom: 4.8 },
+  Pitcher: { target: [0, 24, 2.5], rotationX: 12, rotationOrbit: 180, zoom: 3.7 },
+  Batter: { target: [2.5, 24, 1.2], rotationX: 9, rotationOrbit: 8, zoom: 3.9 },
+  Overhead: { target: [0, 31, 0], rotationX: 90, rotationOrbit: 90, zoom: 3.9 },
+  Side: { target: [0, 31, 3.0], rotationX: 0, rotationOrbit: 90, zoom: 3.9 },
 } as const satisfies Record<string, OrbitViewState>;
+
+/**
+ * Tighter Catcher framing used while the strike-zone heatmap is on (Chase Map):
+ * the zone fills the canvas. Kept separate so ghost-break / corpus-slice keep
+ * the shared Catcher preset.
+ */
+export const CATCHER_HEATMAP_VIEW = {
+  target: [0, 14, 1.6],
+  rotationX: 8,
+  rotationOrbit: 0,
+  zoom: 5.0,
+} as const satisfies OrbitViewState;
+
+/** Camera to render: Catcher swaps to the heatmap framing when the heatmap is on. */
+export function effectiveViewState(
+  vs: OrbitViewState | null | undefined,
+  showHeatmap: boolean | undefined,
+): OrbitViewState | null | undefined {
+  return showHeatmap && vs === CAMERA_VIEWS.Catcher ? CATCHER_HEATMAP_VIEW : vs;
+}
 
 export type CameraViewName = keyof typeof CAMERA_VIEWS;
 
@@ -388,21 +408,23 @@ export function buildLayers(opts: BuildLayersOpts) {
       id: "pitch-trajectories",
       pickable: true,
       onHover,
+      onClick: onHover,
       coordinateSystem: "cartesian" as never,
       data: pitches,
       // path is a flat 60-point [x,y,z] array — consumed directly, zero-copy.
       getPath: (d) => d.path,
       getColor: (d) => [...pitchColor(d.pitchType), 220],
-      getWidth: (d) => (d === picked ? TRAJECTORY_WIDTH * PICKED_WIDTH_MULTIPLIER : TRAJECTORY_WIDTH),
+      getWidth: TRAJECTORY_WIDTH,
       widthUnits: "meters",
       widthMinPixels: 1.5,
-      opacity: 0.9,
+      billboard: true,
+      // Fade the bundle when the heatmap is on so the zone stays legible.
+      opacity: showHeatmap && heatmapCells && heatmapCells.length > 0 ? 0.35 : 0.9,
       ...filteredProps,
       extensions: [ext],
       updateTriggers: {
         filterRange: [speedRange, xRange, zRange, typeRange],
         getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
-        getWidth: picked ?? null,
       },
     }),
     new PathLayer<WireSegment>({
@@ -468,6 +490,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         getWidth: TRAJECTORY_WIDTH * 0.75,
         widthUnits: "meters",
         widthMinPixels: 1.0,
+        billboard: true,
         opacity: 0.6,
         ...filteredProps,
         extensions: [ext],
@@ -491,6 +514,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         getWidth: TRAJECTORY_WIDTH * 1.5,
         widthUnits: "meters",
         widthMinPixels: 2.0,
+        billboard: true,
         opacity: 0.95,
       }),
       new PathLayer<WireSegment>({
@@ -534,6 +558,20 @@ export function buildLayers(opts: BuildLayersOpts) {
   }
 
   if (picked) {
+    layers.push(
+      new PathLayer<PitchDatum>({
+        id: "picked-pitch-highlight",
+        coordinateSystem: "cartesian" as never,
+        data: [picked],
+        getPath: (d) => d.path,
+        getColor: (d) => [...pitchColor(d.pitchType), 255],
+        getWidth: TRAJECTORY_WIDTH * PICKED_WIDTH_MULTIPLIER,
+        widthUnits: "meters",
+        widthMinPixels: 2.5,
+        billboard: true,
+        opacity: 1.0,
+      }),
+    );
     const px = picked.plateX ?? picked.pfxX ?? 0;
     const pz = picked.plateZ ?? picked.pfxZ ?? 2.5;
     layers.push(
@@ -646,6 +684,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         radiusUnits: "meters",
         stroked: true,
         filled: true,
+        billboard: true,
         getFillColor: [255, 255, 255, 240],
         getLineColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 255],
         lineWidthMinPixels: 1.5,
@@ -758,13 +797,22 @@ export function buildLayers(opts: BuildLayersOpts) {
         id: "strike-zone-heatmap",
         coordinateSystem: "cartesian" as never,
         data: heatmapCells,
-        getPolygon: (c: HeatmapCell) => c.polygon,
+        // SolidPolygon tessellates in the layer's x/y plane; the cells live in
+        // the plate plane (x, PLATE_Y, z), so feed [x, z, y] and swap y/z back
+        // with a modelMatrix (a pure axis swap, rendering-only).
+        getPolygon: (c: HeatmapCell) => c.polygon.map(([x, y, z]) => [x, z, y] as [number, number, number]),
+        modelMatrix: [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1],
         getFillColor: (c: HeatmapCell) => c.color,
         getLineColor: [255, 255, 255, 60],
+        // Default line width is 1 world unit (1 ft): pin outlines to hairlines.
+        getLineWidth: 1,
+        lineWidthUnits: "pixels",
         lineWidthMinPixels: 1.0,
         stroked: true,
         filled: true,
-        opacity: 0.8,
+        opacity: 0.85,
+        // Draw over the pitch-path bundle instead of being depth-occluded by it.
+        parameters: { depthCompare: "always" } as never,
       }),
     );
   }
