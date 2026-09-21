@@ -23,7 +23,15 @@ export function extractGameDate(table: Table): string | null {
   const col = table.getChild("game_date");
   if (!col || table.numRows === 0) return null;
   const v = col.get(0);
-  const s = v == null ? "" : String(v).trim();
+  if (v == null) return null;
+  if (typeof v === "number") {
+    const ms = v > 1e11 ? v : v * 86400000;
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+  if (v instanceof Date) {
+    return v.toISOString().slice(0, 10);
+  }
+  const s = String(v).trim();
   return s === "" ? null : s;
 }
 

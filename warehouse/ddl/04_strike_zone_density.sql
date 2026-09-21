@@ -12,19 +12,22 @@ WITH zone_cells AS (
   SELECT 7, 'Bottom-Left', ST_GEOGFROMTEXT('POLYGON((-0.708 1.500, -0.236 1.500, -0.236 2.167, -0.708 2.167, -0.708 1.500))') UNION ALL
   SELECT 8, 'Bottom-Middle', ST_GEOGFROMTEXT('POLYGON((-0.236 1.500, 0.236 1.500, 0.236 2.167, -0.236 2.167, -0.236 1.500))') UNION ALL
   SELECT 9, 'Bottom-Right', ST_GEOGFROMTEXT('POLYGON((0.236 1.500, 0.708 1.500, 0.708 2.167, 0.236 2.167, 0.236 1.500))')
+),
+pitches AS (
+  SELECT * FROM `statcast_analytics.fct_pitches` f
+  WHERE f.game_date = @target_date
 )
 SELECT
   z.zone_id,
   z.zone_name,
-  z.zone_geom,
+  ANY_VALUE(z.zone_geom) AS zone_geom,
   COUNT(f.pitch_id) AS pitch_count,
   COUNTIF(f.is_swing = 1) AS swing_count,
   COUNTIF(f.is_whiff = 1) AS whiff_count,
   ROUND(SAFE_DIVIDE(COUNTIF(f.is_whiff = 1), COUNTIF(f.is_swing = 1)) * 100.0, 1) AS whiff_pct,
   ROUND(SAFE_DIVIDE(COUNT(f.pitch_id), SUM(COUNT(f.pitch_id)) OVER ()) * 100.0, 1) AS density_pct
 FROM zone_cells z
-LEFT JOIN `statcast_analytics.fct_pitches` f
-  ON f.game_date = @target_date
-  AND ST_CONTAINS(z.zone_geom, f.plate_location)
-GROUP BY z.zone_id, z.zone_name, z.zone_geom
+LEFT JOIN pitches f
+  ON ST_CONTAINS(z.zone_geom, f.plate_location)
+GROUP BY z.zone_id, z.zone_name
 ORDER BY z.zone_id;

@@ -1,6 +1,6 @@
 /** Data-status lib: distinct pitch types, game_date extraction, formatting. */
 import { describe, expect, it } from "vitest";
-import { tableFromArrays, tableToIPC } from "apache-arrow";
+import { tableFromArrays, tableToIPC, type Table } from "apache-arrow";
 import { loadPitchTable } from "./arrow-loader";
 import { distinctPitchTypes, extractGameDate, formatDataStatus, computeWhiffRate } from "./data-status";
 import type { PitchDatum } from "./deck-layers";
@@ -36,6 +36,26 @@ describe("extractGameDate", () => {
   it("returns the first game_date value in the table", () => {
     const { table } = loadPitchTable(ipc(true, ["2024-04-01", "2024-04-01"]));
     expect(extractGameDate(table)).toBe("2024-04-01");
+  });
+
+  // BigQuery DATE columns reach the client as Arrow date values, not strings.
+  const tableWithFirstValue = (v: unknown) =>
+    ({ numRows: 1, getChild: () => ({ get: () => v }) }) as unknown as Table;
+
+  it("formats a date given as days since the epoch", () => {
+    expect(extractGameDate(tableWithFirstValue(19889))).toBe("2024-06-15");
+  });
+
+  it("formats a date given as epoch milliseconds", () => {
+    expect(extractGameDate(tableWithFirstValue(19889 * 86400000))).toBe("2024-06-15");
+  });
+
+  it("formats a Date object", () => {
+    expect(extractGameDate(tableWithFirstValue(new Date("2024-06-15T00:00:00Z")))).toBe("2024-06-15");
+  });
+
+  it("returns null for a null first value", () => {
+    expect(extractGameDate(tableWithFirstValue(null))).toBeNull();
   });
 
   it("returns null when the column is missing or empty", () => {

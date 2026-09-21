@@ -7,6 +7,13 @@ terraform {
   }
 }
 
+provider "google" {
+  project               = var.gcp_project
+  region                = var.gcp_region
+  user_project_override = true
+  billing_project       = var.gcp_project
+}
+
 variable "gcp_project" {
   type = string
 }
