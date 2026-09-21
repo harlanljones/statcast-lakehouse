@@ -1,6 +1,6 @@
-"""Offline unit tests for the live Storage Write path and worker CLI.
+"""Offline unit tests for the live BigQuery load-job path and worker CLI.
 
-No GCP credentials, no network: google-cloud modules are faked via
+No GCP credentials, no network: google.cloud.bigquery is faked via
 sys.modules so write_bq() can be exercised end to end with mocks.
 """
 from __future__ import annotations
@@ -20,93 +20,76 @@ from ingestion.worker import SCHEMA, main, synth_day, write_bq
 
 
 # ---------------------------------------------------------------------------
-# Fake google.cloud modules (google-cloud-bigquery[-storage] not installed;
-# everything below stands in for the Storage Write API surface write_bq uses).
+# Fake google.cloud.bigquery (google-cloud-bigquery is not needed to run the
+# suite; everything below stands in for the load-job surface write_bq uses).
 # ---------------------------------------------------------------------------
 class FakeGoogleAPICallError(Exception):
     """Stand-in for google.api_core.exceptions.GoogleAPICallError."""
 
 
-class _FakeClient:
-    def __init__(self, *args, **kwargs):
-        self.append_rows_calls: list = []
-        self.result_exc: Exception | None = None
+class _FakeLoadJob:
+    def __init__(self, exc):
+        self._exc = exc
 
-    def append_rows(self, requests):
-        reqs = list(requests)
-        # Requests self-register in FakeAppendRowsRequest.__init__.
-        self.append_rows_calls.append(reqs)
+    def result(self):
+        _FAKE_STATE.jobs_completed += 1
+        if self._exc is not None:
+            raise self._exc
+        return None
 
-        class _Future:
-            def __init__(self, exc):
-                self._exc = exc
 
-            def result(self):
-                if self._exc is not None:
-                    raise self._exc
-                return None
+class _FakeBigQueryClient:
+    def __init__(self, project=None, **kwargs):
+        _FAKE_STATE.client_projects.append(project)
 
-        return _Future(_FAKE_STATE.client_exc)
+    def load_table_from_json(self, json_rows, destination, job_config=None):
+        rows = list(json_rows)
+        _FAKE_STATE.load_calls.append(
+            pytypes.SimpleNamespace(rows=rows, table_ref=destination, job_config=job_config)
+        )
+        return _FakeLoadJob(_FAKE_STATE.job_exc)
+
+
+class _FakeLoadJobConfig:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
 
 
 class _FakeState:
     """Module-level capture shared across the fake client instances."""
 
     def __init__(self):
-        self.append_rows_requests: list = []
-        self.serialized_row_payloads: list = []
-        self.client_exc: Exception | None = None
+        self.reset()
+        self.job_exc: Exception | None = None
 
     def reset(self):
-        self.append_rows_requests = []
-        self.serialized_row_payloads = []
+        self.load_calls: list = []
+        self.client_projects: list = []
+        self.jobs_completed = 0
+        self.job_exc = None
+
+    @property
+    def rows_loaded(self) -> int:
+        return sum(len(c.rows) for c in self.load_calls)
 
 
 _FAKE_STATE = _FakeState()
 
 
-class FakeProtoRows:
-    def __init__(self):
-        # Plain list: only the request-level sink (FakeAppendRowsRequest)
-        # records payloads, so each row is captured exactly once.
-        self.serialized_rows = []
-
-
-class _RowSink(list):
-    def extend(self, iterable):
-        for item in iterable:
-            super().append(item)
-            _FAKE_STATE.serialized_row_payloads.append(item)
-
-
-class FakeAppendRowsRequest:
-    def __init__(self):
-        self.write_stream = None
-        self.proto_rows = pytypes.SimpleNamespace(serialized_rows=_RowSink())
-        _FAKE_STATE.append_rows_requests.append(self)
-
-
 def _install_fake_google_modules(monkeypatch):
-    bigquery_storage_v1 = pytypes.ModuleType("google.cloud.bigquery_storage_v1")
-    bigquery_storage_v1.BigQueryWriteClient = _FakeClient
-    bigquery_storage_v1.types = pytypes.SimpleNamespace(
-        AppendRowsRequest=FakeAppendRowsRequest
-    )
-    bigquery_storage_v1.pb2 = pytypes.SimpleNamespace(ProtoRows=FakeProtoRows)
+    bigquery = pytypes.ModuleType("google.cloud.bigquery")
+    bigquery.Client = _FakeBigQueryClient
+    bigquery.LoadJobConfig = _FakeLoadJobConfig
+    bigquery.WriteDisposition = pytypes.SimpleNamespace(WRITE_APPEND="WRITE_APPEND")
 
     google_cloud = pytypes.ModuleType("google.cloud")
-    google_cloud.bigquery = pytypes.ModuleType("google.cloud.bigquery")
-    google_cloud.bigquery_storage_v1 = bigquery_storage_v1
-
+    google_cloud.bigquery = bigquery
     google = pytypes.ModuleType("google")
     google.cloud = google_cloud
 
     monkeypatch.setitem(sys.modules, "google", google)
     monkeypatch.setitem(sys.modules, "google.cloud", google_cloud)
-    monkeypatch.setitem(sys.modules, "google.cloud.bigquery", google_cloud.bigquery)
-    monkeypatch.setitem(
-        sys.modules, "google.cloud.bigquery_storage_v1", bigquery_storage_v1
-    )
+    monkeypatch.setitem(sys.modules, "google.cloud.bigquery", bigquery)
 
 
 @pytest.fixture(autouse=True)
@@ -118,7 +101,7 @@ def fake_google(monkeypatch):
 
 
 def _sample_rows(n: int) -> list[dict]:
-    """Rows with the exact types that broke naive json.dumps: date + datetime."""
+    """Rows with the exact types that break a bare json.dumps: date + datetime."""
     table = synth_day(random.Random(3), dt.date(2026, 9, 14), n)
     return table.to_pylist()
 
@@ -127,17 +110,18 @@ def _sample_rows(n: int) -> list[dict]:
 # write_bq()
 # ---------------------------------------------------------------------------
 class TestWriteBqSerialization:
-    def test_date_and_datetime_serialize_without_typeerror(self):
+    def test_rows_reach_the_load_job_json_safe(self):
         rows = _sample_rows(10)
         n = write_bq(iter(rows), "proj-x", "bronze_pitches")
         assert n == 10
-        assert len(_FAKE_STATE.serialized_row_payloads) == 10
+        assert _FAKE_STATE.rows_loaded == 10
+        # load_table_from_json runs a bare json.dumps: every row must survive it.
+        for call in _FAKE_STATE.load_calls:
+            json.dumps(call.rows)
 
-    def test_payload_is_valid_json_with_iso_strings(self):
-        rows = _sample_rows(3)
-        write_bq(iter(rows), "proj-x", "bronze_pitches")
-        for payload in _FAKE_STATE.serialized_row_payloads:
-            obj = json.loads(payload)
+    def test_dates_and_datetimes_become_iso_strings(self):
+        write_bq(iter(_sample_rows(3)), "proj-x", "bronze_pitches")
+        for obj in _FAKE_STATE.load_calls[0].rows:
             assert obj["game_date"] == "2026-09-14"
             # datetime ISO format, UTC offset preserved
             parsed = dt.datetime.fromisoformat(obj["ingestion_time"])
@@ -145,21 +129,32 @@ class TestWriteBqSerialization:
             assert obj["pitch_type"] in worker.PITCH_TYPES
 
 
-class TestWriteBqStreamAndRequest:
-    def test_stream_name_format(self):
+class TestWriteBqJob:
+    def test_destination_table_reference(self):
         write_bq(iter(_sample_rows(2)), "my-proj", "bronze_pitches")
-        assert len(_FAKE_STATE.append_rows_requests) == 1
-        req = _FAKE_STATE.append_rows_requests[0]
-        assert req.write_stream == (
-            "projects/my-proj/datasets/statcast_analytics/tables/"
-            "bronze_pitches/streams/_default"
-        )
+        assert [c.table_ref for c in _FAKE_STATE.load_calls] == [
+            "my-proj.statcast_analytics.bronze_pitches"
+        ]
 
-    def test_one_append_rows_call_per_request(self):
+    def test_appends_and_never_truncates(self):
+        write_bq(iter(_sample_rows(2)), "p", "bronze_pitches")
+        assert _FAKE_STATE.load_calls[0].job_config.write_disposition == "WRITE_APPEND"
+
+    def test_builds_a_client_for_the_project(self):
+        write_bq(iter(_sample_rows(2)), "my-proj", "bronze_pitches")
+        assert _FAKE_STATE.client_projects == ["my-proj"]
+
+    def test_uses_an_injected_client_instead_of_building_one(self):
+        injected = _FakeBigQueryClient(project="injected")
+        _FAKE_STATE.client_projects.clear()
+        n = write_bq(iter(_sample_rows(4)), "p", "bronze_pitches", client=injected)
+        assert n == 4
+        assert _FAKE_STATE.client_projects == []  # no second client was created
+        assert _FAKE_STATE.rows_loaded == 4
+
+    def test_waits_for_every_load_job(self):
         write_bq(iter(_sample_rows(5)), "p", "bronze_pitches")
-        # Single batch -> exactly one AppendRowsRequest sent.
-        assert len(_FAKE_STATE.append_rows_requests) == 1
-        assert len(_FAKE_STATE.serialized_row_payloads) == 5
+        assert _FAKE_STATE.jobs_completed == len(_FAKE_STATE.load_calls) == 1
 
 
 class TestWriteBqChunking:
@@ -167,21 +162,19 @@ class TestWriteBqChunking:
         total = 11_001
         n = write_bq(iter(_sample_rows(total)), "p", "bronze_pitches")
         assert n == total
-        sizes = [len(r.proto_rows.serialized_rows) for r in _FAKE_STATE.append_rows_requests]
-        assert sizes == [5000, 5000, 1001]
-        # serialized payloads mirror the request contents
-        assert len(_FAKE_STATE.serialized_row_payloads) == total
+        assert [len(c.rows) for c in _FAKE_STATE.load_calls] == [5000, 5000, 1001]
+        assert _FAKE_STATE.jobs_completed == 3
 
     def test_empty_rows_is_noop(self):
         n = write_bq(iter([]), "p", "bronze_pitches")
         assert n == 0
-        assert _FAKE_STATE.append_rows_requests == []
+        assert _FAKE_STATE.load_calls == []
 
 
 class TestWriteBqErrorHandling:
-    def test_google_api_call_error_propagates(self):
-        _FAKE_STATE.client_exc = FakeGoogleAPICallError("stream closed")
-        with pytest.raises(FakeGoogleAPICallError, match="stream closed"):
+    def test_load_job_error_propagates(self):
+        _FAKE_STATE.job_exc = FakeGoogleAPICallError("load failed")
+        with pytest.raises(FakeGoogleAPICallError, match="load failed"):
             write_bq(iter(_sample_rows(3)), "p", "bronze_pitches")
 
 

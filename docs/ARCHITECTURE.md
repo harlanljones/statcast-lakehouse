@@ -7,9 +7,9 @@ MLB Stats API (baseballsavant statcast endpoint)
   -> ingestion/mlb_client.py (CSV stream, COLUMN_MAP normalization,
      RetryPolicy: exponential backoff, Retry-After on 429, 5xx + 429
      retryable, FetchRetriesExhausted)
-  -> ingestion/worker.py (5k-row protobuf chunks; --live --backfill START END
+  -> ingestion/worker.py (5k-row load-job chunks; --live --backfill START END
      for per-day failure-isolated multi-day backfill)
-  -> BigQuery Storage Write API, COMMITTED stream (free-tier write path)
+  -> BigQuery batch load jobs, WRITE_APPEND (free-tier write path)
   -> bronze_pitches (raw, partitioned by ingestion_time, raw JSON staging
      column)
   -> warehouse/ddl/03_curate_day.sql MERGE -> fct_pitches
@@ -40,8 +40,9 @@ BigQuery (fct_pitches, partition-filtered scans)
 
 ## Key decisions (and why)
 
-- **Storage Write over legacy insertAll** — legacy streaming is billed;
-  Storage Write has a 2 TB/mo free allowance, keeping the project at $0.
+- **Load jobs over legacy insertAll** — legacy streaming is billed; batch
+  load jobs run on the free shared slot pool (quota 1,500 jobs per table per
+  day), keeping the project at $0.
 - **In-warehouse ML (BQML)** — no model-hosting tier to pay for; inference
   cost is query-scan cost, already bounded by partitioning.
 - **Arrow IPC serving, no JSON** — typed arrays go straight into deck.gl

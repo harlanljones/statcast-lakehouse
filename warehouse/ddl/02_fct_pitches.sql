@@ -31,6 +31,6 @@ PARTITION BY game_date
 CLUSTER BY pitcher_id, batter_id, pitch_type
 OPTIONS (
   require_partition_filter = TRUE,
-  partition_expiration_days = 365,
+  partition_expiration_days = 1095,
   description = "Curated Statcast pitch event store with spatial strike zone mapping"
 );

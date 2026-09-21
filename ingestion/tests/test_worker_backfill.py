@@ -1,7 +1,7 @@
 """Offline tests for --backfill START END multi-day live mode.
 
 Same fake strategy as test_worker_live.py: fetch_game_day is monkeypatched
-(offline) and the google.cloud write path is faked via sys.modules.
+(offline) and the google.cloud.bigquery load path is faked via sys.modules.
 """
 from __future__ import annotations
 
@@ -64,9 +64,9 @@ class TestBackfillHappyPath:
             dt.date(2026, 9, 12),
         ]
         # one write per day, in date order, 5 rows each
-        streams = [r.write_stream.split("/tables/")[0] for r in _FAKE_STATE.append_rows_requests]
-        assert len(streams) == 3
-        assert len(_FAKE_STATE.serialized_row_payloads) == 15
+        tables = [c.table_ref for c in _FAKE_STATE.load_calls]
+        assert tables == ["proj-y.statcast_analytics.bronze_pitches"] * 3
+        assert _FAKE_STATE.rows_loaded == 15
         out = capsys.readouterr().out
         for day in ("2026-09-10", "2026-09-11", "2026-09-12"):
             assert day in out
@@ -114,7 +114,7 @@ class TestBackfillPartialFailure:
             dt.date(2026, 9, 12),
         ]
         # 2 successful writes only (10 rows)
-        assert len(_FAKE_STATE.serialized_row_payloads) == 10
+        assert _FAKE_STATE.rows_loaded == 10
         out = capsys.readouterr().out
         assert "ok" in out
         assert "failed" in out

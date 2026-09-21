@@ -30,6 +30,6 @@ CREATE TABLE IF NOT EXISTS `statcast_analytics.bronze_pitches` (
 PARTITION BY DATE(ingestion_time)
 OPTIONS (
   require_partition_filter = TRUE,
-  partition_expiration_days = 90,
+  partition_expiration_days = 1095,
   description = "Raw Statcast staging, partitioned by ingestion time"
 );

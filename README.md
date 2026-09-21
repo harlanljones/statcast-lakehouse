@@ -32,7 +32,7 @@ The other two: **Ghost Break** (how far did each pitch really move?) and **Corpu
 ```mermaid
 flowchart LR
     api["MLB Stats API<br/>Statcast pitches"] --> worker["Ingestion worker<br/>Python"]
-    worker -->|"Storage Write API"| bronze[("bronze_pitches")]
+    worker -->|"Batch load jobs"| bronze[("bronze_pitches")]
     bronze -->|"daily MERGE"| fct[("fct_pitches<br/>partitioned by game_date")]
     fct --> bqml["BQML xWhiff model"]
     fct -->|"one partition per request"| serve["Serving API<br/>FastAPI, Arrow IPC"]
