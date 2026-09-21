@@ -1,8 +1,8 @@
 """Statcast ingestion worker.
 
 Two modes:
-  * live     — poll the MLB Stats API and write to BigQuery via the
-               Storage Write API (COMMITTED stream, protobuf serialization).
+  * live     — poll the MLB Stats API and write to BigQuery via
+               batch load jobs (WRITE_APPEND, 5,000 rows per job).
   * dry-run  — generate a synthetic day of pitches and write an Apache Arrow
                IPC file locally. No GCP credentials, no network. This is the
                mode used by tests and local development.
@@ -611,7 +611,7 @@ def synth_day(
 
 
 def rows_to_record_batches(rows: Iterable[dict[str, Any]], chunk_size: int = 5000):
-    """Chunk rows for Storage Write protobuf batches (TDD §3.2: 5,000/chunk)."""
+    """Chunk rows for BigQuery load jobs (TDD §3.2: 5,000/chunk)."""
     chunk: list[dict[str, Any]] = []
     for row in rows:
         chunk.append(row)
@@ -632,35 +632,35 @@ def write_arrow(table: pa.Table, out_path: str) -> str:
     return out_path
 
 
-def write_bq(rows: Iterable[dict[str, Any]], project: str, table: str) -> int:
-    """Live path: BigQuery Storage Write API, COMMITTED stream, protobuf.
+def write_bq(
+    rows: Iterable[dict[str, Any]],
+    project: str,
+    table: str,
+    *,
+    client: Any = None,
+) -> int:
+    """Live path: BigQuery batch load jobs (WRITE_APPEND), one per 5,000-row chunk.
 
-    Costs nothing on the free tier (2 TB/mo write allowance) unlike legacy
-    `tabledata.insertAll`. Imported lazily so dry-run needs no GCP deps.
+    Load jobs are free on the shared slot pool (unlike legacy
+    `tabledata.insertAll` streaming, which is billed and never used here).
+    Quota is 1,500 load jobs per table per day, far above one job per game day.
+    `client` may be injected (tests, custom credentials); imported lazily so
+    dry-run needs no GCP deps.
     """
     from google.cloud import bigquery
-    from google.cloud.bigquery_storage_v1 import BigQueryWriteClient
-    from google.cloud.bigquery_storage_v1 import types as bq_types
 
-    write_client = BigQueryWriteClient()
-    # Build the default-stream name explicitly so the format is stable and
-    # testable regardless of client-library version:
-    #   projects/{project}/datasets/{dataset}/tables/{table}/streams/_default
-    stream = f"projects/{project}/datasets/statcast_analytics/tables/{table}/streams/_default"
+    if client is None:
+        client = bigquery.Client(project=project)
+    table_ref = f"{project}.statcast_analytics.{table}"
+    job_config = bigquery.LoadJobConfig(
+        write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+    )
     n = 0
     for chunk in rows_to_record_batches(rows):
-        from google.cloud.bigquery_storage_v1 import pb2 as storage_pb2
-
-        proto_rows = storage_pb2.ProtoRows()
-        # default=str: datetime.date / datetime.datetime / other non-JSON
-        # scalars serialize via str() (isoformat) instead of raising TypeError.
-        proto_rows.serialized_rows.extend(
-            json.dumps(r, default=str).encode() for r in chunk
-        )
-        request = bq_types.AppendRowsRequest()
-        request.write_stream = stream
-        request.proto_rows.serialized_rows.extend(proto_rows.serialized_rows)
-        write_client.append_rows(iter([request])).result()
+        # load_table_from_json runs a bare json.dumps: normalize date/datetime
+        # (and any other non-JSON scalar) to strings via str() (isoformat).
+        json_rows = [json.loads(json.dumps(r, default=str)) for r in chunk]
+        client.load_table_from_json(json_rows, table_ref, job_config=job_config).result()
         n += len(chunk)
     return n
 
@@ -707,7 +707,7 @@ def run_backfill(start: date, end: date, project: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true", help="synthetic day -> local Arrow file")
-    ap.add_argument("--live", action="store_true", help="MLB API -> BigQuery Storage Write")
+    ap.add_argument("--live", action="store_true", help="MLB API -> BigQuery load jobs")
     ap.add_argument("--date", default=None)
     ap.add_argument(
         "--backfill",

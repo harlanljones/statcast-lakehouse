@@ -18,5 +18,7 @@ SELECT
   plate_x, plate_z,
   is_whiff
 FROM `statcast_analytics.fct_pitches`
-WHERE game_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR)
+-- Fixed start, not a rolling window: the loaded seasons begin in 2024, and a
+-- relative window (CURRENT_DATE - 1 year) would exclude them. Still prunes by partition.
+WHERE game_date >= '2024-01-01'
   AND is_swing = 1;

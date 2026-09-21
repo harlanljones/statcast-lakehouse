@@ -99,7 +99,8 @@ resource "google_storage_bucket" "arrow_batches" {
 
   # Free-tier headroom: TDD §7 budgets ~500 MB of Arrow files against the
   # 5 GB Standard allowance; batches tier to Nearline at 30 days and are
-  # deleted at 365, matching fct_pitches partition expiration.
+  # deleted at 365. Table retention is longer (1095 days), but Nearline is
+  # outside the free tier, so exported batches are not kept as long.
   lifecycle_rule {
     condition {
       age = 30

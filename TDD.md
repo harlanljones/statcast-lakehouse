@@ -29,7 +29,7 @@ Build an end-to-end data lakehouse and visualization platform that ingests Major
                                    v
           [ Ingestion Service: Cloud Run Worker (Python/Polars) ]
                                    |
-                                   | BigQuery Storage Write API (gRPC - Committed Mode)
+                                   | BigQuery batch load jobs (WRITE_APPEND, 5,000-row chunks)
                                    v
 +----------------------------------------------------------------------+
 | Google BigQuery                                                      |
@@ -88,18 +88,21 @@ PARTITION BY game_date
 CLUSTER BY pitcher_id, batter_id, pitch_type
 OPTIONS (
   require_partition_filter = TRUE,
-  partition_expiration_days = 365,
+  partition_expiration_days = 1095,
   description = "Curated Statcast pitch event store with spatial strike zone mapping"
 );
 ```
 
+Retention is three years (1095 days) on both `fct_pitches` and `bronze_pitches`, so backfilled seasons are not expired on arrival: bronze is partitioned by `ingestion_time`, which the live path sets to the game day. Three seasons is about 3.6 GB against the 10 GB free tier.
+
 ### 3.2 Ingestion Worker (`ingestion/worker.py`)
 
 * **Runtime:** Cloud Run Job (Python 3.11, containerized).
-* **Protocol:** BigQuery Storage Write API using `COMMITTED` stream mode.
+* **Protocol:** BigQuery batch load jobs (`load_table_from_json`, `WRITE_APPEND`) on the free shared slot pool.
 * **Requirements:**
 1. Do not use legacy streaming API (`tabledata.insertAll`) to eliminate ingestion costs.
-2. Batch writes in 5,000-row chunks serialized via Protocol Buffers.
+2. Batch writes in 5,000-row chunks, one load job per chunk. Rows are normalized to JSON-safe values first (`date`/`datetime` become ISO strings), because `load_table_from_json` serializes with a bare `json.dumps`.
+3. Stay inside the 1,500 load jobs per table per day quota (about one job per game day).
 
 ### 3.3 Spatial Transformations (BigQuery GIS)
 
@@ -174,7 +177,7 @@ statcast-lakehouse/
 ├── ingestion/
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── worker.py          # solver + Storage Write API gRPC client
+│   ├── worker.py          # solver + BigQuery load-job writer
 │   ├── mlb_client.py      # Statcast API polling logic
 │   └── tests/
 ├── serving/app.py         # FastAPI Arrow IPC endpoints
@@ -195,9 +198,9 @@ statcast-lakehouse/
 
 | Service | Free Tier Allocation | Estimated Project Usage | Margin / Safety |
 | --- | --- | --- | --- |
-| BigQuery Storage | 10 GB / month | ~1.2 GB (1 season compressed) | 88% Headroom |
+| BigQuery Storage | 10 GB / month | ~3.6 GB (3 seasons compressed) | 64% Headroom |
 | BigQuery Queries | 1 TB / month | ~30 GB / month (partitioned) | 97% Headroom |
-| Storage Write API | 2 TB / month | <1.5 GB / month | 99% Headroom |
+| BigQuery load jobs | Free (shared slots); 1,500 jobs / table / day | ~1-2 jobs / day | >99% Headroom |
 | Cloud Run Ingestion | 180,000 vCPU-sec | ~25,000 vCPU-sec | 86% Headroom |
 | GCS Artifacts | 5 GB Standard | ~500 MB (Arrow files) | 90% Headroom |
 

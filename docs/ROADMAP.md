@@ -12,7 +12,7 @@ items 3+ are completed offline (no stubs in code).
   ingest of one real game day lands in bronze and curates via the MERGE.
 
 ## 2. Live ingestion + model (Sprint 1 cont.)
-- Run `--live` via the Cloud Run job; verify Storage Write rows and partition
+- Run `--live` via the Cloud Run job; verify load-job rows and partition
   pruning (query only scans one game_date).
 - Train `model_pitch_whiff`; acceptance: ML.EVALUATION AUC > 0.70 on a
   held-out day.

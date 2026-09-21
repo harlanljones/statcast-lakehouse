@@ -27,7 +27,7 @@ npx tsc -p web/tsconfig.json --noEmit    # typecheck (run from repo root)
 ```
 
 `serving/app.py` needs `pip install -r ingestion/requirements.txt` plus
-uvicorn; the live BigQuery/Storage Write paths need GOOGLE_APPLICATION_CREDENTIALS.
+uvicorn; the live BigQuery load-job path needs GOOGLE_APPLICATION_CREDENTIALS.
 
 ## Layout
 
@@ -55,7 +55,7 @@ uvicorn; the live BigQuery/Storage Write paths need GOOGLE_APPLICATION_CREDENTIA
   60-point path from the 9 kinematic parameters.
 - Queries must always filter on `game_date` (require_partition_filter is
   TRUE; free-tier scan budget is the constraint).
-- Ingestion uses the Storage Write API only — never legacy `tabledata.insertAll`.
+- Ingestion writes with BigQuery batch load jobs only — never legacy `tabledata.insertAll` streaming.
 - Web tests: vitest; Python tests: pytest under `ingestion/tests/`.
 
 ## Non-goals / invariants
