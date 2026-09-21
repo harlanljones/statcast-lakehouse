@@ -132,33 +132,45 @@ export default function App() {
     setSelectedTypes(next);
   };
 
+  // Latest-request-wins token shared by every loader.
+  let loadSeq = 0;
+
   const handleSelectDate = (date: string) => {
     setSelectedDate(date);
     if (!date) return;
+    const seq = ++loadSeq;
     setIsLoading(true);
     setErrorMessage(null);
     fetchPitches(`/pitches?date=${date}`)
-      .then(setPitchData)
+      .then((data) => {
+        if (seq === loadSeq) setPitchData(data);
+      })
       .catch((err) => {
         console.error("Failed to load date partition:", err);
-        setErrorMessage(`Failed to load ${date}: ${err.message}`);
+        if (seq === loadSeq) setErrorMessage(`Failed to load ${date}: ${err.message}`);
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        if (seq === loadSeq) setIsLoading(false);
+      });
   };
 
   const handleLoadSample = () => {
+    const seq = ++loadSeq;
     setIsLoading(true);
     setErrorMessage(null);
     fetchPitches("/pitches/sample")
       .then((data) => {
+        if (seq !== loadSeq) return;
         setSelectedDate("");
         setPitchData(data);
       })
       .catch((err) => {
         console.error("Failed to load sample day:", err);
-        setErrorMessage(`Failed to load sample day: ${err.message}`);
+        if (seq === loadSeq) setErrorMessage(`Failed to load sample day: ${err.message}`);
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        if (seq === loadSeq) setIsLoading(false);
+      });
   };
 
   const applyPreset = (p: ScenarioPreset) => {
@@ -188,6 +200,7 @@ export default function App() {
   const selectScenario = (id: ScenarioId) => {
     const sc = scenarioById(id);
     if (!sc) return;
+    const seq = ++loadSeq;
     batch(() => {
       setActiveScenarioId(id);
       applyPreset(sc.preset);
@@ -204,14 +217,14 @@ export default function App() {
     }
     fetchPitches(scenarioUrl(id))
       .then((data) => {
-        if (activeScenarioId() === id) setPitchData(data);
+        if (seq === loadSeq) setPitchData(data);
       })
       .catch((err) => {
         console.error("Failed to load scenario:", err);
-        if (activeScenarioId() === id) setErrorMessage(`Failed to load ${sc.title}: ${err.message}`);
+        if (seq === loadSeq) setErrorMessage(`Failed to load ${sc.title}: ${err.message}`);
       })
       .finally(() => {
-        if (activeScenarioId() === id) setIsLoading(false);
+        if (seq === loadSeq) setIsLoading(false);
       });
   };
 
