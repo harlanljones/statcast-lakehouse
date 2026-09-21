@@ -100,59 +100,64 @@ export default function Visualizer(props: VisualizerProps) {
       controller: true,
       layers: [],
     });
-    (window as any).__deck = deck;
 
     // Debounce hover picking pass to eliminate pointermove micro-stalls
     // during continuous mouse movement or camera orbiting (gl.readPixels GPU flush).
-    const origPick = (deck as any)._pickAndCallback.bind(deck);
     let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+    // deck.gl's picking pass is a private API: only patch it when present, so a
+    // deck.gl upgrade that renames it degrades to un-debounced hover instead of
+    // failing the whole mount.
+    const rawPick = (deck as any)._pickAndCallback;
+    if (typeof rawPick === "function") {
+      const origPick = rawPick.bind(deck);
 
-    (deck as any)._pickAndCallback = function () {
-      const req = (this as any)._pickRequest;
-      if (!req || !req.event) return;
+      (deck as any)._pickAndCallback = function () {
+        const req = (this as any)._pickRequest;
+        if (!req || !req.event) return;
 
-      // Pointer left canvas — clear hover immediately
-      if (req.event.type === "pointerleave" || req.x === -1) {
-        if (hoverTimer) {
-          clearTimeout(hoverTimer);
-          hoverTimer = null;
-        }
-        origPick();
-        return;
-      }
-
-      // Drag / orbit active — never pick during camera navigation
-      if (req.event.leftButton || req.event.rightButton) {
-        if (hoverTimer) {
-          clearTimeout(hoverTimer);
-          hoverTimer = null;
-        }
-        req.event = null;
-        return;
-      }
-
-      const savedX = req.x;
-      const savedY = req.y;
-      const savedRadius = req.radius;
-      const savedCanvasId = req.canvasId;
-      const savedEvent = req.event;
-      req.event = null;
-
-      if (hoverTimer) clearTimeout(hoverTimer);
-      hoverTimer = setTimeout(() => {
-        hoverTimer = null;
-        const currentReq = (this as any)._pickRequest;
-        if (currentReq) {
-          currentReq.x = savedX;
-          currentReq.y = savedY;
-          currentReq.radius = savedRadius;
-          currentReq.canvasId = savedCanvasId;
-          currentReq.event = savedEvent;
+        // Pointer left canvas — clear hover immediately
+        if (req.event.type === "pointerleave" || req.x === -1) {
+          if (hoverTimer) {
+            clearTimeout(hoverTimer);
+            hoverTimer = null;
+          }
           origPick();
-          (deck as any)?.redraw();
+          return;
         }
-      }, 75);
-    };
+
+        // Drag / orbit active — never pick during camera navigation
+        if (req.event.leftButton || req.event.rightButton) {
+          if (hoverTimer) {
+            clearTimeout(hoverTimer);
+            hoverTimer = null;
+          }
+          req.event = null;
+          return;
+        }
+
+        const savedX = req.x;
+        const savedY = req.y;
+        const savedRadius = req.radius;
+        const savedCanvasId = req.canvasId;
+        const savedEvent = req.event;
+        req.event = null;
+
+        if (hoverTimer) clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => {
+          hoverTimer = null;
+          const currentReq = (this as any)._pickRequest;
+          if (currentReq) {
+            currentReq.x = savedX;
+            currentReq.y = savedY;
+            currentReq.radius = savedRadius;
+            currentReq.canvasId = savedCanvasId;
+            currentReq.event = savedEvent;
+            origPick();
+            (deck as any)?.redraw();
+          }
+        }, 75);
+      };
+    }
 
     onCleanup(() => {
       if (hoverTimer) clearTimeout(hoverTimer);
