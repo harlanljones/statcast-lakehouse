@@ -20,6 +20,7 @@ import FatiguePanel from "./FatiguePanel";
 import type { ArsenalCentroid } from "../lib/arsenal";
 import type { FatigueBucket, ReleaseDispersion } from "../lib/dispersion";
 import type { HeatmapCell } from "../lib/heatmap";
+import type { PitcherStoryline } from "../lib/storylines";
 
 export interface VisualizerProps {
   data: PitchTable | null;
@@ -58,6 +59,8 @@ export interface VisualizerProps {
   onToggleFatigue?: (v: boolean) => void;
   showHeatmap?: boolean;
   heatmapCells?: HeatmapCell[] | null;
+  storylines?: readonly PitcherStoryline[];
+  storylineDate?: string;
 }
 
 /**
@@ -286,6 +289,8 @@ export default function Visualizer(props: VisualizerProps) {
             pitch={p()}
             pitches={props.data?.pitches ?? []}
             synthetic={props.synthetic ?? true}
+            storylines={props.storylines}
+            storylineDate={props.storylineDate}
             onClose={() => setPinned(null)}
           />
         )}
@@ -403,4 +408,3 @@ export default function Visualizer(props: VisualizerProps) {
     </div>
   );
 }
-

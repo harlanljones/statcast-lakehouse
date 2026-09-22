@@ -15,12 +15,14 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
 import random
 import sys
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Iterable
 
 import pyarrow as pa
@@ -638,6 +640,7 @@ def write_bq(
     table: str,
     *,
     client: Any = None,
+    resumable: bool = False,
 ) -> int:
     """Live path: BigQuery batch load jobs (WRITE_APPEND), one per 5,000-row chunk.
 
@@ -660,7 +663,31 @@ def write_bq(
         # load_table_from_json runs a bare json.dumps: normalize date/datetime
         # (and any other non-JSON scalar) to strings via str() (isoformat).
         json_rows = [json.loads(json.dumps(r, default=str)) for r in chunk]
-        client.load_table_from_json(json_rows, table_ref, job_config=job_config).result()
+        if resumable:
+            # A lost HTTP response must not submit the same batch twice. A
+            # known failed job is safe to retry under the next attempt ID.
+            from google.api_core.exceptions import Conflict
+
+            digest = hashlib.sha256(
+                json.dumps([table_ref, json_rows], sort_keys=True).encode(),
+            ).hexdigest()
+            attempt = 0
+            while True:
+                job_id = f"statcast_backfill_{digest}_{attempt}"
+                try:
+                    job = client.load_table_from_json(
+                        json_rows, table_ref, job_config=job_config, job_id=job_id,
+                    )
+                    break
+                except Conflict:
+                    job = client.get_job(job_id)
+                    if job.done() and job.error_result:
+                        attempt += 1
+                        continue
+                    break
+            job.result()
+        else:
+            client.load_table_from_json(json_rows, table_ref, job_config=job_config).result()
         n += len(chunk)
     return n
 
@@ -681,27 +708,141 @@ def _live_day(game_day: date, project: str) -> int:
     return write_bq(rows, project, "bronze_pitches")
 
 
-def run_backfill(start: date, end: date, project: str) -> int:
-    """Multi-day live mode: per-day fetch/write, failures don't abort.
+def _day_query_config(game_day: date):
+    from google.cloud import bigquery
 
-    Prints one ok/failed line per day plus a final summary. Exit 0 unless
-    every day failed.
+    return bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("target_date", "DATE", game_day)],
+        maximum_bytes_billed=100 * 1024 * 1024,
+    )
+
+
+def _partition_pitch_counts(
+    game_day: date, project: str, table: str, *, client: Any,
+) -> dict[str, int]:
+    """Read only one day's IDs, including duplicate counts for verification."""
+    if table not in {"bronze_pitches", "fct_pitches"}:
+        raise ValueError("unsupported pitch table")
+    partition_filter = "game_date = @target_date"
+    if table == "bronze_pitches":
+        partition_filter += " AND DATE(ingestion_time) = @target_date"
+    sql = (
+        f"SELECT pitch_id, COUNT(*) AS row_count "
+        f"FROM `{project}.statcast_analytics.{table}` "
+        f"WHERE {partition_filter} GROUP BY pitch_id"
+    )
+    return {
+        row["pitch_id"]: int(row["row_count"])
+        for row in client.query(sql, job_config=_day_query_config(game_day)).result()
+    }
+
+
+def _curate_day(game_day: date, project: str, *, client: Any) -> None:
+    """Execute the repository's partition-bounded, idempotent daily MERGE."""
+    sql_path = Path(__file__).resolve().parents[1] / "warehouse/ddl/03_curate_day.sql"
+    sql = sql_path.read_text().replace("`statcast_analytics.", f"`{project}.statcast_analytics.")
+    client.query(sql, job_config=_day_query_config(game_day)).result()
+
+
+def _backfill_day(game_day: date, project: str, *, client: Any) -> dict[str, Any]:
+    """Reconcile source IDs with bronze before loading, then curate and verify.
+
+    Fully consume the source before submitting any load jobs, so a truncated
+    response cannot create a falsely completed date. On restart, missing IDs
+    are loaded and completed chunks are left untouched. Run only one backfill
+    per date at a time; this reconciliation is not a distributed lock.
     """
-    ok, failures = 0, []
+    from ingestion.mlb_client import fetch_game_day
+
+    rows = list(fetch_game_day(game_day))
+    source = {}
+    for original in rows:
+        row = dict(original)
+        if str(row.get("game_date")) != game_day.isoformat() or not row.get("pitch_id"):
+            raise ValueError("source rows require a pitch_id and the requested game_date")
+        # Bronze is partitioned by ingestion_time; backfills use the game day.
+        row["ingestion_time"] = datetime.combine(
+            game_day, datetime.min.time(), tzinfo=timezone.utc,
+        ).isoformat()
+        pitch_id = row["pitch_id"]
+        if pitch_id in source and source[pitch_id] != row:
+            raise ValueError(f"conflicting source rows for pitch_id {pitch_id}")
+        source[pitch_id] = row
+
+    expected = set(source)
+    before = _partition_pitch_counts(game_day, project, "bronze_pitches", client=client)
+    if set(before) - expected:
+        raise ValueError("bronze contains IDs absent from fetched source; refusing to append")
+    missing = [source[pitch_id] for pitch_id in sorted(expected - set(before))]
+    written = write_bq(
+        missing, project, "bronze_pitches", client=client, resumable=True,
+    ) if missing else 0
+    bronze = _partition_pitch_counts(game_day, project, "bronze_pitches", client=client)
+    if set(bronze) != expected:
+        raise RuntimeError("bronze verification failed: pitch IDs differ from fetched source")
+    if expected:
+        _curate_day(game_day, project, client=client)
+    curated = _partition_pitch_counts(game_day, project, "fct_pitches", client=client)
+    if set(curated) != expected or any(count != 1 for count in curated.values()):
+        raise RuntimeError("curated verification failed: missing, extra, or duplicate pitch IDs")
+    return {
+        "date": game_day.isoformat(),
+        "status": "skipped" if before and not written else "ok",
+        "source_rows": len(source),
+        "written_rows": written,
+        "bronze_rows": sum(bronze.values()),
+        "bronze_duplicate_rows": sum(bronze.values()) - len(bronze),
+        "curated_rows": len(curated),
+    }
+
+
+def run_backfill(
+    start: date, end: date, project: str, *, manifest: str | Path | None = None,
+    client: Any = None,
+) -> int:
+    """Resume each date from warehouse state; any failed date yields exit 1.
+
+    Optional JSONL manifest records every attempt and is diagnostic only: the
+    warehouse is always rechecked on rerun, including after interrupted writes.
+    """
+    from google.cloud import bigquery
+
+    if not project or "`" in project:
+        raise ValueError("an explicit valid project is required")
+    if start > end:
+        raise ValueError("backfill start must not be after end")
+    if client is None:
+        client = bigquery.Client(project=project)
+    # Validate the report destination before doing any warehouse work.
+    report = open(manifest, "a", encoding="utf-8") if manifest is not None else None
+    ok, skipped, failures = 0, 0, []
     day = start
-    while day <= end:
-        try:
-            n = _live_day(day, project)
-            print(f"backfill {day.isoformat()}: ok ({n} pitches)")
-            ok += 1
-        except Exception as exc:  # noqa: BLE001 — one bad day must not abort
-            print(f"backfill {day.isoformat()}: failed ({type(exc).__name__}: {exc})")
-            failures.append((day, f"{type(exc).__name__}: {exc}"))
-        day += timedelta(days=1)
-    print(f"backfill summary: {ok} ok, {len(failures)} failed")
+    try:
+        while day <= end:
+            try:
+                result = _backfill_day(day, project, client=client)
+                print(f"backfill {day.isoformat()}: {result['status']} ({result['source_rows']} pitches)")
+                if result["status"] == "skipped":
+                    skipped += 1
+                else:
+                    ok += 1
+            except Exception as exc:  # noqa: BLE001 — continue with later dates
+                error = f"{type(exc).__name__}: {exc}"
+                print(f"backfill {day.isoformat()}: failed ({error})")
+                failures.append((day, error))
+                result = {"date": day.isoformat(), "status": "failed", "error": error}
+            if report is not None:
+                result.update(project=project, attempted_at=datetime.now(timezone.utc).isoformat())
+                report.write(json.dumps(result) + "\n")
+                report.flush()
+            day += timedelta(days=1)
+    finally:
+        if report is not None:
+            report.close()
+    print(f"backfill summary: {ok} ok, {skipped} skipped, {len(failures)} failed")
     for day, summary in failures:
         print(f"  {day.isoformat()}: {summary}")
-    return 0 if ok else 1
+    return 1 if failures else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -718,7 +859,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pitches", type=int, default=300)
     ap.add_argument("--out", default="data/sample.arrow")
     ap.add_argument("--project", default=None, help="GCP project (live mode)")
+    ap.add_argument("--manifest", help="append backfill results to this JSONL file")
     args = ap.parse_args(argv)
+
+    if args.manifest and not args.backfill:
+        ap.error("--manifest requires --backfill")
 
     if args.backfill:
         if args.date is not None:
@@ -741,7 +886,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         if start > end:
             ap.error(f"--backfill START {start} is after END {end}")
-        return run_backfill(start, end, args.project)
+        return run_backfill(start, end, args.project, manifest=args.manifest)
 
     if not args.project:
         args.project = os.environ.get("GCP_PROJECT")
