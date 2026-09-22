@@ -190,11 +190,13 @@ def test_pitches_dates_entries_carry_game_date_for_web_client(client, fake_dates
         assert entry["game_date"].startswith("20")
 
 
-def test_pitches_dates_query_scans_30_day_window(client, fake_dates_client):
+def test_pitches_dates_query_reads_all_partition_metadata(client, fake_dates_client):
     client.get("/pitches/dates")
     q = fake_dates_client.last_query
-    assert "fct_pitches" in q
-    assert "30 DAY" in q
+    assert "INFORMATION_SCHEMA.PARTITIONS" in q
+    assert "table_name = 'fct_pitches'" in q
+    assert "30 DAY" not in q
+    assert "FROM `statcast_analytics.fct_pitches`" not in q
     assert "GROUP BY" in q
 
 

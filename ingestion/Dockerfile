@@ -5,6 +5,7 @@ COPY ingestion/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY ingestion/ ./ingestion/
+COPY warehouse/ddl/03_curate_day.sql ./warehouse/ddl/03_curate_day.sql
 
 # Cloud Run Job entrypoint. Args pass through to the worker.
 ENTRYPOINT ["python", "-m", "ingestion.worker"]

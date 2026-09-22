@@ -1,6 +1,7 @@
 import { For, Show, type JSX } from "solid-js";
 import { pitchColor, type PitchDatum } from "../lib/deck-layers";
 import { mlbLinks, pitchResult, playerLabel, summarizePitcher } from "../lib/player-card";
+import { storylinesForPitcher, type PitcherStoryline } from "../lib/storylines";
 import { THEME } from "./ui";
 
 export interface PlayerCardProps {
@@ -8,6 +9,8 @@ export interface PlayerCardProps {
   /** Every pitch in the loaded group, for the pitcher summary. */
   pitches: readonly PitchDatum[];
   synthetic: boolean;
+  storylines?: readonly PitcherStoryline[];
+  storylineDate?: string;
   onClose: () => void;
 }
 
@@ -35,6 +38,7 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
     const [r, g, b] = pitchColor(code);
     return `rgb(${r}, ${g}, ${b})`;
   };
+  const stories = () => storylinesForPitcher(props.storylines ?? [], props.pitch.pitcherId, props.storylineDate);
 
   return (
     <aside
@@ -106,6 +110,33 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
       </Show>
 
       <div style={{ ...muted, "margin-bottom": "8px" }}>{playerLabel("Batter", props.pitch.batterId, props.synthetic)}</div>
+
+      <Show when={!props.synthetic && stories().length > 0}>
+        <section
+          aria-label="Pitcher storylines"
+          style={{ "border-top": `1px solid ${THEME.border}`, padding: "8px 0", "margin-bottom": "2px" }}
+        >
+          <div style={{ color: THEME.gold, "font-size": "10px", "letter-spacing": "0.04em", "margin-bottom": "4px" }}>
+            PITCHER STORYLINE
+          </div>
+          <For each={stories()}>
+            {(story) => (
+              <article style={{ "margin-bottom": "7px" }}>
+                <a
+                  href={story.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: THEME.text, "font-weight": "600", "text-decoration": "none" }}
+                >
+                  {story.title} ↗
+                </a>
+                <div style={{ ...muted, "font-size": "10px" }}>Event: {story.eventDate}</div>
+                <div style={{ ...muted, "margin-top": "1px" }}>{story.summary}</div>
+              </article>
+            )}
+          </For>
+        </section>
+      </Show>
 
       <div style={{ "border-top": `1px solid ${THEME.border}`, "padding-top": "8px", "margin-bottom": "8px" }}>
         <div>

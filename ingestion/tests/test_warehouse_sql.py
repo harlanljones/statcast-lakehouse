@@ -167,6 +167,12 @@ class TestBronzeAndCurateDay:
         assert "@target_date" in sql
         assert "DATE(ingestion_time) = @target_date" in sql
 
+    def test_curate_day_deduplicates_bronze_and_matches_game_date(self):
+        sql = read(DDL / "03_curate_day.sql")
+        assert "game_date = @target_date" in sql
+        assert "QUALIFY ROW_NUMBER() OVER" in sql
+        assert "PARTITION BY game_date, pitch_id" in sql
+
 
 # --------------------------------------------------------------------- BQML
 

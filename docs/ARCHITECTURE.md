@@ -8,7 +8,8 @@ MLB Stats API (baseballsavant statcast endpoint)
      RetryPolicy: exponential backoff, Retry-After on 429, 5xx + 429
      retryable, FetchRetriesExhausted)
   -> ingestion/worker.py (5k-row load-job chunks; --live --backfill START END
-     for per-day failure-isolated multi-day backfill)
+     reconciles pitch ids, resumes missing rows with deterministic load-job
+     ids, curates and verifies each day, optional JSONL audit manifest)
   -> BigQuery batch load jobs, WRITE_APPEND (free-tier write path)
   -> bronze_pitches (raw, partitioned by ingestion_time, raw JSON staging
      column)
@@ -19,7 +20,8 @@ MLB Stats API (baseballsavant statcast endpoint)
        and ML.EVALUATE evaluation (AUC >= 0.70)
   -> serving/app.py (FastAPI: one game_date partition -> Arrow IPC file,
      sha256 ETag + If-None-Match 304 with Cache-Control; /pitches/dates JSON
-     partition index, 30-day window; /pitches/cold serves exported Arrow
+     partition index from INFORMATION_SCHEMA; /pitches/storylines serves the
+     versioned pitcher context catalog; /pitches/cold serves exported Arrow
      batches via manifest.json under STATCAST_BATCH_DIR (path-contained);
      /pitches/sample byte-stable, capped)
   -> web/src/lib/kinematics.ts (9-parameter solver -> 60-pt path, Float32Array;

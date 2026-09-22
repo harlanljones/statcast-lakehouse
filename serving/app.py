@@ -3,8 +3,10 @@
   GET /pitches?date=YYYY-MM-DD  -> Arrow IPC stream from BigQuery
   GET /pitches/sample           -> synthetic Arrow day (no GCP creds)
   GET /pitches/scenario/{id}  -> curated 500-pitch demo group (Arrow)
+  GET /pitches/dates          -> historical partition metadata (JSON)
+  GET /pitches/storylines     -> pitcher context by date/player (JSON)
 
-The client parses this with the apache-arrow JS SDK — zero JSON overhead.
+The client parses pitch payloads with the apache-arrow JS SDK.
 Run: uvicorn serving.app:app --port 8000  (matches web/vite.config.ts proxy; Docker/Cloud Run keeps $PORT, default 8080)
 """
 from __future__ import annotations
@@ -19,12 +21,13 @@ import pathlib
 import random
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 
 from ingestion.scenarios import SCENARIOS
 from ingestion.worker import synth_day
+from serving.storylines import load_storylines
 
 app = FastAPI(title="statcast-lakehouse serving", version="0.1.0")
 app.add_middleware(
@@ -247,7 +250,11 @@ def pitches_cold(request: Request, date: str) -> Response:
 
 @app.get("/pitches/dates")
 def pitches_dates() -> Response:
-    """Distinct recent game_date partitions + row counts (metadata, JSON)."""
+    """Available historical partitions + metadata row counts (JSON).
+
+    INFORMATION_SCHEMA avoids scanning pitch rows or a rolling date cutoff.
+    Counts are storage metadata and can lag a recently completed load.
+    """
     if not os.environ.get("GCP_PROJECT"):
         manifest_path = pathlib.Path(_batch_dir()) / "manifest.json"
         if not manifest_path.is_file():
@@ -260,16 +267,45 @@ def pitches_dates() -> Response:
 
     client = _bq_client()
     q = """
-    SELECT game_date, COUNT(*) AS n
-    FROM `statcast_analytics.fct_pitches`
-    WHERE game_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    SELECT SAFE.PARSE_DATE('%Y%m%d', partition_id) AS game_date,
+           SUM(total_rows) AS n
+    FROM `statcast_analytics.INFORMATION_SCHEMA.PARTITIONS`
+    WHERE table_name = 'fct_pitches'
+      AND REGEXP_CONTAINS(partition_id, r'^[0-9]{8}$')
     GROUP BY game_date
+    HAVING game_date IS NOT NULL AND n > 0
     ORDER BY game_date DESC
     """
     rows = [
         {"game_date": str(row[0]), "rows": row[1]} for row in client.query(q).result()
     ]
     return Response(content=json.dumps(rows), media_type="application/json")
+
+
+@app.get("/pitches/storylines")
+def pitcher_storylines(date: str, player_id: int | None = Query(default=None, gt=0)) -> Response:
+    """Pitcher context for an inclusive analysis window, independent of GCP.
+
+    event_date marks the event itself; start_date/end_date describe the
+    surrounding comparison window, not the duration of an event or injury.
+    These retrospective annotations are not prediction features.
+    """
+    try:
+        parsed = dt.date.fromisoformat(date)
+        if parsed.isoformat() != date:
+            raise ValueError
+    except ValueError:
+        raise HTTPException(400, "date must be YYYY-MM-DD") from None
+    rows = [
+        row for row in load_storylines()
+        if row["start_date"] <= date <= row["end_date"]
+        and (player_id is None or row["player_id"] == player_id)
+    ]
+    return Response(
+        content=json.dumps(rows),
+        media_type="application/json",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get("/pitches")

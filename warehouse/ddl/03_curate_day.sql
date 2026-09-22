@@ -11,7 +11,12 @@ USING (
     ST_GEOGPOINT(plate_x, plate_z) AS plate_location
   FROM `statcast_analytics.bronze_pitches`
   WHERE DATE(ingestion_time) = @target_date
+    AND game_date = @target_date
     AND pitch_id IS NOT NULL
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY game_date, pitch_id
+    ORDER BY ingestion_time DESC
+  ) = 1
 ) b
 ON f.game_date = @target_date AND f.pitch_id = b.pitch_id
 WHEN NOT MATCHED THEN

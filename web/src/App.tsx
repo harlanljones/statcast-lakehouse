@@ -8,6 +8,7 @@ import {
   type DatePartition,
   type PitchTable,
 } from "./lib/arrow-loader";
+import { fetchPitcherStorylines, type PitcherStoryline } from "./lib/storylines";
 import { extractGameDate, distinctPitchTypes, computeWhiffRate } from "./lib/data-status";
 import {
   CAMERA_VIEWS,
@@ -63,6 +64,7 @@ export default function App() {
   const [selectedTypes, setSelectedTypes] = createSignal<ReadonlySet<string>>(new Set());
   const [datePartitions, setDatePartitions] = createSignal<DatePartition[]>([]);
   const [selectedDate, setSelectedDate] = createSignal<string>("");
+  const [storylines, setStorylines] = createSignal<PitcherStoryline[]>([]);
   const [flightProgress, setFlightProgress] = createSignal<number>(1.0);
   const [isPlaying, setIsPlaying] = createSignal<boolean>(false);
   const [isLoading, setIsLoading] = createSignal<boolean>(false);
@@ -168,6 +170,7 @@ export default function App() {
     if (!date) return;
     exitScenarioMode();
     setPitchData(null);
+    setStorylines([]);
     const seq = ++loadSeq;
     setIsLoading(true);
     setErrorMessage(null);
@@ -184,6 +187,12 @@ export default function App() {
       .finally(() => {
         if (seq === loadSeq) setIsLoading(false);
       });
+    // Editorial metadata should enrich, never block, the Arrow pitch view.
+    fetchPitcherStorylines(date)
+      .then((items) => {
+        if (seq === loadSeq) setStorylines(items);
+      })
+      .catch((err) => console.warn("Failed to load pitcher storylines:", err));
   };
 
   const handleLoadSample = () => {
@@ -194,6 +203,7 @@ export default function App() {
       .then((data) => {
         if (seq !== loadSeq) return;
         setSelectedDate("");
+        setStorylines([]);
         setDataSource({ kind: "sample" });
         setPitchData(data);
       })
@@ -247,6 +257,7 @@ export default function App() {
       setIsPlaying(false);
       setFlightProgress(1.0);
       setSelectedDate("");
+      setStorylines([]);
       setErrorMessage(null);
       setIsLoading(true);
     });
@@ -391,6 +402,8 @@ export default function App() {
             onToggleFatigue={setShowFatigue}
             showHeatmap={showHeatmap()}
             heatmapCells={heatmapCells()}
+            storylines={storylines()}
+            storylineDate={selectedDate() || undefined}
           />
           <Show when={activeScenario()}>
             {(s) => (

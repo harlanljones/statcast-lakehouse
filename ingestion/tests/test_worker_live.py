@@ -27,6 +27,10 @@ class FakeGoogleAPICallError(Exception):
     """Stand-in for google.api_core.exceptions.GoogleAPICallError."""
 
 
+class FakeConflict(FakeGoogleAPICallError):
+    pass
+
+
 class _FakeLoadJob:
     def __init__(self, exc):
         self._exc = exc
@@ -42,10 +46,10 @@ class _FakeBigQueryClient:
     def __init__(self, project=None, **kwargs):
         _FAKE_STATE.client_projects.append(project)
 
-    def load_table_from_json(self, json_rows, destination, job_config=None):
+    def load_table_from_json(self, json_rows, destination, job_config=None, job_id=None):
         rows = list(json_rows)
         _FAKE_STATE.load_calls.append(
-            pytypes.SimpleNamespace(rows=rows, table_ref=destination, job_config=job_config)
+            pytypes.SimpleNamespace(rows=rows, table_ref=destination, job_config=job_config, job_id=job_id)
         )
         return _FakeLoadJob(_FAKE_STATE.job_exc)
 
@@ -80,16 +84,27 @@ def _install_fake_google_modules(monkeypatch):
     bigquery = pytypes.ModuleType("google.cloud.bigquery")
     bigquery.Client = _FakeBigQueryClient
     bigquery.LoadJobConfig = _FakeLoadJobConfig
+    bigquery.QueryJobConfig = _FakeLoadJobConfig
+    bigquery.ScalarQueryParameter = lambda name, type_, value: pytypes.SimpleNamespace(
+        name=name, type_=type_, value=value,
+    )
     bigquery.WriteDisposition = pytypes.SimpleNamespace(WRITE_APPEND="WRITE_APPEND")
 
     google_cloud = pytypes.ModuleType("google.cloud")
     google_cloud.bigquery = bigquery
     google = pytypes.ModuleType("google")
     google.cloud = google_cloud
+    api_core = pytypes.ModuleType("google.api_core")
+    exceptions = pytypes.ModuleType("google.api_core.exceptions")
+    exceptions.Conflict = FakeConflict
+    api_core.exceptions = exceptions
+    google.api_core = api_core
 
     monkeypatch.setitem(sys.modules, "google", google)
     monkeypatch.setitem(sys.modules, "google.cloud", google_cloud)
     monkeypatch.setitem(sys.modules, "google.cloud.bigquery", bigquery)
+    monkeypatch.setitem(sys.modules, "google.api_core", api_core)
+    monkeypatch.setitem(sys.modules, "google.api_core.exceptions", exceptions)
 
 
 @pytest.fixture(autouse=True)
@@ -176,6 +191,33 @@ class TestWriteBqErrorHandling:
         _FAKE_STATE.job_exc = FakeGoogleAPICallError("load failed")
         with pytest.raises(FakeGoogleAPICallError, match="load failed"):
             write_bq(iter(_sample_rows(3)), "p", "bronze_pitches")
+
+    def test_resumable_jobs_have_stable_ids(self):
+        rows = _sample_rows(2)
+        write_bq(rows, "p", "bronze_pitches", resumable=True)
+        write_bq(rows, "p", "bronze_pitches", resumable=True)
+        assert _FAKE_STATE.load_calls[0].job_id == _FAKE_STATE.load_calls[1].job_id
+
+    def test_resumable_conflict_waits_for_previously_submitted_job(self):
+        prior = mock.Mock(error_result=None)
+        client = mock.Mock()
+        client.load_table_from_json.side_effect = FakeConflict("already submitted")
+        client.get_job.return_value = prior
+        assert write_bq(_sample_rows(2), "p", "bronze_pitches", client=client, resumable=True) == 2
+        assert client.load_table_from_json.call_count == 1
+        prior.result.assert_called_once_with()
+
+    def test_resumable_known_failed_job_gets_next_attempt_id(self):
+        prior = mock.Mock(error_result={"reason": "backendError"})
+        prior.done.return_value = True
+        new = mock.Mock()
+        client = mock.Mock()
+        client.load_table_from_json.side_effect = [FakeConflict("already submitted"), new]
+        client.get_job.return_value = prior
+        assert write_bq(_sample_rows(2), "p", "bronze_pitches", client=client, resumable=True) == 2
+        ids = [call.kwargs["job_id"] for call in client.load_table_from_json.call_args_list]
+        assert ids[0].endswith("_0") and ids[1].endswith("_1")
+        new.result.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------
