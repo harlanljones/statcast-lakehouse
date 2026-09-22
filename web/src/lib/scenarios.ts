@@ -1,8 +1,8 @@
 /**
- * Demo scenario catalog. Data for each id is generated server-side
- * (ingestion/scenarios.py, GET /pitches/scenario/{id}); everything a viewer
- * sees around it (story copy, which layers/filters/camera to apply, which
- * controls matter) is declared here so the serving path stays Arrow-only.
+ * Demo scenario catalog. Generated scenarios are available from the serving
+ * API (and are pre-exported for static hosting). A small number of committed
+ * real-data scenarios may instead point directly at a static Arrow asset, so
+ * they work in local and Pages builds without FastAPI.
  */
 import type { CameraViewName, OutcomeFilter, ZoneFilter } from "./deck-layers";
 import type { HeatmapMode } from "./heatmap";
@@ -13,7 +13,8 @@ export type ScenarioId =
   | "ghost-break"
   | "chase-map"
   | "contact-lab"
-  | "corpus-slice";
+  | "corpus-slice"
+  | "imanaga-no-hitter";
 
 export type LayerKey =
   | "tunneling"
@@ -60,6 +61,12 @@ export interface Scenario {
   sprint: string;
   /** True for generated pitches: their players are made up, so the card never links out. */
   synthetic: boolean;
+  /**
+   * Arrow asset embedded in `public/`, used for a committed real-data demo.
+   * Unlike generated scenarios, this must be used in both local and static
+   * builds because FastAPI deliberately has no matching scenario endpoint.
+   */
+  assetUrl?: string;
   hook: string;
   lookFor: string;
   tryThis: string;
@@ -211,9 +218,28 @@ export const SCENARIOS: readonly Scenario[] = [
     lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
     preset: preset({ view: "Catcher" }),
   },
+  {
+    id: "imanaga-no-hitter",
+    title: "Imanaga's Hitless Night",
+    sprint: "S13",
+    synthetic: false,
+    assetUrl: "/real/imanaga-no-hitter.arrow",
+    hook: "Seven hitless innings from Shota Imanaga, then a combined no-hitter.",
+    lookFor:
+      "Follow Imanaga's Sept. 4, 2024 arsenal through seven hitless innings. The real pitch identities, player names, and Savant links stay intact through the combined no-hitter.",
+    tryThis: "Filter to swings and misses, then compare the fastball and splitter paths from the catcher view.",
+    lens: ["camera", "flight", "types", "speed", "zone", "outcome"],
+    preset: preset({
+      view: "Catcher",
+      layers: { tunneling: true, releasePoints: true },
+      pairedTypes: ["FF", "FS"],
+    }),
+  },
 ];
 
-export const DEFAULT_SCENARIO_ID: ScenarioId = "tunnel-vision";
+// Lead the public demo with a real MLB game; generated scenarios remain
+// available as controlled comparisons in the rail.
+export const DEFAULT_SCENARIO_ID: ScenarioId = "imanaga-no-hitter";
 
 export function scenarioById(id: string): Scenario | undefined {
   return SCENARIOS.find((s) => s.id === id);
@@ -227,7 +253,7 @@ export function scenarioById(id: string): Scenario | undefined {
 export const STATIC_SCENARIOS: boolean = import.meta.env.VITE_STATIC_SCENARIOS === "1";
 
 export const scenarioUrl = (id: ScenarioId, staticMode: boolean = STATIC_SCENARIOS): string =>
-  staticMode ? `/scenarios/${id}.arrow` : `/pitches/scenario/${id}`;
+  scenarioById(id)?.assetUrl ?? (staticMode ? `/scenarios/${id}.arrow` : `/pitches/scenario/${id}`);
 export const scenarioSearch = (id: ScenarioId): string => `?scenario=${id}`;
 
 export function parseScenarioParam(search: string): ScenarioId | null {

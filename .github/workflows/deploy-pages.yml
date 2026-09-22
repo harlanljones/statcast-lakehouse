@@ -1,7 +1,7 @@
 name: Deploy demo (Cloudflare Pages)
 
-# Static scenario demo: the six scenarios are exported to .arrow files at build
-# time (npm run export:scenarios), so Pages needs no backend.
+# Static scenario demo: six generated scenarios are exported at build time and
+# one verified real-game Arrow file is committed, so Pages needs no backend.
 # Repo secrets required: CLOUDFLARE_API_TOKEN (Account > Cloudflare Pages > Edit)
 # and CLOUDFLARE_ACCOUNT_ID.
 

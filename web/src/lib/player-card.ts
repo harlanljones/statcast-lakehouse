@@ -95,9 +95,27 @@ export function pitchResult(p: Pick<PitchDatum, "isSwing" | "isWhiff">): string 
   return p.isWhiff ? "Swinging strike" : "Contact";
 }
 
-export function playerLabel(role: "Pitcher" | "Batter", id: number | undefined, synthetic: boolean): string {
-  if (id == null) return `${role} unknown`;
-  return synthetic ? `Synthetic ${role.toLowerCase()} #${id}` : `${role} #${id}`;
+export function playerLabel(
+  role: "Pitcher",
+  id: number | undefined,
+  synthetic: boolean,
+  name?: string,
+): string;
+export function playerLabel(
+  role: "Batter",
+  id: number | undefined,
+  synthetic: boolean,
+  name?: string,
+): string;
+export function playerLabel(
+  role: "Pitcher" | "Batter",
+  id: number | undefined,
+  synthetic: boolean,
+  name?: string,
+): string {
+  if (synthetic) return id == null ? `Synthetic ${role.toLowerCase()} unknown` : `Synthetic ${role.toLowerCase()} #${id}`;
+  if (name) return name;
+  return id == null ? `${role} unknown` : `${role} #${id}`;
 }
 
 /** Where the loaded pitches came from; decides whether the card may link to MLB. */
