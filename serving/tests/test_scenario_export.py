@@ -38,4 +38,4 @@ def test_export_creates_missing_output_dir(tmp_path):
 def test_cli_exports_and_returns_zero(tmp_path, capsys):
     assert scenarios.main(["--out", str(tmp_path)]) == 0
     assert len(list(tmp_path.glob("*.arrow"))) == len(scenarios.SCENARIOS)
-    assert "tunnel-vision.arrow" in capsys.readouterr().out
+    assert "twenty-run-night.arrow" in capsys.readouterr().out

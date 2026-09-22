@@ -40,6 +40,13 @@ function displayName(v: unknown): string | undefined {
   return name === "" ? undefined : name;
 }
 
+function sourcePlayId(explicitPlayId: unknown, pitchId: unknown): string | undefined {
+  const explicit = idString(explicitPlayId);
+  if (explicit) return explicit;
+  const id = idString(pitchId);
+  return id && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id) ? id : undefined;
+}
+
 /**
  * Parse an Arrow IPC response and precompute GPU-ready paths.
  * Column access is zero-copy typed arrays; trajectory math runs once per
@@ -112,7 +119,7 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
       batterName: displayName(batterNameCol?.get(i)),
       gameId: idNumber(gameCol?.get(i)),
       pitchId: idString(pitchIdCol?.get(i)),
-      playId: idString(playIdCol?.get(i)),
+      playId: sourcePlayId(playIdCol?.get(i), pitchIdCol?.get(i)),
       path,
       releaseSpeed: speed[i],
       spinRate,

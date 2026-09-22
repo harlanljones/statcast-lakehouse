@@ -127,9 +127,8 @@ export const CAMERA_VIEWS = {
 } as const satisfies Record<string, OrbitViewState>;
 
 /**
- * Tighter Catcher framing used while the strike-zone heatmap is on (Chase Map):
- * the zone fills the canvas. Kept separate so ghost-break / corpus-slice keep
- * the shared Catcher preset.
+ * Tighter Catcher framing used while the strike-zone heatmap is on so the zone
+ * fills the canvas. Kept separate from the shared Catcher camera preset.
  */
 export const CATCHER_HEATMAP_VIEW = {
   target: [0, 14, 1.6],

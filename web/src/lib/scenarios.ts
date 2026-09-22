@@ -1,20 +1,17 @@
 /**
- * Demo scenario catalog. Generated scenarios are available from the serving
- * API (and are pre-exported for static hosting). A small number of committed
- * real-data scenarios may instead point directly at a static Arrow asset, so
- * they work in local and Pages builds without FastAPI.
+ * Story catalog. Every listed scenario uses a curated real-game Arrow slice
+ * (data/scenarios/, GET /pitches/scenario/{id}); its story and viewer controls
+ * are declared here while pitch data stays on the Arrow serving path.
  */
 import type { CameraViewName, OutcomeFilter, ZoneFilter } from "./deck-layers";
 import type { HeatmapMode } from "./heatmap";
 
 export type ScenarioId =
-  | "tunnel-vision"
-  | "fatigue-arc"
-  | "ghost-break"
-  | "chase-map"
-  | "contact-lab"
-  | "corpus-slice"
-  | "imanaga-no-hitter";
+  | "twenty-run-night"
+  | "ohtani-50-50"
+  | "ohtani-50th-home-run"
+  | "freeman-walk-off"
+  | "snell-no-hitter";
 
 export type LayerKey =
   | "tunneling"
@@ -57,16 +54,12 @@ export interface ScenarioPreset {
 export interface Scenario {
   id: ScenarioId;
   title: string;
-  /** ROADMAP sprint the use case comes from, or "market" for positioning. */
-  sprint: string;
-  /** True for generated pitches: their players are made up, so the card never links out. */
+  dateLabel: string;
+  gameLabel: string;
+  storyUrl: string;
+  feedUrl: string;
+  /** All curated scenarios contain real MLB game-feed pitches. */
   synthetic: boolean;
-  /**
-   * Arrow asset embedded in `public/`, used for a committed real-data demo.
-   * Unlike generated scenarios, this must be used in both local and static
-   * builds because FastAPI deliberately has no matching scenario endpoint.
-   */
-  assetUrl?: string;
   hook: string;
   lookFor: string;
   tryThis: string;
@@ -130,116 +123,98 @@ const preset = (over: PresetOverride): ScenarioPreset => {
 };
 
 export const SCENARIOS: readonly Scenario[] = [
+
   {
-    id: "tunnel-vision",
-    title: "Tunnel Vision",
-    sprint: "S8-9",
-    synthetic: true,
-    hook: "Fastball, slider, changeup: identical until it's too late.",
+    id: "twenty-run-night",
+    title: "Ohtani's 50/50 Night",
+    dateLabel: "Sep 19, 2024",
+    gameLabel: "Dodgers at Marlins · 20–4",
+    storyUrl: "https://www.mlb.com/stories/shohei-ohtani-historic-50-50-day",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/746011/feed/live",
+    synthetic: false,
+    hook: "A record-setting 50/50 game inside a 20-run Dodgers win.",
     lookFor:
-      "Three pitch types leave one arm slot and pass through nearly the same spot at the commitment plane, then split by more than a foot at the plate. The pair panel shows the Deception Tunnel Ratio.",
-    tryThis: "Switch the pair to FF vs CH, then scrub flight progress to watch the paths separate.",
-    lens: ["camera", "flight", "types"],
+      "All 370 tracked pitches from Los Angeles's 20–4 win over Miami. Ohtani went 6-for-6 with three home runs, two doubles and 10 RBIs; this view keeps the full game's pitch data together.",
+    tryThis: "Isolate a pitch type, then turn on plate crossings to compare where each pitch finished.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
     preset: preset({
-      view: "Pitcher",
-      layers: { tunneling: true, pairComparison: true },
-      pairedTypes: ["FF", "SL"],
+      view: "Catcher",
+      layers: { plateCrossings: true, ghostBreak: true, breakChart: true },
     }),
   },
   {
-    id: "fatigue-arc",
-    title: "Fatigue Arc",
-    sprint: "S11",
-    synthetic: true,
-    hook: "One starter, 500 pitches, and the arm slowly gives way.",
+    id: "ohtani-50-50",
+    title: "Six Trips to the Plate",
+    dateLabel: "Sep 19, 2024",
+    gameLabel: "Shohei Ohtani · 22 pitches",
+    storyUrl: "https://www.mlb.com/stories/shohei-ohtani-historic-50-50-day",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/746011/feed/live",
+    synthetic: false,
+    hook: "The 22 pitches Ohtani saw during his 6-for-6 game.",
     lookFor:
-      "Velocity falls about 3 mph, the arm slot sinks about 3 inches, and the release cloud widens as the count climbs. The panel buckets it every 25 pitches.",
-    tryThis: "Raise the minimum speed to 90 mph: the late-game pitches vanish first.",
-    lens: ["camera", "speed", "types"],
+      "This slice contains every pitch from Ohtani's six plate appearances: three homers, two doubles and a single. The plate locations and pitch outcomes come from the game feed; the 50/50 milestone is linked to MLB's game story.",
+    tryThis: "Set the outcome filter to Whiffs, then compare those locations with the pitches he put in play.",
+    lens: ["camera", "flight", "types", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Batter",
+      layers: { plateCrossings: true, heatmap: true },
+      heatmapMode: "whiff_rate",
+    }),
+  },
+  {
+    id: "ohtani-50th-home-run",
+    title: "The 50th Home Run",
+    dateLabel: "Sep 19, 2024",
+    gameLabel: "Top 7th · Ohtani vs. Mike Baumann",
+    storyUrl: "https://www.mlb.com/stories/shohei-ohtani-historic-50-50-day",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/746011/feed/live",
+    synthetic: false,
+    hook: "Four pitches in the at-bat that made Ohtani the first 50/50 player.",
+    lookFor:
+      "The four recorded pitches from the top of the seventh, ending with Ohtani's 50th home run of the season. Trajectory and plate crossing values are from the MLB game feed for this at-bat.",
+    tryThis: "Scrub the flight path and compare the final pitch's crossing with the earlier pitches in the at-bat.",
+    lens: ["camera", "flight", "types", "plate"],
+    preset: preset({ view: "Batter", layers: { plateCrossings: true, ghostBreak: true } }),
+  },
+  {
+    id: "freeman-walk-off",
+    title: "Freeman's Walk-Off",
+    dateLabel: "Oct 25, 2024",
+    gameLabel: "World Series Game 1 · bottom 10th",
+    storyUrl: "https://www.mlb.com/news/freddie-freeman-walk-off-grand-slam-world-series-game-1-2024",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/775300/feed/live",
+    synthetic: false,
+    hook: "The pitches from Freddie Freeman's Game 1 plate appearances.",
+    lookFor:
+      "Thirteen pitches from Freeman's five trips to the plate, including the bottom-of-the-10th at-bat against Nestor Cortes. The Dodgers won 6–3 on Freeman's walk-off grand slam.",
+    tryThis: "Use the plate crossings and flight scrubber to inspect the recorded paths from the at-bats.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    preset: preset({
+      view: "Pitcher",
+      layers: { plateCrossings: true, ghostBreak: true },
+    }),
+  },
+  {
+    id: "snell-no-hitter",
+    title: "Snell's No-Hitter",
+    dateLabel: "Aug 2, 2024",
+    gameLabel: "Giants at Reds · 3–0",
+    storyUrl: "https://www.mlb.com/news/blake-snell-throws-no-hitter-for-giants-vs-reds",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/746679/feed/live",
+    synthetic: false,
+    hook: "Blake Snell's 114-pitch, 11-strikeout no-hitter.",
+    lookFor:
+      "Every pitch Snell threw in the complete-game no-hitter against Cincinnati. The box score records 11 strikeouts and three walks; release points, pitch speeds and plate locations are the measured game-feed values.",
+    tryThis: "Compare release points by pitch type, then scrub a pitch to follow its measured trajectory.",
+    lens: ["camera", "flight", "types", "speed", "plate"],
     preset: preset({
       view: "Side",
       layers: { dispersion: true, fatigue: true, releasePoints: true },
     }),
   },
-  {
-    id: "ghost-break",
-    title: "Ghost Break",
-    sprint: "S5, S8",
-    synthetic: true,
-    hook: "How far did each pitch really move?",
-    lookFor:
-      "A six-pitch arsenal from a sinker that runs arm-side to a curve that falls off the table. Each ghost path is the same pitch with no spin; the gold gap is the induced break.",
-    tryThis: "Toggle types on the chart legend to isolate the curveball's vertical drop.",
-    lens: ["camera", "flight", "types"],
-    preset: preset({ view: "Catcher", layers: { ghostBreak: true, breakChart: true } }),
-  },
-  {
-    id: "chase-map",
-    title: "Chase Map",
-    sprint: "S12",
-    synthetic: true,
-    hook: "Where do swings turn into misses?",
-    lookFor:
-      "Whiffs pile up low and away, outside the zone, where batters chase. In-zone swings rarely miss. The heatmap is in Whiff % mode.",
-    tryThis: "Set the zone filter to Chase and outcome to Whiffs: the cluster is almost the whole set.",
-    lens: ["camera", "zone", "outcome", "heatmapMode"],
-    preset: preset({
-      view: "Catcher",
-      layers: { heatmap: true },
-      heatmapMode: "whiff_rate",
-    }),
-  },
-  {
-    id: "contact-lab",
-    title: "Contact Lab",
-    sprint: "S10",
-    synthetic: true,
-    hook: "Same swing, different pitch, different result.",
-    lookFor:
-      "Pitch speeds from 70 to 100 mph meet a fixed bat. Hover a pitch to see the simulated exit velocity, launch angle, and contact quality. At 72 mph bat speed and 18 degrees, the harder pitches barrel first.",
-    tryThis: "Drag attack angle down to 16 degrees and the barrels disappear; push it to 20 and nearly every pitch barrels.",
-    lens: ["camera", "contact", "types"],
-    preset: preset({
-      view: "Batter",
-      layers: { contactSim: true },
-      batSpeed: 72,
-      attackAngleDeg: 18,
-    }),
-  },
-  {
-    id: "corpus-slice",
-    title: "Corpus Slice",
-    sprint: "market",
-    synthetic: true,
-    hook: "Savant 3D, but it's a query engine.",
-    lookFor:
-      "Ten pitchers with different release points and arsenals in one view. Every slider and chip filters on the GPU with no re-query: this is the corpus-scale exploration Savant's pre-rendered pages can't do.",
-    tryThis: "Combine an outcome of Whiffs with a speed floor of 93 mph and a plate-height band.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
-    preset: preset({ view: "Catcher" }),
-  },
-  {
-    id: "imanaga-no-hitter",
-    title: "Imanaga's Hitless Night",
-    sprint: "S13",
-    synthetic: false,
-    assetUrl: "/real/imanaga-no-hitter.arrow",
-    hook: "Seven hitless innings from Shota Imanaga, then a combined no-hitter.",
-    lookFor:
-      "Follow Imanaga's Sept. 4, 2024 arsenal through seven hitless innings. The real pitch identities, player names, and Savant links stay intact through the combined no-hitter.",
-    tryThis: "Filter to swings and misses, then compare the fastball and splitter paths from the catcher view.",
-    lens: ["camera", "flight", "types", "speed", "zone", "outcome"],
-    preset: preset({
-      view: "Catcher",
-      layers: { tunneling: true, releasePoints: true },
-      pairedTypes: ["FF", "FS"],
-    }),
-  },
 ];
 
-// Lead the public demo with a real MLB game; generated scenarios remain
-// available as controlled comparisons in the rail.
-export const DEFAULT_SCENARIO_ID: ScenarioId = "imanaga-no-hitter";
+export const DEFAULT_SCENARIO_ID: ScenarioId = "twenty-run-night";
 
 export function scenarioById(id: string): Scenario | undefined {
   return SCENARIOS.find((s) => s.id === id);
@@ -253,7 +228,7 @@ export function scenarioById(id: string): Scenario | undefined {
 export const STATIC_SCENARIOS: boolean = import.meta.env.VITE_STATIC_SCENARIOS === "1";
 
 export const scenarioUrl = (id: ScenarioId, staticMode: boolean = STATIC_SCENARIOS): string =>
-  scenarioById(id)?.assetUrl ?? (staticMode ? `/scenarios/${id}.arrow` : `/pitches/scenario/${id}`);
+  staticMode ? `/scenarios/${id}.arrow` : `/pitches/scenario/${id}`;
 export const scenarioSearch = (id: ScenarioId): string => `?scenario=${id}`;
 
 export function parseScenarioParam(search: string): ScenarioId | null {

@@ -66,23 +66,23 @@ describe("applyPresetTo", () => {
 
   it("switching scenarios leaves nothing from the previous one behind", () => {
     const { state, setters } = fakeApp();
-    applyPresetTo(scenarioById("tunnel-vision")!.preset, setters);
-    expect(state.layers.tunneling).toBe(true);
-    expect(state.pairedTypes).toEqual(["FF", "SL"]);
+    applyPresetTo(scenarioById("snell-no-hitter")!.preset, setters);
+    expect(state.layers.fatigue).toBe(true);
+    expect(state.layers.releasePoints).toBe(true);
 
-    applyPresetTo(scenarioById("chase-map")!.preset, setters);
-    expect(state.layers.tunneling).toBe(false);
-    expect(state.layers.pairComparison).toBe(false);
+    applyPresetTo(scenarioById("ohtani-50-50")!.preset, setters);
+    expect(state.layers.fatigue).toBe(false);
+    expect(state.layers.releasePoints).toBe(false);
     expect(state.pairedTypes).toBeNull();
     expect(state.layers.heatmap).toBe(true);
     expect(state.heatmapMode).toBe("whiff_rate");
   });
 
-  it("the live preset resets contact-lab's bat settings and layers", () => {
+  it("the live preset resets scenario layers", () => {
     const { state, setters } = fakeApp();
-    applyPresetTo(scenarioById("contact-lab")!.preset, setters);
-    expect(state.batSpeed).toBe(72);
-    expect(state.layers.contactSim).toBe(true);
+    applyPresetTo(scenarioById("snell-no-hitter")!.preset, setters);
+    expect(state.layers.fatigue).toBe(true);
+    expect(state.layers.contactSim).toBe(false);
 
     applyPresetTo(LIVE_PRESET, setters);
     expect(state.batSpeed).toBe(75);
@@ -92,7 +92,7 @@ describe("applyPresetTo", () => {
 
   it("copies selectedTypes into a fresh Set so presets are never mutated", () => {
     const { state, setters } = fakeApp();
-    const preset = scenarioById("corpus-slice")!.preset;
+    const preset = scenarioById("twenty-run-night")!.preset;
     applyPresetTo(preset, setters);
     (state.selectedTypes as Set<string>).add("ZZ");
     expect(preset.selectedTypes).not.toContain("ZZ");

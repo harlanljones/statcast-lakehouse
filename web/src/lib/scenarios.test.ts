@@ -12,87 +12,72 @@ import {
 } from "./scenarios";
 
 const SERVER_IDS = [
-  "tunnel-vision", "fatigue-arc", "ghost-break", "chase-map", "contact-lab", "corpus-slice",
+  "twenty-run-night",
+  "ohtani-50-50",
+  "ohtani-50th-home-run",
+  "freeman-walk-off",
+  "snell-no-hitter",
 ];
 
-describe("scenario catalog", () => {
-  it("matches generated server registry ids and explicitly isolates committed assets", () => {
-    expect(SCENARIOS.filter((s) => !s.assetUrl).map((s) => s.id)).toEqual(SERVER_IDS);
-    expect(SCENARIOS.filter((s) => s.assetUrl).map((s) => s.id)).toEqual(["imanaga-no-hitter"]);
+describe("real-game story catalog", () => {
+  it("matches the server registry ids, in order", () => {
+    expect(SCENARIOS.map((s) => s.id)).toEqual(SERVER_IDS);
   });
 
-  it("gives every scenario copy, a real camera, and at least one lens control", () => {
+  it("gives every story copy, game date, source links, camera, and a lens control", () => {
     for (const s of SCENARIOS) {
       expect(s.title.length).toBeGreaterThan(0);
       expect(s.hook.length).toBeGreaterThan(0);
       expect(s.lookFor.length).toBeGreaterThan(0);
       expect(s.tryThis.length).toBeGreaterThan(0);
-      expect(s.sprint).toMatch(/^S\d|market/);
+      expect(s.dateLabel).toMatch(/\w{3} \d{1,2}, 2024/);
+      expect(s.storyUrl).toMatch(/^https:\/\/www\.mlb\.com\//);
+      expect(s.feedUrl).toMatch(/^https:\/\/statsapi\.mlb\.com\/api\/v1\.1\/game\//);
+      expect(s.synthetic).toBe(false);
       expect(Object.keys(CAMERA_VIEWS)).toContain(s.preset.view);
       expect(s.lens.length).toBeGreaterThan(0);
+      expect(s.preset.layers.contactSim).toBe(false);
     }
   });
 
-  it("flags generated scenarios as synthetic and the committed Imanaga asset as real", () => {
-    for (const sc of SCENARIOS.filter((s) => !s.assetUrl)) expect(sc.synthetic).toBe(true);
-    expect(scenarioById("imanaga-no-hitter")).toMatchObject({
-      synthetic: false,
-      assetUrl: "/real/imanaga-no-hitter.arrow",
-    });
-  });
-
-  it("defaults to a scenario that exists", () => {
-    expect(DEFAULT_SCENARIO_ID).toBe("imanaga-no-hitter");
-    expect(scenarioById(DEFAULT_SCENARIO_ID)).toBeDefined();
+  it("defaults to a real game story", () => {
+    expect(DEFAULT_SCENARIO_ID).toBe("twenty-run-night");
+    expect(scenarioById(DEFAULT_SCENARIO_ID)?.synthetic).toBe(false);
     expect(scenarioById("nope")).toBeUndefined();
   });
 
-  it("turns on the layers each story is about", () => {
+  it("turns on the layers that fit each real data slice", () => {
     const L = (id: string) => scenarioById(id)!.preset.layers;
-    expect(L("tunnel-vision")).toMatchObject({ tunneling: true, pairComparison: true });
-    expect(L("fatigue-arc")).toMatchObject({ dispersion: true, fatigue: true });
-    expect(L("ghost-break")).toMatchObject({ ghostBreak: true, breakChart: true });
-    expect(L("chase-map")).toMatchObject({ heatmap: true });
-    expect(L("contact-lab")).toMatchObject({ contactSim: true });
-    expect(Object.values(L("corpus-slice")).every((v) => v === false)).toBe(true);
+    expect(L("twenty-run-night")).toMatchObject({ plateCrossings: true, ghostBreak: true, breakChart: true });
+    expect(L("ohtani-50-50")).toMatchObject({ plateCrossings: true, heatmap: true });
+    expect(L("ohtani-50th-home-run")).toMatchObject({ plateCrossings: true, ghostBreak: true });
+    expect(L("freeman-walk-off")).toMatchObject({ plateCrossings: true, ghostBreak: true });
+    expect(L("snell-no-hitter")).toMatchObject({ dispersion: true, fatigue: true, releasePoints: true });
   });
 
-  it("carries scenario-specific settings", () => {
-    const P = (id: string) => scenarioById(id)!.preset;
-    expect(P("tunnel-vision").pairedTypes).toEqual(["FF", "SL"]);
-    expect(P("chase-map").heatmapMode).toBe("whiff_rate");
-    expect(P("contact-lab").batSpeed).toBe(72);
-    expect(P("contact-lab").attackAngleDeg).toBe(18);
-    expect(P("imanaga-no-hitter").pairedTypes).toEqual(["FF", "FS"]);
-    for (const s of SCENARIOS.filter((x) => x.id !== "tunnel-vision" && x.id !== "imanaga-no-hitter")) {
-      expect(s.preset.pairedTypes).toBeNull();
-    }
+  it("sets the Ohtani at-bat slice to whiff-rate heatmap mode", () => {
+    expect(scenarioById("ohtani-50-50")!.preset.heatmapMode).toBe("whiff_rate");
   });
 });
 
 describe("scenario urls", () => {
   it("builds the serving url and the deep-link query", () => {
-    expect(scenarioUrl("fatigue-arc")).toBe("/pitches/scenario/fatigue-arc");
-    expect(scenarioUrl("fatigue-arc", false)).toBe("/pitches/scenario/fatigue-arc");
-    expect(scenarioSearch("fatigue-arc")).toBe("?scenario=fatigue-arc");
+    expect(scenarioUrl("snell-no-hitter")).toBe("/pitches/scenario/snell-no-hitter");
+    expect(scenarioUrl("snell-no-hitter", false)).toBe("/pitches/scenario/snell-no-hitter");
+    expect(scenarioSearch("snell-no-hitter")).toBe("?scenario=snell-no-hitter");
   });
 
-  it("points at the pre-exported .arrow asset in static (Cloudflare Pages) mode", () => {
-    expect(scenarioUrl("fatigue-arc", true)).toBe("/scenarios/fatigue-arc.arrow");
-  });
-
-  it("uses a committed real-data asset in both local and static builds", () => {
-    expect(scenarioUrl("imanaga-no-hitter", false)).toBe("/real/imanaga-no-hitter.arrow");
-    expect(scenarioUrl("imanaga-no-hitter", true)).toBe("/real/imanaga-no-hitter.arrow");
+  it("points at the pre-exported .arrow asset in static mode", () => {
+    expect(scenarioUrl("snell-no-hitter", true)).toBe("/scenarios/snell-no-hitter.arrow");
   });
 
   it("is not in static mode unless the build asks for it", () => {
     expect(STATIC_SCENARIOS).toBe(false);
   });
 
-  it("parses a known deep link and rejects unknown or missing ones", () => {
-    expect(parseScenarioParam("?scenario=chase-map")).toBe("chase-map");
-    expect(parseScenarioParam("?a=1&scenario=contact-lab")).toBe("contact-lab");
+  it("parses known deep links and rejects unknown or missing ones", () => {
+    expect(parseScenarioParam("?scenario=snell-no-hitter")).toBe("snell-no-hitter");
+    expect(parseScenarioParam("?a=1&scenario=freeman-walk-off")).toBe("freeman-walk-off");
     expect(parseScenarioParam("?scenario=nope")).toBeNull();
     expect(parseScenarioParam("")).toBeNull();
   });

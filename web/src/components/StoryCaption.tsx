@@ -31,6 +31,14 @@ export default function StoryCaption(props: StoryCaptionProps): JSX.Element {
               <h2 style={{ margin: "0 0 2px", "font-size": "16px", color: "var(--accent)" }}>{s().title}</h2>
               <p style={{ margin: "0 0 3px", "font-size": "13px", "line-height": "1.4", "max-width": "72ch" }}>{s().lookFor}</p>
               <p style={{ margin: "0", "font-size": "12px", color: THEME.gold }}>Try this: {s().tryThis}</p>
+              <div style={{ display: "flex", gap: "14px", "margin-top": "5px", "font-size": "11px" }}>
+                <a href={s().storyUrl} target="_blank" rel="noreferrer" style={{ color: THEME.muted }}>
+                  Story: {s().gameLabel}
+                </a>
+                <a href={s().feedUrl} target="_blank" rel="noreferrer" style={{ color: THEME.muted }}>
+                  Pitch data: MLB Stats API
+                </a>
+              </div>
             </>
           )}
         </Show>

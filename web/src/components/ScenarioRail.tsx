@@ -27,7 +27,7 @@ const card = (active: boolean): JSX.CSSProperties => ({
 export default function ScenarioRail(props: ScenarioRailProps): JSX.Element {
   return (
     <nav
-      aria-label="demo scenarios"
+      aria-label="game stories"
       style={{
         width: "232px",
         "flex-shrink": "0",
@@ -45,7 +45,7 @@ export default function ScenarioRail(props: ScenarioRailProps): JSX.Element {
           <button class="ui-ctl" aria-pressed={props.activeId === s.id} onClick={() => props.onSelect(s.id)} style={card(props.activeId === s.id)}>
             <div style={{ display: "flex", "justify-content": "space-between", "align-items": "baseline" }}>
               <strong style={{ "font-size": "14px" }}>{s.title}</strong>
-              <span style={{ color: THEME.muted, "font-size": "11px" }}>{s.sprint}</span>
+              <span style={{ color: THEME.muted, "font-size": "11px" }}>{s.dateLabel}</span>
             </div>
             <div style={{ color: THEME.muted, "font-size": "12px", "margin-top": "4px", "line-height": "1.35" }}>{s.hook}</div>
           </button>

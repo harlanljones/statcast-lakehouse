@@ -39,7 +39,7 @@ uvicorn; the live BigQuery load-job path needs GOOGLE_APPLICATION_CREDENTIALS.
 - `infra/main.tf` — dataset, budget guard, Cloud Run job, scheduler. Cloud
   Run lives in main.tf (not a separate cloud_run.tf).
 - `serving/` — FastAPI Arrow endpoints (`/pitches?date=`, `/pitches/sample`).
-- `ingestion/scenarios.py` — seeded 500-pitch demo groups; `web/src/lib/scenarios.ts` holds their UI presets (keep ids in sync; a vitest guard checks).
+- `data/scenarios/` — curated MLB Stats API pitch slices with story and game-feed provenance; `ingestion/scenario_data.py` refreshes them explicitly and `ingestion/scenarios.py` serves/exports the local Arrow assets. `web/src/lib/scenarios.ts` holds the story cards and presets (keep ids in sync).
 - `web/src/lib/` — kinematics solver (TS), Arrow loader, deck layer config.
   `web/src/components/` — Solid components. Tests live next to the code
   (`*.test.ts`).

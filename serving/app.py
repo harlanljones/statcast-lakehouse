@@ -2,7 +2,7 @@
 
   GET /pitches?date=YYYY-MM-DD  -> Arrow IPC stream from BigQuery
   GET /pitches/sample           -> synthetic Arrow day (no GCP creds)
-  GET /pitches/scenario/{id}  -> curated 500-pitch demo group (Arrow)
+  GET /pitches/scenario/{id}  -> curated real-game story slice (Arrow)
   GET /pitches/dates          -> historical partition metadata (JSON)
   GET /pitches/storylines     -> pitcher context by date/player (JSON)
 

@@ -1,10 +1,8 @@
 # Statcast Lakehouse
 
-See MLB pitches as 3D trajectories, up to 500 at a time, and filter them on the GPU.
+Explore real MLB pitches as 3D trajectories and filter them on the GPU.
 
 **[Live demo: statcast-lakehouse.pages.dev](https://statcast-lakehouse.pages.dev)**
-
-![Ghost Break: six pitch types against their no-spin ghost paths](docs/screenshots/ghost-break.png)
 
 ## What it is
 
@@ -14,16 +12,17 @@ Sliders and filters run on the GPU, so scrubbing stays smooth.
 
 Behind the demo is a small data pipeline: ingest into BigQuery, train an xWhiff model in the warehouse, and serve Apache Arrow over HTTP.
 
-## The demo: one real game and six generated stories
+## The demo: five real-game stories
 
-The demo opens on all 255 pitches from the Cubs' September 4, 2024 combined no-hitter, including Shota Imanaga's seven hitless innings. Player names and MLB pitch-video links come from the public game feed. Six deterministic 500-pitch stories remain available as controlled examples: pick one, read the caption, and try the suggestion.
+Each card links to the MLB story and the MLB Stats API feed used for its pitch paths.
 
-| | |
-|---|---|
-| ![Tunnel Vision](docs/screenshots/tunnel-vision.png)<br>**Tunnel Vision.** Three pitches look identical until it is too late, then split by more than a foot. | ![Fatigue Arc](docs/screenshots/fatigue-arc.png)<br>**Fatigue Arc.** One starter loses 3 mph and the arm slot sinks over 500 pitches. |
-| ![Chase Map](docs/screenshots/chase-map.png)<br>**Chase Map.** Swings turn into misses low and away, outside the zone. | ![Contact Lab](docs/screenshots/contact-lab.png)<br>**Contact Lab.** Same swing, different pitch, different contact. Hover a pitch to see it. |
+- [Ohtani's 50/50 night](https://www.mlb.com/stories/shohei-ohtani-historic-50-50-day): all 370 pitches from the Dodgers' 20–4 win over Miami.
+- **Six Trips to the Plate:** the 22 pitches Ohtani saw during his 6-for-6, three-homer, 10-RBI game.
+- **The 50th Home Run:** four measured pitches from the top-of-the-seventh at-bat that completed the 50/50 milestone.
+- [Freeman's walk-off grand slam](https://www.mlb.com/news/freddie-freeman-walk-off-grand-slam-world-series-game-1-2024): the 13 pitches from his plate appearances in World Series Game 1.
+- [Snell's no-hitter](https://www.mlb.com/news/blake-snell-throws-no-hitter-for-giants-vs-reds): all 114 pitches from his 11-strikeout complete game.
 
-The other two: **Ghost Break** (how far did each pitch really move?) and **Corpus Slice** (ten pitchers, every filter live).
+The pitch slices are included as Arrow files, with exact game ids and selection rules in [`data/scenarios/README.md`](data/scenarios/README.md). The app opens the real source game feed from each story caption.
 
 ## How it works
 
@@ -53,18 +52,18 @@ flowchart LR
 
 ### How the demo is hosted
 
-The real game is checked in as a reproducible Arrow export; the six generated stories use fixed seeds. All seven datasets are served as static files by Cloudflare Pages, so no server runs.
+The curated game slices are exported as static files and served by Cloudflare Pages. Refreshing the fixtures requires an explicit request to MLB Stats API; normal builds are offline.
 
 ```mermaid
 flowchart LR
-    gen["ingestion/scenarios.py<br/>6 seeded groups"] --> export["Export .arrow files"]
-    real["Public MLB feeds<br/>1 verified game"] --> realexport["Committed .arrow file"]
+    source["MLB Stats API<br/>game feeds"] -.-> refresh["Explicit fixture refresh"]
+    refresh --> fixtures["data/scenarios/*.arrow"]
+    fixtures --> export["Export .arrow files"]
     export --> build["Vite static build"]
     build --> pages["Cloudflare Pages"]
     push["Push to main"] --> actions["GitHub Actions"]
     actions --> export
-    realexport --> build
-    gen -.->|"same bytes"| api["/pitches/scenario/id<br/>FastAPI"]
+    fixtures -.->|"same data"| api["/pitches/scenario/id<br/>FastAPI"]
 ```
 
 ## Run it
@@ -86,9 +85,8 @@ cd web && npm run deploy                 # needs `npx wrangler login`
 # A synthetic day of pitches as an Arrow file
 python3 -m ingestion.worker --dry-run --pitches 300 --out data/sample.arrow
 
-# Reproduce the real game used by the demo
-python3 -m ingestion.export_real_scenario --date 2024-09-04 --game-pk 746835 \
-  --out web/public/real/imanaga-no-hitter.arrow
+# Refresh the curated real-game slices (explicit MLB Stats API request)
+python3 -m ingestion.scenario_data --refresh
 ```
 
 Loading real data (`--live`, BigQuery, BQML) needs Google Cloud credentials.

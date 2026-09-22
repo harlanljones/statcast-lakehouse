@@ -1,6 +1,10 @@
 node_modules/
 dist/
-data/
+data/*
+!data/scenarios/
+data/scenarios/*
+!data/scenarios/*.arrow
+!data/scenarios/README.md
 __pycache__/
 *.pyc
 .pytest_cache/

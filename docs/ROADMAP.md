@@ -235,16 +235,15 @@ items 3+ are completed offline (no stubs in code).
   AUC evaluation threshold (AUC $\ge 0.70$).
 - Acceptance: 224 pytest tests, 139 vitest tests passing across 11 test files, zero TypeScript errors, clean production build.
 
-## 22. Scenario demo: six curated 500-pitch groups (Completed offline)
-- `ingestion/scenarios.py`: seeded, physically consistent generators (Tunnel Vision, Fatigue Arc,
-  Ghost Break, Chase Map, Contact Lab, Corpus Slice); exactly six groups, 500 pitches each, all seeded and byte-stable.
+## 22. Real-game story examples (Completed offline)
+- `data/scenarios/`: five curated Arrow slices from MLB Stats API game feeds, with source game ids,
+  exact selection rules, and MLB story links in `data/scenarios/README.md`.
+- `ingestion/scenario_data.py` explicitly refreshes those fixtures; normal builds and serving read local
+  Arrow files without network access. `ingestion/scenarios.py` serves and exports the checked-in slices.
 - `serving/app.py`: `GET /pitches/scenario/{id}` (Arrow IPC, ETag/304, 404 on unknown id).
-- `web/src/lib/scenarios.ts`: client-side catalog + presets; `ScenarioRail`, `StoryCaption`, and
-  `LensPanel` replace the always-open control footer, which becomes an "All controls" drawer.
-- Contact sim hover tooltip now honors the Bat speed / Attack angle lens sliders (`pitchTooltip(pitch, batSpeed?, attackAngleDeg?)`), and the Whiff % heatmap renders as a graded hot cluster (`deck-layers.ts`).
-- Chase-map and contact-lab presets do not enable the plate-crossings layer.
-- Acceptance: `ingestion/tests/test_scenarios.py` pins each group's signal (tunnel ratio > 5,
-  fatigue velo -2.5 mph, chase whiff 2.5x, ...); `?scenario=<id>` deep-links; 265 pytest / 147 vitest tests passing offline, zero TypeScript errors, clean production build.
-
+- `web/src/lib/scenarios.ts`: story cards link to their MLB write-up and feed; `ScenarioRail`, `StoryCaption`, and
+  `LensPanel` keep the existing scenario-driven interactions.
+- Presets focus on recorded trajectories, crossings, release points, and outcomes. The simulated contact lens
+  remains available as an explicit exploratory tool and is not presented as observed game data.
 
 

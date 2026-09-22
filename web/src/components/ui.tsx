@@ -12,12 +12,11 @@ export const THEME = {
 
 /** Type scale (px): meta 11, body 12-13, title 16, figure 26. */
 export const SCENE_ACCENT: Record<string, string> = {
-  "tunnel-vision": "#38bdf8",
-  "fatigue-arc": "#fb923c",
-  "ghost-break": "#c4b5fd",
-  "chase-map": "#f87171",
-  "contact-lab": "#4ade80",
-  "corpus-slice": "#60a5fa",
+  "twenty-run-night": "#38bdf8",
+  "ohtani-50-50": "#fb923c",
+  "ohtani-50th-home-run": "#c4b5fd",
+  "freeman-walk-off": "#f87171",
+  "snell-no-hitter": "#4ade80",
 };
 
 export interface SegmentedProps<T extends string> {
