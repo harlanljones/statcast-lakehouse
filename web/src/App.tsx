@@ -39,6 +39,7 @@ import {
 } from "./lib/scenarios";
 import { applyPresetTo } from "./lib/scenario-state";
 import type { DragMode } from "./lib/camera";
+import { isSyntheticSource, type DataSource } from "./lib/player-card";
 export default function App() {
   const [pitchData, setPitchData] = createSignal<PitchTable | null>(null);
   const [speedRange, setSpeedRange] = createSignal<[number, number]>([70, 105]);
@@ -48,6 +49,9 @@ export default function App() {
   const [outcomeFilter, setOutcomeFilter] = createSignal<OutcomeFilter>("all");
   const [view, setView] = createSignal<CameraViewName>("Catcher");
   const [dragMode, setDragMode] = createSignal<DragMode>("rotate");
+  // Where the loaded pitches came from; the player card links out only for real data.
+  // Defaults to synthetic so a missing source can never imply a real player.
+  const [dataSource, setDataSource] = createSignal<DataSource>({ kind: "sample" });
   // Bumped to snap the camera back to the current preset, even when the preset
   // did not change (the user may have moved the camera by hand).
   const [resetKey, setResetKey] = createSignal(0);
@@ -169,7 +173,9 @@ export default function App() {
     setErrorMessage(null);
     fetchPitches(`/pitches?date=${date}`)
       .then((data) => {
-        if (seq === loadSeq) setPitchData(data);
+        if (seq !== loadSeq) return;
+        setDataSource({ kind: "partition", date });
+        setPitchData(data);
       })
       .catch((err) => {
         console.error("Failed to load date partition:", err);
@@ -188,6 +194,7 @@ export default function App() {
       .then((data) => {
         if (seq !== loadSeq) return;
         setSelectedDate("");
+        setDataSource({ kind: "sample" });
         setPitchData(data);
       })
       .catch((err) => {
@@ -250,7 +257,9 @@ export default function App() {
     }
     fetchPitches(scenarioUrl(id))
       .then((data) => {
-        if (seq === loadSeq) setPitchData(data);
+        if (seq !== loadSeq) return;
+        setDataSource({ kind: "scenario", synthetic: sc.synthetic });
+        setPitchData(data);
       })
       .catch((err) => {
         console.error("Failed to load scenario:", err);
@@ -359,6 +368,7 @@ export default function App() {
             viewState={CAMERA_VIEWS[view()]}
             dragMode={dragMode()}
             resetKey={resetKey()}
+            synthetic={isSyntheticSource(dataSource())}
             flightProgress={isPlaying() || flightProgress() < 1.0 ? flightProgress() : undefined}
             showTunneling={showTunneling()}
             showGhostBreak={showGhostBreak()}

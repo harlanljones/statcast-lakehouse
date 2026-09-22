@@ -27,6 +27,8 @@ function ipcBuffer(rows: {
   releaseSpinRate?: Float64Array | number[];
   szTop?: Float64Array | number[];
   szBot?: Float64Array | number[];
+  /** int64 ids (arrive as bigint) and string ids, as in the real schema. */
+  ids?: { pitcherId?: bigint[]; batterId?: bigint[]; gameId?: bigint[]; pitchId?: string[]; playId?: string[] };
 }): ArrayBuffer {
   const count = rows.count;
   // Release point ~55.5 ft from the plate front, moving toward it at 120 ft/s.
@@ -52,6 +54,11 @@ function ipcBuffer(rows: {
   if (rows.releaseSpinRate) arrays.release_spin_rate = new Float64Array(rows.releaseSpinRate);
   if (rows.szTop) arrays.sz_top = new Float64Array(rows.szTop);
   if (rows.szBot) arrays.sz_bot = new Float64Array(rows.szBot);
+  if (rows.ids?.pitcherId) arrays.pitcher_id = new BigInt64Array(rows.ids.pitcherId);
+  if (rows.ids?.batterId) arrays.batter_id = new BigInt64Array(rows.ids.batterId);
+  if (rows.ids?.gameId) arrays.game_id = new BigInt64Array(rows.ids.gameId);
+  if (rows.ids?.pitchId) arrays.pitch_id = rows.ids.pitchId;
+  if (rows.ids?.playId) arrays.play_id = rows.ids.playId;
   return tableToIPC(tableFromArrays(arrays)).buffer as ArrayBuffer;
 }
 
@@ -151,6 +158,37 @@ describe("loadPitchTable", () => {
     expect(pitches[0].szBot).toBeCloseTo(1.6);
     expect(pitches[1].szTop).toBeCloseTo(3.2);
     expect(pitches[1].szBot).toBeCloseTo(1.4);
+  });
+
+  it("extracts pitcher, batter, game, pitch and play ids; int64 columns become plain numbers", () => {
+    const buf = ipcBuffer({
+      count: 2,
+      pitchTypes: ["FF", "SL"],
+      ids: {
+        pitcherId: [543037n, 605151n],
+        batterId: [500001n, 500002n],
+        gameId: [745321n, 745321n],
+        pitchId: ["745321_1_1", "745321_1_2"],
+        playId: ["7970bd19-d633-4ea1-be2f-2af453d0ec46", "b2f0c6a4-0000-4000-8000-000000000001"],
+      },
+    });
+    const { pitches } = loadPitchTable(buf);
+    expect(pitches[0]).toMatchObject({
+      pitcherId: 543037,
+      batterId: 500001,
+      gameId: 745321,
+      pitchId: "745321_1_1",
+      playId: "7970bd19-d633-4ea1-be2f-2af453d0ec46",
+    });
+    expect(typeof pitches[1].pitcherId).toBe("number");
+    expect(pitches[1].pitcherId).toBe(605151);
+  });
+
+  it("leaves the id fields undefined when the columns are absent", () => {
+    const { pitches } = loadPitchTable(ipcBuffer({ count: 1, pitchTypes: ["FF"] }));
+    expect(pitches[0].pitcherId).toBeUndefined();
+    expect(pitches[0].gameId).toBeUndefined();
+    expect(pitches[0].playId).toBeUndefined();
   });
 
   it("falls back to terminal path coordinates when plate_x/plate_z are absent", () => {

@@ -14,6 +14,7 @@ import {
 import { pitchTooltip, pitchTooltipSummary, clampTooltipPos } from "../lib/pitch-tooltip";
 import { clampViewState, controllerOptions, withLimits, type DragMode } from "../lib/camera";
 import BreakChart from "./BreakChart";
+import PlayerCard from "./PlayerCard";
 import PairComparisonPanel from "./PairComparisonPanel";
 import FatiguePanel from "./FatiguePanel";
 import type { ArsenalCentroid } from "../lib/arsenal";
@@ -33,6 +34,8 @@ export interface VisualizerProps {
   dragMode?: DragMode;
   /** Bump to snap the camera back to the current preset. */
   resetKey?: number;
+  /** Generated pitches have made-up players, so the card never links out for them. */
+  synthetic?: boolean;
   flightProgress?: number;
   showTunneling?: boolean;
   showGhostBreak?: boolean;
@@ -70,6 +73,8 @@ export default function Visualizer(props: VisualizerProps) {
   let container!: HTMLDivElement;
   let deck: Deck<OrbitView> | null = null;
   const [picked, setPicked] = createSignal<PitchDatum | null>(null);
+  // Click pins a pitch to the player card; hover stays tooltip-only.
+  const [pinned, setPinned] = createSignal<PitchDatum | null>(null);
   // Cursor-anchored tooltip position (canvas-relative px, already clamped).
   const [tipPos, setTipPos] = createSignal({ x: 0, y: 0 });
   // Estimated rendered card size for clamping (matches the styled card below).
@@ -114,6 +119,13 @@ export default function Visualizer(props: VisualizerProps) {
       views: new OrbitView({}),
       viewState: withLimits(effectiveViewState(props.viewState, props.showHeatmap) ?? INITIAL_VIEW),
       controller: controllerOptions(props.dragMode ?? "rotate"),
+      // A click on a pitch pins it; a click on empty space unpins. deck.gl does
+      // not fire click after a drag, so orbiting the camera never pins.
+      onClick: (info: PickingInfo) => {
+        const o = info.object as Partial<PitchDatum> | null | undefined;
+        const isPitch = !!o && typeof o.releaseSpeed === "number" && typeof o.pitchType === "string";
+        setPinned(isPitch ? (o as PitchDatum) : null);
+      },
       // Controlled camera: deck.gl only reports what the user did; we apply it
       // (clamped so the field cannot be panned or zoomed out of reach).
       onViewStateChange: ({ viewState }: { viewState: any }) => {
@@ -206,7 +218,7 @@ export default function Visualizer(props: VisualizerProps) {
             zoneFilter: props.zoneFilter,
             outcomeFilter: props.outcomeFilter,
             selectedTypes: props.selectedTypes ?? null,
-            picked: picked(),
+            picked: picked() ?? pinned(),
             onHover: handlePick,
             flightProgress: props.flightProgress,
             showTunneling: props.showTunneling,
@@ -245,6 +257,20 @@ export default function Visualizer(props: VisualizerProps) {
     deck?.setProps({ controller: controllerOptions(mode) });
   });
 
+  // A new group of pitches invalidates the pinned one.
+  createEffect(() => {
+    void props.data;
+    setPinned(null);
+  });
+
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPinned(null);
+    };
+    window.addEventListener("keydown", onKey);
+    onCleanup(() => window.removeEventListener("keydown", onKey));
+  });
+
   const tooltip = () => pitchTooltip(picked(), props.batSpeed, props.attackAngleDeg, props.showContactSim);
 
   return (
@@ -254,6 +280,16 @@ export default function Visualizer(props: VisualizerProps) {
         style={{ width: "100%", height: "100%", overflow: "hidden" }}
         aria-label={`orbit-target:${ORBIT_TARGET.join(",")}`}
       />
+      <Show when={pinned()}>
+        {(p) => (
+          <PlayerCard
+            pitch={p()}
+            pitches={props.data?.pitches ?? []}
+            synthetic={props.synthetic ?? true}
+            onClose={() => setPinned(null)}
+          />
+        )}
+      </Show>
       <div
         aria-hidden="true"
         style={{
@@ -312,7 +348,9 @@ export default function Visualizer(props: VisualizerProps) {
       >
         {picked() ? pitchTooltipSummary(picked()!, props.batSpeed, props.attackAngleDeg, props.showContactSim) : ""}
       </span>
-      {tooltip() && (
+      {/* keyed: capture the tooltip once, so a hover that ends cannot re-read null in the inner effects */}
+      <Show when={tooltip()} keyed>
+        {(t) => (
         <div
           role="presentation"
           style={{
@@ -339,28 +377,29 @@ export default function Visualizer(props: VisualizerProps) {
                 height: "10px",
                 "border-radius": "2px",
                 "margin-right": "6px",
-                background: `rgb(${tooltip()!.color.join(",")})`,
+                background: `rgb(${t.color.join(",")})`,
               }}
             />
-            {tooltip()!.pitchType}
+            {t.pitchType}
           </div>
-          <div>{tooltip()!.speed}</div>
-          {tooltip()!.spin && <div style={{ color: "#a0e0a0" }}>{tooltip()!.spin}</div>}
-          <div>{tooltip()!.location}</div>
-          {tooltip()!.break && <div style={{ color: "#ffd700" }}>{tooltip()!.break}</div>}
-          {tooltip()!.tunnel && <div style={{ color: "#ffd700" }}>{tooltip()!.tunnel}</div>}
-          {tooltip()!.release && <div style={{ color: "#80d0ff" }}>{tooltip()!.release}</div>}
-          {tooltip()!.extension && <div style={{ color: "#80d0ff" }}>{tooltip()!.extension}</div>}
-          {tooltip()!.zoneBounds && <div style={{ color: "#a0e0ff" }}>{tooltip()!.zoneBounds}</div>}
-          <div>{tooltip()!.zone}</div>
-          {tooltip()!.outcome && <div>{tooltip()!.outcome}</div>}
-          {tooltip()!.simulatedContact && (
+          <div>{t.speed}</div>
+          {t.spin && <div style={{ color: "#a0e0a0" }}>{t.spin}</div>}
+          <div>{t.location}</div>
+          {t.break && <div style={{ color: "#ffd700" }}>{t.break}</div>}
+          {t.tunnel && <div style={{ color: "#ffd700" }}>{t.tunnel}</div>}
+          {t.release && <div style={{ color: "#80d0ff" }}>{t.release}</div>}
+          {t.extension && <div style={{ color: "#80d0ff" }}>{t.extension}</div>}
+          {t.zoneBounds && <div style={{ color: "#a0e0ff" }}>{t.zoneBounds}</div>}
+          <div>{t.zone}</div>
+          {t.outcome && <div>{t.outcome}</div>}
+          {t.simulatedContact && (
             <div style={{ color: "#ff99ff", "margin-top": "3px", "border-top": "1px solid #444", "padding-top": "2px" }}>
-              {tooltip()!.simulatedContact}
+              {t.simulatedContact}
             </div>
           )}
         </div>
-      )}
+        )}
+      </Show>
     </div>
   );
 }

@@ -20,6 +20,19 @@ export interface DatePartition {
   rows: number;
 }
 
+/** Arrow int64 ids arrive as bigint; the UI only needs plain numbers (MLB ids are far below 2^53). */
+function idNumber(v: unknown): number | undefined {
+  if (v == null) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function idString(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  const s = String(v);
+  return s === "" ? undefined : s;
+}
+
 /**
  * Parse an Arrow IPC response and precompute GPU-ready paths.
  * Column access is zero-copy typed arrays; trajectory math runs once per
@@ -40,6 +53,11 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const spinCol = table.getChild("release_spin_rate");
   const szTopCol = table.getChild("sz_top");
   const szBotCol = table.getChild("sz_bot");
+  const pitcherCol = table.getChild("pitcher_id");
+  const batterCol = table.getChild("batter_id");
+  const gameCol = table.getChild("game_id");
+  const pitchIdCol = table.getChild("pitch_id");
+  const playIdCol = table.getChild("play_id");
 
   const pitches: PitchDatum[] = [];
   for (let i = 0; i < table.numRows; i++) {
@@ -79,6 +97,11 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
     const szBot = rawSzBot != null && !isNaN(Number(rawSzBot)) ? Number(rawSzBot) : undefined;
 
     pitches.push({
+      pitcherId: idNumber(pitcherCol?.get(i)),
+      batterId: idNumber(batterCol?.get(i)),
+      gameId: idNumber(gameCol?.get(i)),
+      pitchId: idString(pitchIdCol?.get(i)),
+      playId: idString(playIdCol?.get(i)),
       path,
       releaseSpeed: speed[i],
       spinRate,
