@@ -58,6 +58,8 @@ export interface Scenario {
   title: string;
   /** ROADMAP sprint the use case comes from, or "market" for positioning. */
   sprint: string;
+  /** True for generated pitches: their players are made up, so the card never links out. */
+  synthetic: boolean;
   hook: string;
   lookFor: string;
   tryThis: string;
@@ -125,6 +127,7 @@ export const SCENARIOS: readonly Scenario[] = [
     id: "tunnel-vision",
     title: "Tunnel Vision",
     sprint: "S8-9",
+    synthetic: true,
     hook: "Fastball, slider, changeup: identical until it's too late.",
     lookFor:
       "Three pitch types leave one arm slot and pass through nearly the same spot at the commitment plane, then split by more than a foot at the plate. The pair panel shows the Deception Tunnel Ratio.",
@@ -140,6 +143,7 @@ export const SCENARIOS: readonly Scenario[] = [
     id: "fatigue-arc",
     title: "Fatigue Arc",
     sprint: "S11",
+    synthetic: true,
     hook: "One starter, 500 pitches, and the arm slowly gives way.",
     lookFor:
       "Velocity falls about 3 mph, the arm slot sinks about 3 inches, and the release cloud widens as the count climbs. The panel buckets it every 25 pitches.",
@@ -154,6 +158,7 @@ export const SCENARIOS: readonly Scenario[] = [
     id: "ghost-break",
     title: "Ghost Break",
     sprint: "S5, S8",
+    synthetic: true,
     hook: "How far did each pitch really move?",
     lookFor:
       "A six-pitch arsenal from a sinker that runs arm-side to a curve that falls off the table. Each ghost path is the same pitch with no spin; the gold gap is the induced break.",
@@ -165,6 +170,7 @@ export const SCENARIOS: readonly Scenario[] = [
     id: "chase-map",
     title: "Chase Map",
     sprint: "S12",
+    synthetic: true,
     hook: "Where do swings turn into misses?",
     lookFor:
       "Whiffs pile up low and away, outside the zone, where batters chase. In-zone swings rarely miss. The heatmap is in Whiff % mode.",
@@ -180,6 +186,7 @@ export const SCENARIOS: readonly Scenario[] = [
     id: "contact-lab",
     title: "Contact Lab",
     sprint: "S10",
+    synthetic: true,
     hook: "Same swing, different pitch, different result.",
     lookFor:
       "Pitch speeds from 70 to 100 mph meet a fixed bat. Hover a pitch to see the simulated exit velocity, launch angle, and contact quality. At 72 mph bat speed and 18 degrees, the harder pitches barrel first.",
@@ -196,6 +203,7 @@ export const SCENARIOS: readonly Scenario[] = [
     id: "corpus-slice",
     title: "Corpus Slice",
     sprint: "market",
+    synthetic: true,
     hook: "Savant 3D, but it's a query engine.",
     lookFor:
       "Ten pitchers with different release points and arsenals in one view. Every slider and chip filters on the GPU with no re-query: this is the corpus-scale exploration Savant's pre-rendered pages can't do.",

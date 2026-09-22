@@ -54,6 +54,13 @@ export interface PitchDatum {
   kinematics?: PitchKinematics;
   breakVector?: BreakVector;
   commitmentPoint?: [number, number, number];
+  /** Identity, when the Arrow table carries it (drives the player card and its MLB links). */
+  pitcherId?: number;
+  batterId?: number;
+  gameId?: number;
+  pitchId?: string;
+  /** MLB per-pitch video id; real data only. */
+  playId?: string;
 }
 
 export const FILTER_SIZE = 4;

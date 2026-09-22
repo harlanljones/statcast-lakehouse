@@ -32,6 +32,11 @@ describe("scenario catalog", () => {
     }
   });
 
+  it("flags every generated scenario as synthetic, so no real player or video is implied", () => {
+    // A future real-data scenario must set synthetic: false (and update this test on purpose).
+    for (const sc of SCENARIOS) expect(sc.synthetic).toBe(true);
+  });
+
   it("defaults to a scenario that exists", () => {
     expect(scenarioById(DEFAULT_SCENARIO_ID)).toBeDefined();
     expect(scenarioById("nope")).toBeUndefined();
