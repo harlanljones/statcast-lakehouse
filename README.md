@@ -115,4 +115,5 @@ The demo needs no cloud account and costs nothing to host. The warehouse, ingest
 - [`TDD.md`](TDD.md): the technical design, and the source of truth
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): data flow and key decisions
 - [`docs/ROADMAP.md`](docs/ROADMAP.md): what is done and what is next
+- [`docs/HANDOFF.md`](docs/HANDOFF.md): current state and the remaining work, in priority order
 - [`AGENTS.md`](AGENTS.md): operating manual for coding agents
