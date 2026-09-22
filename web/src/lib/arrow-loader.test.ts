@@ -28,7 +28,15 @@ function ipcBuffer(rows: {
   szTop?: Float64Array | number[];
   szBot?: Float64Array | number[];
   /** int64 ids (arrive as bigint) and string ids, as in the real schema. */
-  ids?: { pitcherId?: bigint[]; batterId?: bigint[]; gameId?: bigint[]; pitchId?: string[]; playId?: string[] };
+  ids?: {
+    pitcherId?: bigint[];
+    batterId?: bigint[];
+    pitcherName?: string[];
+    batterName?: string[];
+    gameId?: bigint[];
+    pitchId?: string[];
+    playId?: string[];
+  };
 }): ArrayBuffer {
   const count = rows.count;
   // Release point ~55.5 ft from the plate front, moving toward it at 120 ft/s.
@@ -56,6 +64,8 @@ function ipcBuffer(rows: {
   if (rows.szBot) arrays.sz_bot = new Float64Array(rows.szBot);
   if (rows.ids?.pitcherId) arrays.pitcher_id = new BigInt64Array(rows.ids.pitcherId);
   if (rows.ids?.batterId) arrays.batter_id = new BigInt64Array(rows.ids.batterId);
+  if (rows.ids?.pitcherName) arrays.pitcher_name = rows.ids.pitcherName;
+  if (rows.ids?.batterName) arrays.batter_name = rows.ids.batterName;
   if (rows.ids?.gameId) arrays.game_id = new BigInt64Array(rows.ids.gameId);
   if (rows.ids?.pitchId) arrays.pitch_id = rows.ids.pitchId;
   if (rows.ids?.playId) arrays.play_id = rows.ids.playId;
@@ -182,6 +192,20 @@ describe("loadPitchTable", () => {
     });
     expect(typeof pitches[1].pitcherId).toBe("number");
     expect(pitches[1].pitcherId).toBe(605151);
+  });
+
+  it("extracts optional real-player display names and leaves blank names unset", () => {
+    const { pitches } = loadPitchTable(ipcBuffer({
+      count: 2,
+      pitchTypes: ["FF", "FS"],
+      ids: {
+        pitcherName: ["Shota Imanaga", "  "],
+        batterName: ["Tommy Pham", "Mike Tauchman"],
+      },
+    }));
+    expect(pitches[0]).toMatchObject({ pitcherName: "Shota Imanaga", batterName: "Tommy Pham" });
+    expect(pitches[1].pitcherName).toBeUndefined();
+    expect(pitches[1].batterName).toBe("Mike Tauchman");
   });
 
   it("leaves the id fields undefined when the columns are absent", () => {

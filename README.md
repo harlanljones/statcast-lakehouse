@@ -1,6 +1,6 @@
 # Statcast Lakehouse
 
-See MLB pitches as 3D trajectories, 500 at a time, and filter them on the GPU.
+See MLB pitches as 3D trajectories, up to 500 at a time, and filter them on the GPU.
 
 **[Live demo: statcast-lakehouse.pages.dev](https://statcast-lakehouse.pages.dev)**
 
@@ -14,9 +14,9 @@ Sliders and filters run on the GPU, so scrubbing stays smooth.
 
 Behind the demo is a small data pipeline: ingest into BigQuery, train an xWhiff model in the warehouse, and serve Apache Arrow over HTTP.
 
-## The demo: six stories
+## The demo: one real game and six generated stories
 
-Each story is a group of 500 pitches built to show one idea. Pick one, read the caption, and try the suggestion.
+The demo opens on all 255 pitches from the Cubs' September 4, 2024 combined no-hitter, including Shota Imanaga's seven hitless innings. Player names and MLB pitch-video links come from the public game feed. Six deterministic 500-pitch stories remain available as controlled examples: pick one, read the caption, and try the suggestion.
 
 | | |
 |---|---|
@@ -53,15 +53,17 @@ flowchart LR
 
 ### How the demo is hosted
 
-The six stories are generated with fixed seeds, so they never change. They are exported as static files and served by Cloudflare Pages. No server runs.
+The real game is checked in as a reproducible Arrow export; the six generated stories use fixed seeds. All seven datasets are served as static files by Cloudflare Pages, so no server runs.
 
 ```mermaid
 flowchart LR
     gen["ingestion/scenarios.py<br/>6 seeded groups"] --> export["Export .arrow files"]
+    real["Public MLB feeds<br/>1 verified game"] --> realexport["Committed .arrow file"]
     export --> build["Vite static build"]
     build --> pages["Cloudflare Pages"]
     push["Push to main"] --> actions["GitHub Actions"]
     actions --> export
+    realexport --> build
     gen -.->|"same bytes"| api["/pitches/scenario/id<br/>FastAPI"]
 ```
 
@@ -83,6 +85,10 @@ cd web && npm run deploy                 # needs `npx wrangler login`
 
 # A synthetic day of pitches as an Arrow file
 python3 -m ingestion.worker --dry-run --pitches 300 --out data/sample.arrow
+
+# Reproduce the real game used by the demo
+python3 -m ingestion.export_real_scenario --date 2024-09-04 --game-pk 746835 \
+  --out web/public/real/imanaga-no-hitter.arrow
 ```
 
 Loading real data (`--live`, BigQuery, BQML) needs Google Cloud credentials.
@@ -115,5 +121,4 @@ The demo needs no cloud account and costs nothing to host. The warehouse, ingest
 - [`TDD.md`](TDD.md): the technical design, and the source of truth
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): data flow and key decisions
 - [`docs/ROADMAP.md`](docs/ROADMAP.md): what is done and what is next
-- [`docs/HANDOFF.md`](docs/HANDOFF.md): current state and the remaining work, in priority order
 - [`AGENTS.md`](AGENTS.md): operating manual for coding agents

@@ -16,8 +16,9 @@ const SERVER_IDS = [
 ];
 
 describe("scenario catalog", () => {
-  it("matches the server registry ids, in order", () => {
-    expect(SCENARIOS.map((s) => s.id)).toEqual(SERVER_IDS);
+  it("matches generated server registry ids and explicitly isolates committed assets", () => {
+    expect(SCENARIOS.filter((s) => !s.assetUrl).map((s) => s.id)).toEqual(SERVER_IDS);
+    expect(SCENARIOS.filter((s) => s.assetUrl).map((s) => s.id)).toEqual(["imanaga-no-hitter"]);
   });
 
   it("gives every scenario copy, a real camera, and at least one lens control", () => {
@@ -32,12 +33,16 @@ describe("scenario catalog", () => {
     }
   });
 
-  it("flags every generated scenario as synthetic, so no real player or video is implied", () => {
-    // A future real-data scenario must set synthetic: false (and update this test on purpose).
-    for (const sc of SCENARIOS) expect(sc.synthetic).toBe(true);
+  it("flags generated scenarios as synthetic and the committed Imanaga asset as real", () => {
+    for (const sc of SCENARIOS.filter((s) => !s.assetUrl)) expect(sc.synthetic).toBe(true);
+    expect(scenarioById("imanaga-no-hitter")).toMatchObject({
+      synthetic: false,
+      assetUrl: "/real/imanaga-no-hitter.arrow",
+    });
   });
 
   it("defaults to a scenario that exists", () => {
+    expect(DEFAULT_SCENARIO_ID).toBe("imanaga-no-hitter");
     expect(scenarioById(DEFAULT_SCENARIO_ID)).toBeDefined();
     expect(scenarioById("nope")).toBeUndefined();
   });
@@ -58,7 +63,8 @@ describe("scenario catalog", () => {
     expect(P("chase-map").heatmapMode).toBe("whiff_rate");
     expect(P("contact-lab").batSpeed).toBe(72);
     expect(P("contact-lab").attackAngleDeg).toBe(18);
-    for (const s of SCENARIOS.filter((x) => x.id !== "tunnel-vision")) {
+    expect(P("imanaga-no-hitter").pairedTypes).toEqual(["FF", "FS"]);
+    for (const s of SCENARIOS.filter((x) => x.id !== "tunnel-vision" && x.id !== "imanaga-no-hitter")) {
       expect(s.preset.pairedTypes).toBeNull();
     }
   });
@@ -73,6 +79,11 @@ describe("scenario urls", () => {
 
   it("points at the pre-exported .arrow asset in static (Cloudflare Pages) mode", () => {
     expect(scenarioUrl("fatigue-arc", true)).toBe("/scenarios/fatigue-arc.arrow");
+  });
+
+  it("uses a committed real-data asset in both local and static builds", () => {
+    expect(scenarioUrl("imanaga-no-hitter", false)).toBe("/real/imanaga-no-hitter.arrow");
+    expect(scenarioUrl("imanaga-no-hitter", true)).toBe("/real/imanaga-no-hitter.arrow");
   });
 
   it("is not in static mode unless the build asks for it", () => {

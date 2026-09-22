@@ -109,9 +109,15 @@ describe("playerLabel", () => {
     expect(playerLabel("Batter", 500001, true)).toBe("Synthetic batter #500001");
   });
 
-  it("uses the id for real players until names are available", () => {
+  it("uses the real name when present and falls back to the id", () => {
+    expect(playerLabel("Pitcher", 543037, false, "Shota Imanaga")).toBe("Shota Imanaga");
+    expect(playerLabel("Batter", 543037, false, "Tommy Pham")).toBe("Tommy Pham");
     expect(playerLabel("Pitcher", 702352, false)).toBe("Pitcher #702352");
     expect(playerLabel("Batter", undefined, false)).toBe("Batter unknown");
+  });
+
+  it("keeps synthetic labels even if an accidental name is present", () => {
+    expect(playerLabel("Pitcher", 543037, true, "Shota Imanaga")).toBe("Synthetic pitcher #543037");
   });
 });
 

@@ -57,6 +57,9 @@ export interface PitchDatum {
   /** Identity, when the Arrow table carries it (drives the player card and its MLB links). */
   pitcherId?: number;
   batterId?: number;
+  /** Display names from real-data assets; ids remain the canonical link keys. */
+  pitcherName?: string;
+  batterName?: string;
   gameId?: number;
   pitchId?: string;
   /** MLB per-pitch video id; real data only. */
@@ -826,4 +829,3 @@ export function buildLayers(opts: BuildLayersOpts) {
 
   return layers;
 }
-

@@ -80,7 +80,9 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
         </button>
       </div>
 
-      <h3 style={{ margin: "0 0 2px", "font-size": "14px" }}>{playerLabel("Pitcher", props.pitch.pitcherId, props.synthetic)}</h3>
+      <h3 style={{ margin: "0 0 2px", "font-size": "14px" }}>
+        {playerLabel("Pitcher", props.pitch.pitcherId, props.synthetic, props.pitch.pitcherName)}
+      </h3>
       <Show when={summary()} fallback={<div style={muted}>No pitcher id in this data.</div>}>
         {(s) => (
           <>
@@ -109,7 +111,9 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
         )}
       </Show>
 
-      <div style={{ ...muted, "margin-bottom": "8px" }}>{playerLabel("Batter", props.pitch.batterId, props.synthetic)}</div>
+      <div style={{ ...muted, "margin-bottom": "8px" }}>
+        {playerLabel("Batter", props.pitch.batterId, props.synthetic, props.pitch.batterName)}
+      </div>
 
       <Show when={!props.synthetic && stories().length > 0}>
         <section

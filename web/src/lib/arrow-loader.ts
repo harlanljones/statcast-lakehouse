@@ -33,6 +33,13 @@ function idString(v: unknown): string | undefined {
   return s === "" ? undefined : s;
 }
 
+/** Nullable Arrow UTF-8 fields arrive as strings; omit empty display names. */
+function displayName(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  const name = String(v).trim();
+  return name === "" ? undefined : name;
+}
+
 /**
  * Parse an Arrow IPC response and precompute GPU-ready paths.
  * Column access is zero-copy typed arrays; trajectory math runs once per
@@ -55,6 +62,8 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const szBotCol = table.getChild("sz_bot");
   const pitcherCol = table.getChild("pitcher_id");
   const batterCol = table.getChild("batter_id");
+  const pitcherNameCol = table.getChild("pitcher_name");
+  const batterNameCol = table.getChild("batter_name");
   const gameCol = table.getChild("game_id");
   const pitchIdCol = table.getChild("pitch_id");
   const playIdCol = table.getChild("play_id");
@@ -99,6 +108,8 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
     pitches.push({
       pitcherId: idNumber(pitcherCol?.get(i)),
       batterId: idNumber(batterCol?.get(i)),
+      pitcherName: displayName(pitcherNameCol?.get(i)),
+      batterName: displayName(batterNameCol?.get(i)),
       gameId: idNumber(gameCol?.get(i)),
       pitchId: idString(pitchIdCol?.get(i)),
       playId: idString(playIdCol?.get(i)),
