@@ -57,8 +57,9 @@ BigQuery (fct_pitches, partition-filtered scans)
 - **require_partition_filter everywhere** — every documented query scans
   single-day partitions; the 1 TB/mo free scan budget then covers a full
   season of queries many times over.
-- **Deterministic sample + strong ETag** — `/pitches/sample` uses a fixed
-  seed and fixed ingestion_time, so its body is byte-stable and the sha256
+- **Deterministic sample + strong ETag** — `/pitches/sample` serves the
+  first N checked-in real pitches (`ingestion.scenarios.real_pitches`), so
+  its body is byte-stable and the sha256
   ETag makes If-None-Match 304s actually hit; `/pitches/dates` keeps date
   discovery as cheap JSON metadata instead of Arrow scans.
 - **Per-day export batches with a manifest** — multi-day exports write one

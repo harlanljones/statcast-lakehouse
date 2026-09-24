@@ -73,22 +73,15 @@ def test_sample_response_is_binary_arrow_not_json(client):
     assert r.content[:6] == b"ARROW1"
 
 
-def test_sample_generation_under_10ms():
-    """Performance: synthetic batch generation must stay <10ms (Sprint 2)."""
-    import random
-    import datetime as dt
+def test_sample_batch_under_10ms():
+    """Performance: building a 300-pitch real sample batch stays <10ms (Sprint 2)."""
+    from ingestion.scenarios import real_pitches
 
-    rng = random.Random(2026)
-    # Warm up interpreter/imports so we measure steady-state generation.
-    app_module._arrow_response(
-        __import__("ingestion.worker", fromlist=["synth_day"]).synth_day(
-            rng, dt.date(2026, 9, 14), 300
-        )
-    )
-    from ingestion.worker import synth_day
+    # Warm up interpreter/imports and the file cache so we measure steady state.
+    app_module._arrow_response(real_pitches(limit=300))
 
     t0 = time.perf_counter()
-    resp = app_module._arrow_response(synth_day(rng, dt.date(2026, 9, 14), 300))
+    resp = app_module._arrow_response(real_pitches(limit=300))
     elapsed_ms = (time.perf_counter() - t0) * 1000
     assert resp.status_code == 200 if hasattr(resp, "status_code") else True
     assert elapsed_ms < 10.0, f"batch generation took {elapsed_ms:.2f}ms (>10ms)"

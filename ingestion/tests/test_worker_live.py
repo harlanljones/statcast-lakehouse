@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import random
 import sys
 import types as pytypes
 from unittest import mock
@@ -16,7 +15,8 @@ import pyarrow as pa
 import pytest
 
 from ingestion import worker
-from ingestion.worker import SCHEMA, main, synth_day, write_bq
+from ingestion.scenarios import real_pitches
+from ingestion.worker import SCHEMA, main, write_bq
 
 
 # ---------------------------------------------------------------------------
@@ -117,8 +117,7 @@ def fake_google(monkeypatch):
 
 def _sample_rows(n: int) -> list[dict]:
     """Rows with the exact types that break a bare json.dumps: date + datetime."""
-    table = synth_day(random.Random(3), dt.date(2026, 9, 14), n)
-    return table.to_pylist()
+    return real_pitches(limit=n).to_pylist()
 
 
 # ---------------------------------------------------------------------------
@@ -137,11 +136,11 @@ class TestWriteBqSerialization:
     def test_dates_and_datetimes_become_iso_strings(self):
         write_bq(iter(_sample_rows(3)), "proj-x", "bronze_pitches")
         for obj in _FAKE_STATE.load_calls[0].rows:
-            assert obj["game_date"] == "2026-09-14"
+            assert obj["game_date"] == "2024-08-02"
             # datetime ISO format, UTC offset preserved
             parsed = dt.datetime.fromisoformat(obj["ingestion_time"])
             assert parsed.utcoffset() == dt.timedelta(0)
-            assert obj["pitch_type"] in worker.PITCH_TYPES
+            assert isinstance(obj["pitch_type"], str) and obj["pitch_type"]
 
 
 class TestWriteBqJob:
@@ -175,7 +174,10 @@ class TestWriteBqJob:
 class TestWriteBqChunking:
     def test_chunks_of_5000(self):
         total = 11_001
-        n = write_bq(iter(_sample_rows(total)), "p", "bronze_pitches")
+        # More rows than the checked-in sample holds: cycle it (ids repeat;
+        # write_bq only chunks, it does not dedup).
+        rows = _sample_rows(100)
+        n = write_bq((rows[i % len(rows)] for i in range(total)), "p", "bronze_pitches")
         assert n == total
         assert [len(c.rows) for c in _FAKE_STATE.load_calls] == [5000, 5000, 1001]
         assert _FAKE_STATE.jobs_completed == 3
@@ -272,12 +274,30 @@ class TestMainLivePath:
 
 
 class TestMainDateArg:
-    def test_date_passed_through_to_synth(self, tmp_path):
+    def test_date_selects_one_real_game_day(self, tmp_path):
         out = tmp_path / "d.arrow"
-        assert main(["--dry-run", "--date", "2025-04-01", "--out", str(out)]) == 0
+        assert main(["--dry-run", "--date", "2024-09-19", "--pitches", "1000", "--out", str(out)]) == 0
         with pa.memory_map(str(out)) as src:
             table = pa.ipc.open_file(src).read_all()
-        assert table.column("game_date").to_pylist()[0] == dt.date(2025, 4, 1)
+        assert table.num_rows == 370
+        assert set(table.column("game_date").to_pylist()) == {dt.date(2024, 9, 19)}
+        assert set(table.column("game_id").to_pylist()) == {746011}
+
+    def test_date_without_real_pitches_exits_2_and_lists_dates(self, tmp_path, capsys):
+        with pytest.raises(SystemExit) as exc:
+            main(["--dry-run", "--date", "2025-04-01", "--out", str(tmp_path / "d.arrow")])
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "2025-04-01" in err
+        assert "2024-09-19" in err
+        assert not (tmp_path / "d.arrow").exists()
+
+    def test_dry_run_is_real_pitches_not_generated(self, tmp_path):
+        out = tmp_path / "d.arrow"
+        assert main(["--dry-run", "--pitches", "25", "--out", str(out)]) == 0
+        with pa.memory_map(str(out)) as src:
+            table = pa.ipc.open_file(src).read_all()
+        assert table.equals(real_pitches(limit=25))
 
     def test_invalid_date_exits_2(self):
         with pytest.raises(SystemExit) as exc:

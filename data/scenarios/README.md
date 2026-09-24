@@ -5,6 +5,10 @@ serving and static builds read these checked-in files; they do not call the
 network. To refresh them from the same public feeds, run
 `python3 -m ingestion.scenario_data` explicitly.
 
+The same files also back `GET /pitches/sample` and `python3 -m ingestion.worker
+--dry-run`: `ingestion.scenarios.real_pitches()` returns every pitch here once
+(the Ohtani slices repeat pitches from the full game), in game order.
+
 | Scenario | Source game | Selected pitches | Story reference |
 |---|---|---:|---|
 | `twenty-run-night` | Dodgers at Marlins, 2024-09-19, game 746011 | All 370 tracked pitches | [Ohtani's 50/50 game](https://www.mlb.com/stories/shohei-ohtani-historic-50-50-day) |

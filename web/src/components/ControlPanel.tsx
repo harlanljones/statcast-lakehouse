@@ -75,7 +75,7 @@ export interface ControlPanelProps {
  * filtering happens here (TDD §5.3).
  *
  * Controls:
- * - Load button / Date Selector (partition dates or sample day)
+ * - Load button / Date Selector (partition dates or real sample pitches)
  * - Camera view preset buttons (Catcher / Pitcher / Overhead / Side)
  * - Strike Zone filter buttons (All / In Zone / Chase)
  * - Outcome filter buttons (All / Swings / Whiffs) + Whiff Rate badge
@@ -133,7 +133,7 @@ export default function ControlPanel(props: ControlPanelProps): JSX.Element {
     >
       <div role="group" aria-label="date selector" style={{ display: "flex", "align-items": "center", gap: "6px" }}>
         <button onClick={props.onLoad} disabled={props.loading}>
-          {props.loading ? "Loading..." : "Load sample day"}
+          {props.loading ? "Loading..." : "Load sample pitches"}
         </button>
         <Show when={props.datePartitions && props.datePartitions.length > 0}>
           <select

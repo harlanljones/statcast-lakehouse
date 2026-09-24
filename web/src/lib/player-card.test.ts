@@ -122,8 +122,8 @@ describe("playerLabel", () => {
 });
 
 describe("isSyntheticSource", () => {
-  it("treats the generated sample day as synthetic, even though it loads outside a scenario", () => {
-    expect(isSyntheticSource({ kind: "sample" })).toBe(true);
+  it("treats the sample as real data: it serves checked-in MLB game-feed pitches", () => {
+    expect(isSyntheticSource({ kind: "sample" })).toBe(false);
   });
 
   it("follows the catalog flag for scenarios", () => {

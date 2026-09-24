@@ -12,9 +12,11 @@ WORKDIR /app
 COPY serving/requirements.txt ./serving/requirements.txt
 RUN pip install --no-cache-dir -r serving/requirements.txt
 
-# Serving layer plus the ingestion module it imports (synth_day, SCHEMA).
+# Serving layer plus the ingestion modules it imports (SCHEMA, real-game
+# slices) and the checked-in real pitches behind /pitches/sample and scenarios.
 COPY serving/ ./serving/
-COPY ingestion/worker.py ./ingestion/worker.py
+COPY ingestion/worker.py ingestion/scenarios.py ./ingestion/
+COPY data/scenarios/ ./data/scenarios/
 
 # Cloud Run expects the service to listen on $PORT (default 8080).
 ENV PORT=8080

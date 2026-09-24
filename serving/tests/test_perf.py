@@ -2,7 +2,7 @@
 
 Pins latency budgets from the ROADMAP/TDD acceptance criteria:
 
-  1. GET /pitches/sample full response (5000 synthetic rows) < 250 ms
+  1. GET /pitches/sample full response (all real rows)     < 250 ms
   2. 304 If-None-Match revalidation on /pitches/sample      <  50 ms
      (and must NOT re-serialize: guarded behaviorally, not just by timing)
   3. Client-side parse of the /pitches/sample body via
@@ -69,7 +69,7 @@ def test_sample_full_response_under_250ms(client):
 
 
 def test_sample_cold_full_response_under_250ms(client):
-    """Cold path: cache-miss full response (synth_day + serialize) < 250ms."""
+    """Cold path: cache-miss full response (real_pitches + serialize) < 250ms."""
     app_module._sample_body.cache_clear()
     start = time.perf_counter()
     response = client.get("/pitches/sample", params={"pitches": N_ROWS})
@@ -105,16 +105,18 @@ def test_sample_304_revalidation_under_50ms_and_no_reserialization(client, monke
     _, first = _timed_get(client, "/pitches/sample", params={"pitches": N_ROWS})
     etag = first.headers["etag"]
 
-    # Behavioral guard: a 304 must not regenerate the synthetic table NOR
-    # re-serialize. Any attempt raises.
+    # Behavioral guard: a 304 must not rebuild the sample table NOR
+    # re-serialize. The handler's clamp may read the row count first, so only
+    # a call that slices a sample (limit=...) counts as a rebuild.
     calls = {"n": 0}
-    real_synth = app_module.synth_day
+    original = app_module.real_pitches
 
-    def counting_synth(*args, **kwargs):
-        calls["n"] += 1
-        return real_synth(*args, **kwargs)
+    def counting_sample(*args, **kwargs):
+        if args or kwargs:
+            calls["n"] += 1
+        return original(*args, **kwargs)
 
-    monkeypatch.setattr(app_module, "synth_day", counting_synth)
+    monkeypatch.setattr(app_module, "real_pitches", counting_sample)
 
     def no_serialize(*args, **kwargs):
         raise AssertionError("304 revalidation re-serialized the sample table")
@@ -134,7 +136,7 @@ def test_sample_304_revalidation_under_50ms_and_no_reserialization(client, monke
     assert reval.content == b""  # no body re-sent
     assert calls["n"] == 0, (
         "304 revalidation regenerated the sample table "
-        f"({calls['n']} synth_day calls) — re-serialization is not allowed"
+        f"({calls['n']} real_pitches calls) — re-serialization is not allowed"
     )
     assert elapsed_ms < _budget_ms(50), f"304 revalidation took {elapsed_ms:.1f}ms (budget 50ms)"
 
@@ -154,7 +156,7 @@ def test_sample_body_parses_under_10ms(client):
         table = reader.read_all()
     elapsed_ms = (time.perf_counter() - start) * 1000
 
-    assert table.num_rows == N_ROWS
+    assert table.num_rows == min(N_ROWS, app_module.real_pitches().num_rows)
     assert elapsed_ms < _budget_ms(10), f"parse took {elapsed_ms:.1f}ms (budget 10ms)"
 
 

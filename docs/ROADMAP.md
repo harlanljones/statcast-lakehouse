@@ -19,7 +19,7 @@ items 3+ are completed offline (no stubs in code).
 
 ## 3. Serving hardening (Sprint 2 - Completed offline)
 - Arrow IPC serving endpoints (/pitches/sample, /pitches) fully hardened and tested.
-- Acceptance: Synthetic generation parses in <10ms; cache headers, CORS, and Arrow
+- Acceptance: Sample batch builds in <10ms; cache headers, CORS, and Arrow
   stream serialization verified.
 
 ## 4. Full 3D rendering (Sprint 3 - Completed)
@@ -62,8 +62,8 @@ items 3+ are completed offline (no stubs in code).
 
 ## 8. Serving caching + metadata endpoints (Completed offline)
 - `serving/app.py`: strong sha256 ETag with If-None-Match 304 (carries
-  Cache-Control) on Arrow responses; `/pitches/sample` byte-stable (fixed
-  seed + fixed ingestion_time) and capped at SAMPLE_PITCHES_CAP (5000);
+  Cache-Control) on Arrow responses; `/pitches/sample` byte-stable (checked-in
+  real pitches) and capped at SAMPLE_PITCHES_CAP (5000);
   `/pitches/dates` JSON partitions endpoint (30-day window); 400 on a
   malformed `date` param; `/pitches/cold` serves manifest-indexed exported
   batches byte-identically (ETag/304, path-containment enforced).
@@ -246,4 +246,15 @@ items 3+ are completed offline (no stubs in code).
 - Presets focus on recorded trajectories, crossings, release points, and outcomes. The simulated contact lens
   remains available as an explicit exploratory tool and is not presented as observed game data.
 
-
+## 23. Real pitches for the sample endpoint and dry-run (Completed offline)
+- The synthetic generator (`synth_pitch` / `synth_day`) is gone. Its plate crossings were drawn
+  independently of the trajectory and its `az` was positive, so its pitches were physically impossible.
+- `ingestion/scenarios.py` `real_pitches(game_day=None, limit=None)`: every checked-in real pitch from
+  `data/scenarios/`, deduplicated by `pitch_id`, in game order (497 pitches across 2024-08-02, 2024-09-19
+  and 2024-10-25). `/pitches/sample` and `worker --dry-run` both read it; `--dry-run --date` keeps one real
+  game day and exits 2 with the available dates when none match. Neither path uses the network.
+- Both Docker images now ship `data/scenarios/` (the serving image also needed `ingestion/scenarios.py`,
+  which `serving/app.py` already imported).
+- Web: the player card treats the sample as real data, so its MLB links are live.
+- Acceptance: `ingestion/tests/test_scenarios.py` pins the dedup, order, date filter, and that each sample
+  pitch's `plate_x`/`plate_z` matches where its 9 parameters cross the plate (within 0.01 ft).

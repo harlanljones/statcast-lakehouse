@@ -1,5 +1,5 @@
 # Serving layer (FastAPI + Arrow IPC over HTTP). Shares the ingestion
-# deps that serving.app imports (ingestion.worker.synth_day).
+# deps that serving.app imports (ingestion.worker, ingestion.scenarios).
 fastapi>=0.115
 uvicorn>=0.30
 starlette>=0.38

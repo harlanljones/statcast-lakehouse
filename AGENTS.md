@@ -19,9 +19,9 @@ do not contradict it.
 ## Commands (all verified)
 
 ```sh
-python3 -m pytest -q                                                # 277 tests (ingestion + serving + export + infra)
+python3 -m pytest -q                                                # 314 tests (ingestion + serving + export + infra)
 python3 -m ingestion.worker --dry-run --pitches 300 --out data/sample.arrow
-cd web && npm test                       # vitest, 193 tests
+cd web && npm test                       # vitest, 196 tests
 cd web && npm run build                  # vite build -> dist/
 npx tsc -p web/tsconfig.json --noEmit    # typecheck (run from repo root)
 ```
@@ -31,15 +31,15 @@ uvicorn; the live BigQuery load-job path needs GOOGLE_APPLICATION_CREDENTIALS.
 
 ## Layout
 
-- `ingestion/` — worker (kinematics solver, synthetic-day generator, Storage
-  Write path), MLB Stats API client, tests. Add row-mapping changes to
+- `ingestion/` — worker (kinematics solver, dry-run writer over the
+  checked-in real pitches, load-job write path), MLB Stats API client, tests. Add row-mapping changes to
   `mlb_client.COLUMN_MAP` and keep the schema in `worker.SCHEMA` in sync.
 - `warehouse/ddl/` — BigQuery DDL in numeric order (bronze -> curated ->
   per-day MERGE). `warehouse/bqml/` — model training + batch inference SQL.
 - `infra/main.tf` — dataset, budget guard, Cloud Run job, scheduler. Cloud
   Run lives in main.tf (not a separate cloud_run.tf).
 - `serving/` — FastAPI Arrow endpoints (`/pitches?date=`, `/pitches/sample`).
-- `data/scenarios/` — curated MLB Stats API pitch slices with story and game-feed provenance; `ingestion/scenario_data.py` refreshes them explicitly and `ingestion/scenarios.py` serves/exports the local Arrow assets. `web/src/lib/scenarios.ts` holds the story cards and presets (keep ids in sync).
+- `data/scenarios/` — curated MLB Stats API pitch slices with story and game-feed provenance; `ingestion/scenario_data.py` refreshes them explicitly and `ingestion/scenarios.py` serves/exports the local Arrow assets, and its `real_pitches()` backs `/pitches/sample` and `worker --dry-run` (no generated pitches anywhere). `web/src/lib/scenarios.ts` holds the story cards and presets (keep ids in sync).
 - `web/src/lib/` — kinematics solver (TS), Arrow loader, deck layer config.
   `web/src/components/` — Solid components. Tests live next to the code
   (`*.test.ts`).

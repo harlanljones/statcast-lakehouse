@@ -51,8 +51,8 @@ export default function App() {
   const [view, setView] = createSignal<CameraViewName>("Catcher");
   const [dragMode, setDragMode] = createSignal<DragMode>("rotate");
   // Where the loaded pitches came from; the player card links out only for real data.
-  // Defaults to synthetic so a missing source can never imply a real player.
-  const [dataSource, setDataSource] = createSignal<DataSource>({ kind: "sample" });
+  // Starts as synthetic so a missing source can never imply a real player.
+  const [dataSource, setDataSource] = createSignal<DataSource>({ kind: "scenario", synthetic: true });
   // Bumped to snap the camera back to the current preset, even when the preset
   // did not change (the user may have moved the camera by hand).
   const [resetKey, setResetKey] = createSignal(0);
@@ -208,8 +208,8 @@ export default function App() {
         setPitchData(data);
       })
       .catch((err) => {
-        console.error("Failed to load sample day:", err);
-        if (seq === loadSeq) setErrorMessage(`Failed to load sample day: ${err.message}`);
+        console.error("Failed to load sample pitches:", err);
+        if (seq === loadSeq) setErrorMessage(`Failed to load sample pitches: ${err.message}`);
       })
       .finally(() => {
         if (seq === loadSeq) setIsLoading(false);

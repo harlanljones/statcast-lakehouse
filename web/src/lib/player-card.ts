@@ -124,7 +124,7 @@ export type DataSource =
   | { kind: "sample" }
   | { kind: "partition"; date: string };
 
-/** The generated sample day is synthetic too, so provenance cannot come from the scenario alone. */
+/** The sample and warehouse partitions are real MLB pitches; scenarios follow their catalog flag. */
 export function isSyntheticSource(source: DataSource): boolean {
-  return source.kind === "sample" || (source.kind === "scenario" && source.synthetic);
+  return source.kind === "scenario" && source.synthetic;
 }
