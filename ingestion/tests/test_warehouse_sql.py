@@ -324,6 +324,29 @@ class TestBqml:
             assert spec.startswith("game_date, game_id"), spec
         assert "at_bat_number IS NOT NULL" in sql
 
+    def test_tabfm_benchmark_uses_champion_features_under_cap(self):
+        sql = read(BQML / "benchmark_tabfm_whiff.sql")
+        champion = self._train_features("train_whiff_model.sql")
+        selects = re.findall(r"CREATE TEMP TABLE \w+ AS\nSELECT(.*?)FROM", sql, re.S)
+        assert len(selects) == 2
+        for sel in selects:
+            assert self._selected_names(sel) == champion
+        assert len(champion - {"is_whiff"}) <= 20  # TabFM input cap
+        assert "label_col => 'is_whiff'" in sql
+
+    def test_tabfm_context_precedes_target_day(self):
+        """Context rows come strictly before the held-out day."""
+        sql = read(BQML / "benchmark_tabfm_whiff.sql")
+        assert "game_date < @target_date" in sql
+        assert "game_date = @target_date" in sql
+        assert "LIMIT 10000" in sql
+
+    def test_tabfm_benchmark_is_never_scheduled(self):
+        infra = (REPO / "infra").rglob("*")
+        for f in infra:
+            if f.is_file() and f.suffix in {".tf", ".py", ".sh", ".yaml", ".yml"}:
+                assert "benchmark_tabfm" not in f.read_text(), f
+
     def test_ctx_base_columns_exist_in_fct_schema(self):
         fct_cols = set(fct_columns_from_ddl())
         for col in ("stand", "p_throws", "balls", "strikes", "at_bat_number", "pitch_number"):
