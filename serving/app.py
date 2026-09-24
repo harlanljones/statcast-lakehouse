@@ -1,7 +1,7 @@
 """Serving layer (TDD §4): Arrow IPC over HTTP.
 
   GET /pitches?date=YYYY-MM-DD  -> Arrow IPC stream from BigQuery
-  GET /pitches/sample           -> synthetic Arrow day (no GCP creds)
+  GET /pitches/sample           -> checked-in real MLB pitches (no GCP creds)
   GET /pitches/scenario/{id}  -> curated real-game story slice (Arrow)
   GET /pitches/dates          -> historical partition metadata (JSON)
   GET /pitches/storylines     -> pitcher context by date/player (JSON)
@@ -18,15 +18,12 @@ import io
 import json
 import os
 import pathlib
-import random
-from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 
-from ingestion.scenarios import SCENARIOS
-from ingestion.worker import synth_day
+from ingestion.scenarios import SCENARIOS, real_pitches
 from serving.storylines import load_storylines
 
 app = FastAPI(title="statcast-lakehouse serving", version="0.1.0")
@@ -103,11 +100,10 @@ def healthz() -> dict:
 
 
 SAMPLE_PITCHES_CAP = 5000
-_SAMPLE_DAY = dt.date(2026, 9, 14)
 
-# Byte-stable synthetic sample cache, keyed by row count: the seed and
-# ingestion_time are fixed, so regenerating or re-serializing per request is
-# pure waste — a 304 must do neither. lru_cache(maxsize=8) bounds memory:
+# Byte-stable sample cache, keyed by row count: the sample is the first N
+# checked-in real pitches (ingestion.scenarios.real_pitches), so rebuilding
+# or re-serializing per request is pure waste — a 304 must do neither. lru_cache(maxsize=8) bounds memory:
 # only the 8 most recently used row counts keep a full serialized body
 # (each is on the order of a few hundred KB, so 8 entries stay small).
 # Thread-safety: functools.lru_cache is thread-safe — concurrent misses may
@@ -115,24 +111,18 @@ _SAMPLE_DAY = dt.date(2026, 9, 14)
 # state and the same key always yields the same bytes.
 @functools.lru_cache(maxsize=8)
 def _sample_body(n: int) -> tuple[bytes, str]:
-    table = synth_day(
-        random.Random(2026),
-        _SAMPLE_DAY,
-        n,
-        ingestion_time=datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc),
-    )
-    return _serialize(table)
+    return _serialize(real_pitches(limit=n))
 
 
 @app.get("/pitches/sample")
 def sample(request: Request, pitches: int = 300) -> Response:
-    n = max(1, min(pitches, SAMPLE_PITCHES_CAP))
+    # Clamp to the real pitches on hand so larger requests share one cache key.
+    n = max(1, min(pitches, SAMPLE_PITCHES_CAP, real_pitches().num_rows))
     body, etag = _sample_body(n)
     return _respond(body, etag, request.headers.get("if-none-match"))
 
 
-# Scenario bodies are fully deterministic (fixed seeds + fixed ingestion_time),
-# so serialize each once. maxsize == number of scenarios: nothing is evicted.
+# Scenario bodies are immutable checked-in files, so serialize each once. maxsize == number of scenarios: nothing is evicted.
 @functools.lru_cache(maxsize=len(SCENARIOS))
 def _scenario_body(scenario_id: str) -> tuple[bytes, str]:
     return _serialize(SCENARIOS[scenario_id]())

@@ -3,12 +3,14 @@
 Two modes:
   * live     — poll the MLB Stats API and write to BigQuery via
                batch load jobs (WRITE_APPEND, 5,000 rows per job).
-  * dry-run  — generate a synthetic day of pitches and write an Apache Arrow
-               IPC file locally. No GCP credentials, no network. This is the
-               mode used by tests and local development.
+  * dry-run  — write real MLB pitches from the checked-in game slices
+               (data/scenarios/) to a local Apache Arrow IPC file. No GCP
+               credentials, no network. This is the mode used by tests and
+               local development.
 
 Usage:
   python -m ingestion.worker --dry-run --out data/sample.arrow --pitches 200
+  python -m ingestion.worker --dry-run --date 2024-09-19   # one real game day
   python -m ingestion.worker --live --date 2026-09-14   # requires GCP creds
   python -m ingestion.worker --live --backfill 2026-09-10 2026-09-12
 """
@@ -19,7 +21,6 @@ import hashlib
 import json
 import math
 import os
-import random
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -61,8 +62,6 @@ SCHEMA = pa.schema(
         ("ingestion_time", pa.timestamp("us", tz="UTC")),
     ]
 )
-
-PITCH_TYPES = ("FF", "SL", "CH", "CU", "SI", "FC", "KC", "FS")
 
 
 def solve_flight_time(y0: float, vy0: float, ay: float, y_end: float = PLATE_Y_FT) -> float:
@@ -543,75 +542,6 @@ def compute_fatigue_buckets(
     return buckets
 
 
-def synth_pitch(
-    rng: random.Random,
-    game_id: int,
-    game_day: date,
-    i: int,
-    ingestion_time: datetime | None = None,
-) -> dict[str, Any]:
-    """A plausible synthetic pitch in Statcast coordinate space.
-
-    x: catcher's right (+), y: distance from plate, z: height above plate.
-    Release ~ (-1.5..1.5 ft, 55 ft, 5.5 ft), typical MLB accelerations.
-    """
-    pt = rng.choice(PITCH_TYPES)
-    speed = rng.uniform(72, 100)
-    vy0 = -speed * 1.467 * rng.uniform(0.88, 0.97)  # mph -> ft/s, avg over flight
-    flight = 55.0 / abs(vy0)
-    ax = rng.uniform(-14, 14)  # horizontal break acceleration
-    az = 32.174 + rng.uniform(-10, 25)  # gravity + lift
-    whiff = rng.random() < 0.25
-    return {
-        "pitch_id": f"{game_id}-{i:04d}",
-        "game_id": game_id,
-        "game_date": game_day,
-        "pitcher_id": rng.randint(110000, 699999),
-        "batter_id": rng.randint(110000, 699999),
-        "pitch_type": pt,
-        "release_speed": speed,
-        "release_spin_rate": rng.uniform(1400, 3200),
-        "x0": rng.uniform(-1.8, 1.8),
-        "y0": 55.0,
-        "z0": rng.uniform(4.5, 6.5),
-        "vx0": rng.uniform(-12, 12),
-        "vy0": vy0,
-        "vz0": rng.uniform(-8, 4),
-        "ax": ax,
-        "ay": 0.0,  # Statcast fits use constant ay=0 in the y polynomial
-        "az": az,
-        "plate_x": rng.uniform(-2.0, 2.0),
-        "plate_z": rng.uniform(0.8, 3.8),
-        "sz_top": 3.4,
-        "sz_bot": 1.5,
-        "is_swing": int(rng.random() < 0.47),
-        "is_whiff": 0,
-        "ingestion_time": ingestion_time or datetime.now(timezone.utc),
-    }
-
-
-def synth_day(
-    rng: random.Random,
-    game_day: date,
-    n_pitches: int,
-    *,
-    ingestion_time: datetime | None = None,
-) -> pa.Table:
-    """One synthetic game day; whiffs only on swings, as in the real data.
-
-    ingestion_time defaults to now per call; pass a fixed tz-aware datetime
-    for byte-stable output (e.g. the serving /pitches/sample endpoint).
-    """
-    rows = []
-    game_id = int(game_day.strftime("%Y%m%d")) * 100 + 1
-    for i in range(n_pitches):
-        p = synth_pitch(rng, game_id, game_day, i, ingestion_time=ingestion_time)
-        if p["is_swing"]:
-            p["is_whiff"] = int(rng.random() < 0.25)
-        rows.append(p)
-    return pa.Table.from_pylist(rows, schema=SCHEMA)
-
-
 def rows_to_record_batches(rows: Iterable[dict[str, Any]], chunk_size: int = 5000):
     """Chunk rows for BigQuery load jobs (TDD §3.2: 5,000/chunk)."""
     chunk: list[dict[str, Any]] = []
@@ -847,7 +777,7 @@ def run_backfill(
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--dry-run", action="store_true", help="synthetic day -> local Arrow file")
+    ap.add_argument("--dry-run", action="store_true", help="checked-in real pitches -> local Arrow file")
     ap.add_argument("--live", action="store_true", help="MLB API -> BigQuery load jobs")
     ap.add_argument("--date", default=None)
     ap.add_argument(
@@ -891,6 +821,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.project:
         args.project = os.environ.get("GCP_PROJECT")
 
+    date_given = args.date is not None
     if args.date is None or args.date == "$(JOB_DATE)":
         args.date = os.environ.get("JOB_DATE") or str(date.today() - timedelta(days=1))
     elif args.date.startswith("$"):
@@ -908,8 +839,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     if args.dry_run or not args.live:
-        rng = random.Random(2026)
-        table = synth_day(rng, game_day, args.pitches)
+        # Imported here: ingestion.scenarios imports SCHEMA from this module.
+        from ingestion.scenarios import real_pitches
+
+        try:
+            table = real_pitches(game_day if date_given else None, limit=args.pitches)
+        except ValueError as exc:
+            ap.error(str(exc))
         path = write_arrow(table, args.out)
         print(f"wrote {table.num_rows} pitches -> {path}")
         return 0

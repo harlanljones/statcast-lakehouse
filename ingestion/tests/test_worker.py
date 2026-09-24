@@ -2,13 +2,12 @@
 
 Run: python -m pytest ingestion/tests -q
 """
-import datetime as dt
 import math
-import random
 
 import pyarrow as pa
 import pytest
 
+from ingestion.scenarios import real_pitches
 from ingestion.worker import (
     SCHEMA,
     PLATE_Y_FT,
@@ -16,7 +15,6 @@ from ingestion.worker import (
     position_at,
     rows_to_record_batches,
     solve_flight_time,
-    synth_day,
     trajectory,
     ghost_kinematics,
     ghost_trajectory,
@@ -354,17 +352,9 @@ class TestReleaseDispersionAndFatigue:
         assert math.isclose(b1["whiff_pct"], 0.0)
 
 
-class TestSynthDay:
-    def test_schema_and_whiff_invariant(self):
-        table = synth_day(random.Random(7), dt.date(2026, 9, 14), 500)
-        assert table.schema.equals(SCHEMA)
-        assert table.num_rows == 500
-        whiffs = table.column("is_whiff").to_pylist()
-        swings = table.column("is_swing").to_pylist()
-        assert all(w == 0 for s, w in zip(swings, whiffs) if not s)
-
+class TestWriteArrow:
     def test_arrow_write_roundtrip(self, tmp_path):
-        table = synth_day(random.Random(1), dt.date(2026, 9, 14), 50)
+        table = real_pitches(limit=50)
         out = write_arrow(table, str(tmp_path / "sub" / "day.arrow"))
         with pa.memory_map(out) as src:
             back = pa.ipc.open_file(src).read_all()

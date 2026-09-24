@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 import serving.app as app_module
 from ingestion.export_batch import export_day_range, write_manifest
-from ingestion.worker import synth_day
+from ingestion.scenarios import real_pitches
 
 MEDIA_ARROW = "application/vnd.apache.arrow.file"
 
@@ -47,7 +47,7 @@ class FakeBigQueryClient:
 @pytest.fixture()
 def batch_dir(tmp_path, monkeypatch):
     """Two exported days + manifest; env pointed at the temp dir."""
-    client = FakeBigQueryClient(synth_day(__import__("random").Random(7), dt.date(2026, 9, 14), 20))
+    client = FakeBigQueryClient(real_pitches(limit=20))
     paths = export_day_range(
         dt.date(2026, 9, 13),
         dt.date(2026, 9, 14),

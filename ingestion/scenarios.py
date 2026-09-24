@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Callable
@@ -45,6 +46,46 @@ SCENARIOS: dict[str, Callable[[], pa.Table]] = {
     scenario_id: (lambda scenario_id=scenario_id: scenario_table(scenario_id))
     for scenario_id in SCENARIO_FILES
 }
+
+
+@lru_cache(maxsize=1)
+def _all_real_pitches() -> pa.Table:
+    tables = [scenario_table(scenario_id) for scenario_id in SCENARIO_FILES]
+    seen: set[str] = set()
+    keep: list[int] = []
+    combined = pa.concat_tables(tables)
+    for index, pitch_id in enumerate(combined.column("pitch_id").to_pylist()):
+        if pitch_id not in seen:
+            seen.add(pitch_id)
+            keep.append(index)
+    unique = combined.take(keep)
+    # Stable sort: games in date order, pitches in their source (game) order.
+    order = sorted(range(unique.num_rows), key=unique.column("game_date").to_pylist().__getitem__)
+    return unique.take(order)
+
+
+def real_game_dates() -> list[date]:
+    """Game dates covered by the checked-in real pitches, ascending."""
+    return sorted(set(_all_real_pitches().column("game_date").to_pylist()))
+
+
+def real_pitches(game_day: date | None = None, limit: int | None = None) -> pa.Table:
+    """Every checked-in real pitch, deduplicated by pitch_id, in game order.
+
+    This backs ``/pitches/sample`` and ``worker --dry-run`` so neither path
+    serves generated pitches. ``game_day`` keeps one game date (ValueError if
+    no checked-in pitch has it); ``limit`` keeps the first N rows.
+    """
+    table = _all_real_pitches()
+    if game_day is not None:
+        keep = [i for i, d in enumerate(table.column("game_date").to_pylist()) if d == game_day]
+        if not keep:
+            available = ", ".join(d.isoformat() for d in real_game_dates())
+            raise ValueError(f"no real pitches for {game_day.isoformat()}; available: {available}")
+        table = table.take(keep)
+    if limit is not None:
+        table = table.slice(0, max(0, limit))
+    return table
 
 
 def export_scenarios(out_dir: str | Path) -> list[Path]:

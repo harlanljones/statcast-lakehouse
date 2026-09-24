@@ -82,8 +82,9 @@ cd web && npm run dev                    # http://localhost:5173
 cd web && npm run build:static           # needs python3 + pyarrow
 cd web && npm run deploy                 # needs `npx wrangler login`
 
-# A synthetic day of pitches as an Arrow file
+# Real MLB pitches from the checked-in game slices as an Arrow file
 python3 -m ingestion.worker --dry-run --pitches 300 --out data/sample.arrow
+python3 -m ingestion.worker --dry-run --date 2024-09-19 --out data/day.arrow   # one real game day
 
 # Refresh the curated real-game slices (explicit MLB Stats API request)
 python3 -m ingestion.scenario_data --refresh

@@ -39,7 +39,7 @@ def test_sample_etag_is_sha256_of_body(client):
 
 
 def test_if_none_match_with_exact_etag_returns_304_empty_body(client):
-    # /pitches/sample is byte-stable (fixed seed + ingestion_time), so the
+    # /pitches/sample is byte-stable (checked-in real pitches), so the
     # real sample body must produce a working 304 end-to-end.
     r1 = client.get("/pitches/sample")
     etag = r1.headers["etag"]
