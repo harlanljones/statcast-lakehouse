@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Statcast 3D</title>
     <link rel="icon" href="data:," />
     <style>
@@ -12,6 +13,18 @@
       .ui-ghost { color: #e2e8f0; background: transparent; border: 1px solid rgba(255,255,255,0.22); padding: 4px 12px; font-size: 12px; }
       .ui-ghost[aria-pressed="true"] { background: var(--accent, #60a5fa); color: #0b1220; border-color: var(--accent, #60a5fa); }
       input[type="range"] { accent-color: var(--accent, #60a5fa); }
+      /* Phones and narrow windows: stack the story rail above the scene and let
+         the page scroll, so the 3D canvas keeps a usable height instead of
+         being squeezed to nothing beside a fixed-width rail. */
+      @media (max-width: 720px) {
+        .app-shell { width: 100% !important; height: auto !important; min-height: 100dvh; overflow: visible !important; }
+        .app-subtitle { display: none; }
+        .app-body { flex-direction: column !important; }
+        .scenario-rail { width: auto !important; flex-direction: row !important; overflow-x: auto; border-right: none !important; border-bottom: 1px solid rgba(255,255,255,0.12); }
+        .scenario-rail > button { flex: 0 0 200px; }
+        .app-viz { flex: 0 0 auto !important; height: min(70vh, 560px); min-height: 320px; }
+        .app-viz [aria-label="pitch movement profile break chart"] { transform: scale(0.7); transform-origin: top right; }
+      }
     </style>
   </head>
   <body>

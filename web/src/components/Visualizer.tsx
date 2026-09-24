@@ -12,7 +12,15 @@ import {
   type OutcomeFilter,
 } from "../lib/deck-layers";
 import { pitchTooltip, pitchTooltipSummary, clampTooltipPos } from "../lib/pitch-tooltip";
-import { clampViewState, controllerOptions, withLimits, type DragMode } from "../lib/camera";
+import {
+  clampViewState,
+  controllerOptions,
+  fitCanvas,
+  fromCanvasView,
+  toCanvasView,
+  withLimits,
+  type DragMode,
+} from "../lib/camera";
 import BreakChart from "./BreakChart";
 import PlayerCard from "./PlayerCard";
 import PairComparisonPanel from "./PairComparisonPanel";
@@ -116,12 +124,36 @@ export default function Visualizer(props: VisualizerProps) {
     container.dataset.target = vs.target.map((n) => n.toFixed(2)).join(",");
   };
 
+  // The camera is kept canvas-independent (presets, clamping and the published
+  // zoom all live in the reference framing); deck.gl gets it through the fit
+  // for the current canvas (zoom shift plus field of view), so every screen
+  // frames the same slice of the field from the same camera position.
+  let view: OrbitViewState = withLimits(INITIAL_VIEW);
+  let fit = fitCanvas(0, 0);
+  const applyView = (vs: OrbitViewState) => {
+    view = vs;
+    deck?.setProps({ viewState: toCanvasView(vs, fit.zoomOffset) });
+    publishCamera(vs);
+  };
+
   onMount(() => {
+    fit = fitCanvas(container.clientWidth, container.clientHeight);
+    view = withLimits(effectiveViewState(props.viewState, props.showHeatmap) ?? INITIAL_VIEW);
     deck = new Deck({
       parent: container,
-      views: new OrbitView({}),
-      viewState: withLimits(effectiveViewState(props.viewState, props.showHeatmap) ?? INITIAL_VIEW),
+      views: new OrbitView({ fovy: fit.fovy }),
+      viewState: toCanvasView(view, fit.zoomOffset),
       controller: controllerOptions(props.dragMode ?? "rotate"),
+      // Refit on every canvas resize (window, rotation, panels) without losing
+      // where the user has orbited or zoomed to.
+      onResize: ({ width, height }: { width: number; height: number }) => {
+        const next = fitCanvas(width, height);
+        if (next.zoomOffset === fit.zoomOffset && next.fovy === fit.fovy) return;
+        const fovyChanged = next.fovy !== fit.fovy;
+        fit = next;
+        if (fovyChanged) deck?.setProps({ views: new OrbitView({ fovy: fit.fovy }) });
+        applyView(view);
+      },
       // A click on a pitch pins it; a click on empty space unpins. deck.gl does
       // not fire click after a drag, so orbiting the camera never pins.
       onClick: (info: PickingInfo) => {
@@ -132,9 +164,7 @@ export default function Visualizer(props: VisualizerProps) {
       // Controlled camera: deck.gl only reports what the user did; we apply it
       // (clamped so the field cannot be panned or zoomed out of reach).
       onViewStateChange: ({ viewState }: { viewState: any }) => {
-        const next = clampViewState(viewState as OrbitViewState);
-        deck?.setProps({ viewState: next });
-        publishCamera(next);
+        applyView(clampViewState(fromCanvasView(viewState as OrbitViewState, fit.zoomOffset)));
       },
       layers: [],
     });
@@ -248,11 +278,7 @@ export default function Visualizer(props: VisualizerProps) {
   createEffect(() => {
     void props.resetKey;
     const vs = effectiveViewState(props.viewState, props.showHeatmap);
-    if (deck && vs) {
-      const limited = withLimits(vs);
-      deck.setProps({ viewState: limited });
-      publishCamera(limited);
-    }
+    if (deck && vs) applyView(withLimits(vs));
   });
 
   createEffect(() => {
@@ -277,7 +303,7 @@ export default function Visualizer(props: VisualizerProps) {
   const tooltip = () => pitchTooltip(picked(), props.batSpeed, props.attackAngleDeg, props.showContactSim);
 
   return (
-    <div style={{ position: "relative", flex: "1", width: "100%", overflow: "hidden" }}>
+    <div class="app-viz" style={{ position: "relative", flex: "1", width: "100%", overflow: "hidden" }}>
       <div
         ref={container}
         style={{ width: "100%", height: "100%", overflow: "hidden" }}

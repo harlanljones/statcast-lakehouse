@@ -187,16 +187,17 @@ export function strikeZoneSegments(): WireSegment[] {
     [[w, y, zMax], [-w, y, zMax]],
     [[-w, y, zMax], [-w, y, zMin]],
   ];
-  // Home plate: 17 in wide, 8.5 in deep sides, 12 in point facing catcher.
+  // Home plate: 17 in front edge on the zone plane, 8.5 in sides, then two
+  // 12 in edges meeting at the back point, 17 in behind the front (y = 0).
   const hpW = 17 / 24;
-  const hpD = 8.5 / 24;
-  const hpPoint = -hpD; // point extends toward catcher (negative y)
+  const hpSide = 8.5 / 12;
+  const hpPoint = y - 17 / 12; // point extends toward catcher (negative y)
   const plate: WireSegment = [
     [-hpW, y, 0],
     [hpW, y, 0],
-    [hpW, y - hpD, 0],
+    [hpW, y - hpSide, 0],
     [0, hpPoint, 0],
-    [-hpW, y - hpD, 0],
+    [-hpW, y - hpSide, 0],
     [-hpW, y, 0],
   ];
   return [...rect, plate];
@@ -350,6 +351,22 @@ export const TRAJECTORY_WIDTH = 0.08;
 export const PICKED_WIDTH_MULTIPLIER = 2.5;
 
 /**
+ * Point markers (plate crossings, release points, flight markers, ...) face the
+ * camera and keep a pixel-sized outline. ScatterplotLayer's default outline is
+ * 1 world unit (1 ft here) in meters, which turned every marker into a
+ * foot-wide gray disc lying flat in the ground plane.
+ */
+export function markerStyle(outlinePx: number, minRadiusPx = 2) {
+  return {
+    billboard: true,
+    lineWidthUnits: "pixels",
+    getLineWidth: outlinePx,
+    lineWidthMinPixels: outlinePx,
+    radiusMinPixels: minRadiusPx,
+  } as const;
+}
+
+/**
  * Full layer set for the visualizer. Filtering is 100% GPU-side: pitch data
  * is passed unfiltered and the slider/type selections land in
  * DataFilterExtension uniforms (TDD §5.3 invariant — zero per-frame JS
@@ -436,17 +453,6 @@ export function buildLayers(opts: BuildLayersOpts) {
         getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
       },
     }),
-    new PathLayer<WireSegment>({
-      id: "strike-zone",
-      coordinateSystem: "cartesian" as never,
-      data: diamondWireframeSegments(),
-      getPath: (s) => s,
-      getColor: [255, 255, 255],
-      getWidth: 0.03,
-      widthUnits: "meters",
-      widthMinPixels: 1,
-      opacity: 0.85,
-    }),
   ];
 
   if (showTunneling) {
@@ -459,6 +465,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         getColor: [255, 215, 0],
         getWidth: 0.03,
         widthUnits: "meters",
+        billboard: true,
         widthMinPixels: 1,
         opacity: 0.85,
       }),
@@ -477,7 +484,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         filled: true,
         getFillColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 190],
         getLineColor: [255, 255, 255, 200],
-        lineWidthMinPixels: 1,
+        ...markerStyle(1),
         extensions: [ext],
         ...filteredProps,
         updateTriggers: {
@@ -534,6 +541,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         getColor: [255, 215, 0],
         getWidth: 0.04,
         widthUnits: "meters",
+        billboard: true,
         widthMinPixels: 2.5,
         opacity: 1.0,
       }),
@@ -548,7 +556,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         filled: true,
         getFillColor: [255, 215, 0, 240],
         getLineColor: [255, 255, 255, 255],
-        lineWidthMinPixels: 2.5,
+        ...markerStyle(2.5, 4),
       } as never),
       new ScatterplotLayer<PitchDatum>({
         id: "picked-tunnel-point",
@@ -561,7 +569,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         filled: true,
         getFillColor: [255, 215, 0, 240],
         getLineColor: [255, 255, 255, 255],
-        lineWidthMinPixels: 2.0,
+        ...markerStyle(2.0, 4),
       } as never),
     );
   }
@@ -595,7 +603,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         filled: true,
         getFillColor: [255, 215, 0, 240],
         getLineColor: [255, 255, 255, 255],
-        lineWidthMinPixels: 2.0,
+        ...markerStyle(2.0, 4),
       } as never),
     );
     if (picked.szTop != null && picked.szBot != null) {
@@ -608,6 +616,7 @@ export function buildLayers(opts: BuildLayersOpts) {
           getColor: [0, 220, 255],
           getWidth: 0.04,
           widthUnits: "meters",
+          billboard: true,
           widthMinPixels: 2.0,
           opacity: 0.9,
         }),
@@ -631,8 +640,9 @@ export function buildLayers(opts: BuildLayersOpts) {
         stroked: true,
         filled: true,
         getFillColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 190],
-        getLineColor: [255, 255, 255, 200],
-        lineWidthMinPixels: 1,
+        // Dark hairline: a dense cluster reads as separate dots, not a white blob.
+        getLineColor: [10, 15, 30, 220],
+        ...markerStyle(1, 1.5),
         extensions: [ext],
         ...filteredProps,
         updateTriggers: {
@@ -664,7 +674,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         filled: true,
         getFillColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 200],
         getLineColor: [255, 255, 255, 200],
-        lineWidthMinPixels: 1.5,
+        ...markerStyle(1.5),
         extensions: [ext],
         ...filteredProps,
         updateTriggers: {
@@ -693,10 +703,9 @@ export function buildLayers(opts: BuildLayersOpts) {
         radiusUnits: "meters",
         stroked: true,
         filled: true,
-        billboard: true,
         getFillColor: [255, 255, 255, 240],
         getLineColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 255],
-        lineWidthMinPixels: 1.5,
+        ...markerStyle(1.5),
         extensions: [ext],
         ...filteredProps,
         updateTriggers: {
@@ -721,6 +730,7 @@ export function buildLayers(opts: BuildLayersOpts) {
           getColor: [255, 180, 0, 220],
           getWidth: 0.04,
           widthUnits: "meters",
+          billboard: true,
           widthMinPixels: 2.0,
           opacity: 0.9,
         }),
@@ -732,6 +742,7 @@ export function buildLayers(opts: BuildLayersOpts) {
           getColor: (c) => [...pitchColor(c.pitchType), 240],
           getWidth: TRAJECTORY_WIDTH * 1.8,
           widthUnits: "meters",
+          billboard: true,
           widthMinPixels: 2.5,
           opacity: 0.95,
         }),
@@ -764,6 +775,7 @@ export function buildLayers(opts: BuildLayersOpts) {
           getColor: [...color, 240],
           getWidth: TRAJECTORY_WIDTH * 1.6,
           widthUnits: "meters",
+          billboard: true,
           widthMinPixels: 2.5,
           opacity: 0.95,
         }),
@@ -778,7 +790,7 @@ export function buildLayers(opts: BuildLayersOpts) {
           filled: true,
           getFillColor: [...color, 180],
           getLineColor: [255, 255, 255, 240],
-          lineWidthMinPixels: 1.5,
+          ...markerStyle(1.5),
         } as never),
       );
     }
@@ -794,6 +806,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         getColor: [255, 215, 0, 220],
         getWidth: 0.03,
         widthUnits: "meters",
+        billboard: true,
         widthMinPixels: 1.5,
         opacity: 0.85,
       }),
@@ -801,7 +814,12 @@ export function buildLayers(opts: BuildLayersOpts) {
   }
 
   if (showHeatmap && heatmapCells && heatmapCells.length > 0) {
-    layers.push(
+    // Right after the pitch paths, before the plate markers and the zone
+    // outline, so those stay on top of the cells instead of z-fighting with
+    // them on the same plane.
+    layers.splice(
+      layers.findIndex((l) => l.id === "pitch-trajectories") + 1,
+      0,
       new PolygonLayer<HeatmapCell>({
         id: "strike-zone-heatmap",
         coordinateSystem: "cartesian" as never,
@@ -820,11 +838,33 @@ export function buildLayers(opts: BuildLayersOpts) {
         stroked: true,
         filled: true,
         opacity: 0.85,
-        // Draw over the pitch-path bundle instead of being depth-occluded by it.
-        parameters: { depthCompare: "always" } as never,
+        // Draw over the pitch-path bundle instead of being depth-occluded by it,
+        // without writing depth that would hide the outline and markers after it.
+        parameters: { depthCompare: "always", depthWriteEnabled: false } as never,
       }),
     );
   }
+
+  // The field wireframe goes last: the zone outline shares the plate plane with
+  // the heatmap and the plate-crossing markers, and deck.gl's per-layer polygon
+  // offset lets the last layer win that tie, so the zone is never buried.
+  layers.push(
+    // Billboarded like every PathLayer here: a non-billboard path is extruded in
+    // the ground (x/y) plane, so the zone's vertical edges had zero width and its
+    // horizontal edges were seen edge-on from behind the plate.
+    new PathLayer<WireSegment>({
+      id: "strike-zone",
+      coordinateSystem: "cartesian" as never,
+      data: diamondWireframeSegments(),
+      getPath: (s) => s,
+      getColor: [255, 255, 255],
+      getWidth: 0.03,
+      widthUnits: "meters",
+      billboard: true,
+      widthMinPixels: 1,
+      opacity: 0.85,
+    }),
+  );
 
   return layers;
 }
