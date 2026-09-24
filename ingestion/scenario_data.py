@@ -55,7 +55,9 @@ def _selected(scenario_id: str, game_id: int, play: dict) -> bool:
     return False
 
 
-def _to_row(game_id: int, game_date: date, play: dict, event: dict) -> dict:
+def _to_row(
+    game_id: int, game_date: date, play: dict, event: dict, pre_count: dict | None = None,
+) -> dict:
     details = event["details"]
     pitch = event["pitchData"]
     coordinates = pitch["coordinates"]
@@ -89,6 +91,13 @@ def _to_row(game_id: int, game_date: date, play: dict, event: dict) -> dict:
         "plate_z": coordinates["pZ"],
         "sz_top": pitch.get("strikeZoneTop"),
         "sz_bot": pitch.get("strikeZoneBottom"),
+        # Savant semantics: batter/pitcher hand and the count before this pitch.
+        "stand": (play["matchup"].get("batSide") or {}).get("code"),
+        "p_throws": (play["matchup"].get("pitchHand") or {}).get("code"),
+        "balls": (pre_count or {}).get("balls", 0),
+        "strikes": (pre_count or {}).get("strikes", 0),
+        "at_bat_number": play["about"]["atBatIndex"] + 1,
+        "pitch_number": event.get("pitchNumber"),
         "is_swing": int(swing),
         "is_whiff": int(swing and whiff),
         "ingestion_time": day,
@@ -101,12 +110,17 @@ def refresh() -> dict[str, int]:
     for game_id, feed in feeds.items():
         game_date = date.fromisoformat(feed["gameData"]["datetime"]["officialDate"])
         for play in feed["liveData"]["plays"]["allPlays"]:
+            # Feed counts are post-event; the prior event's count (any event
+            # type, since pitch-clock violations change it too) is pre-pitch.
+            pre_count: dict | None = None
             for event in play["playEvents"]:
-                if not event.get("isPitch") or "pitchData" not in event:
-                    continue
-                for scenario_id in SCENARIO_FILES:
-                    if _selected(scenario_id, game_id, play):
-                        tables[scenario_id].append(_to_row(game_id, game_date, play, event))
+                if event.get("isPitch") and "pitchData" in event:
+                    for scenario_id in SCENARIO_FILES:
+                        if _selected(scenario_id, game_id, play):
+                            tables[scenario_id].append(
+                                _to_row(game_id, game_date, play, event, pre_count)
+                            )
+                pre_count = event.get("count") or pre_count
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     counts = {}
     for scenario_id, rows in tables.items():

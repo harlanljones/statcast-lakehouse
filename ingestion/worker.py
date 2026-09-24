@@ -57,6 +57,14 @@ SCHEMA = pa.schema(
         ("plate_z", pa.float64()),
         ("sz_top", pa.float64()),
         ("sz_bot", pa.float64()),
+        # Plate-appearance context (Savant stand/p_throws/balls/strikes are
+        # pre-pitch values); feeds the xWhiff setup-pitch features.
+        ("stand", pa.string()),
+        ("p_throws", pa.string()),
+        ("balls", pa.int64()),
+        ("strikes", pa.int64()),
+        ("at_bat_number", pa.int64()),
+        ("pitch_number", pa.int64()),
         ("is_swing", pa.int64()),
         ("is_whiff", pa.int64()),
         ("ingestion_time", pa.timestamp("us", tz="UTC")),

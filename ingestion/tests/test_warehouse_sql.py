@@ -286,15 +286,48 @@ class TestBqml:
         chall_where = re.search(r"\nWHERE (.*)", chall, re.S).group(1)
         assert champ_where.strip() == chall_where.strip()
 
-    def test_compare_evaluates_both_models_on_train_features(self):
+    COMPARED = {
+        "model_pitch_whiff": "train_whiff_model.sql",
+        "model_pitch_whiff_xgb21": "train_whiff_model_xgb21.sql",
+        "model_pitch_whiff_ctx": "train_whiff_model_ctx.sql",
+    }
+
+    def test_compare_evaluates_every_model_on_its_train_features(self):
         sql = read(BQML / "compare_whiff_models.sql")
-        assert "`statcast_analytics.model_pitch_whiff`" in sql
-        assert "`statcast_analytics.model_pitch_whiff_xgb21`" in sql
-        assert sql.count("game_date = @target_date") == 2
-        assert sql.count("is_swing = 1") == 2
-        train = self._train_features("train_whiff_model.sql")
-        for inner in re.findall(r"ML\.EVALUATE\(\s*MODEL `[^`]+`,\s*\(\s*SELECT(.*?)FROM", sql, re.S):
-            assert self._selected_names(inner) == train
+        branches = re.findall(
+            r"ML\.EVALUATE\(\s*MODEL `statcast_analytics\.(\w+)`,\s*\(\s*SELECT(.*?)FROM", sql, re.S
+        )
+        assert [m for m, _ in branches] == list(self.COMPARED)
+        for model, inner in branches:
+            assert self._selected_names(inner) == self._train_features(self.COMPARED[model]), model
+        assert sql.count("game_date = @target_date") == len(self.COMPARED)
+        assert sql.count("is_swing = 1") == len(self.COMPARED)
+
+    def _derived_block(self, sql: str) -> str:
+        """The feature-deriving subquery (window definitions included)."""
+        block = re.search(r"FROM \(\s*SELECT\s*\*,(.*?)WINDOW(.*?)\)\s*WHERE is_swing", sql, re.S)
+        derived = re.sub(r"\n\s*WHERE game_date[^\n]*", "", block.group(1))
+        return re.sub(r"\s+", " ", derived + "WINDOW" + block.group(2)).strip()
+
+    def test_ctx_features_derived_identically_in_train_and_compare(self):
+        train = read(BQML / "train_whiff_model_ctx.sql")
+        compare = read(BQML / "compare_whiff_models.sql")
+        assert self._derived_block(train) == self._derived_block(compare)
+
+    def test_ctx_windows_stay_inside_one_game_date(self):
+        """Every window partitions by game_date: no cross-day leakage, and
+        the per-day scan in compare sees exactly what training saw."""
+        sql = read(BQML / "train_whiff_model_ctx.sql")
+        windows = re.findall(r"(\w+) AS \(PARTITION BY ([^)]*)\)", sql)
+        assert {name for name, _ in windows} == {"pa", "outing"}
+        for _, spec in windows:
+            assert spec.startswith("game_date, game_id"), spec
+        assert "at_bat_number IS NOT NULL" in sql
+
+    def test_ctx_base_columns_exist_in_fct_schema(self):
+        fct_cols = set(fct_columns_from_ddl())
+        for col in ("stand", "p_throws", "balls", "strikes", "at_bat_number", "pitch_number"):
+            assert col in fct_cols, col
 
 
 # ----------------------------------------------------- cost-guard invariants

@@ -25,7 +25,10 @@ Each source is the corresponding MLB Stats API live game feed at
 the feed's `playId` to `pitch_id`, and `coordinates` to `worker.SCHEMA`: `x0/y0/z0`, `vX0/vY0/vZ0`,
 `aX/aY/aZ`, and plate crossing `pX/pZ`. It also maps `startSpeed`, `spinRate`,
 pitch type, batter/pitcher ids, and strike-zone bounds. Swing and whiff flags
-come from the source event description. Scenario selection is performed on
+come from the source event description. Batter and pitcher hand, the count
+before each pitch, at-bat number, and pitch number fill the plate-appearance
+context columns. The checked-in files predate those columns, so they hold
+nulls there until the next refresh. Scenario selection is performed on
 the original game id, batter or pitcher, inning, and play result as shown in
 the table.
 
