@@ -263,6 +263,39 @@ class TestBqml:
 
         assert eval_features == train_features, f"Feature mismatch: {eval_features ^ train_features}"
 
+    def _train_features(self, name: str) -> set[str]:
+        sql = read(BQML / name)
+        return self._selected_names(re.search(r"AS\nSELECT(.*?)FROM", sql, re.S).group(1))
+
+    def test_xgb21_challenger_config(self):
+        sql = read(BQML / "train_whiff_model_xgb21.sql")
+        assert "CREATE OR REPLACE MODEL `statcast_analytics.model_pitch_whiff_xgb21`" in sql
+        assert "model_type = 'BOOSTED_TREE_CLASSIFIER'" in sql
+        assert "xgboost_version = '2.1'" in sql
+        assert "input_label_cols = ['is_whiff']" in sql
+        assert "is_swing = 1" in sql
+
+    def test_xgb21_challenger_matches_champion(self):
+        """Only the library version may differ, so the comparison is fair."""
+        champ = read(BQML / "train_whiff_model.sql")
+        chall = read(BQML / "train_whiff_model_xgb21.sql")
+        assert self._train_features("train_whiff_model_xgb21.sql") == self._train_features(
+            "train_whiff_model.sql"
+        )
+        champ_where = re.search(r"\nWHERE (.*)", champ, re.S).group(1)
+        chall_where = re.search(r"\nWHERE (.*)", chall, re.S).group(1)
+        assert champ_where.strip() == chall_where.strip()
+
+    def test_compare_evaluates_both_models_on_train_features(self):
+        sql = read(BQML / "compare_whiff_models.sql")
+        assert "`statcast_analytics.model_pitch_whiff`" in sql
+        assert "`statcast_analytics.model_pitch_whiff_xgb21`" in sql
+        assert sql.count("game_date = @target_date") == 2
+        assert sql.count("is_swing = 1") == 2
+        train = self._train_features("train_whiff_model.sql")
+        for inner in re.findall(r"ML\.EVALUATE\(\s*MODEL `[^`]+`,\s*\(\s*SELECT(.*?)FROM", sql, re.S):
+            assert self._selected_names(inner) == train
+
 
 # ----------------------------------------------------- cost-guard invariants
 # AGENTS.md free-tier rule: every scan of fct_pitches must prune on game_date
