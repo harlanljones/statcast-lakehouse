@@ -325,7 +325,7 @@ export default function App() {
   });
 
   return (
-    <div style={{ width: "100vw", height: "100vh", display: "flex", "flex-direction": "column", overflow: "hidden", "--accent": SCENE_ACCENT[activeScenarioId() ?? ""] ?? "#60a5fa" }}>
+    <div class="app-shell" style={{ width: "100vw", height: "100vh", display: "flex", "flex-direction": "column", overflow: "hidden", "--accent": SCENE_ACCENT[activeScenarioId() ?? ""] ?? "#60a5fa" }}>
       <header
         style={{
           position: "relative",
@@ -340,7 +340,7 @@ export default function App() {
       >
         <div style={{ display: "flex", "align-items": "baseline", gap: "12px" }}>
           <strong style={{ "font-size": "15px" }}>Statcast Lakehouse</strong>
-          <span style={{ "font-size": "12px", color: "#94a3b8" }}>GPU-filtered 3D pitch exploration</span>
+          <span class="app-subtitle" style={{ "font-size": "12px", color: "#94a3b8" }}>GPU-filtered 3D pitch exploration</span>
           <Show when={isLoading()}>
             <span role="status" style={{ color: "#60a5fa", "font-size": "12px" }}>Loading…</span>
           </Show>
@@ -353,7 +353,7 @@ export default function App() {
         </button>
       </header>
 
-      <div style={{ flex: "1", display: "flex", "min-height": "0" }}>
+      <div class="app-body" style={{ flex: "1", display: "flex", "min-height": "0" }}>
         <ScenarioRail
           scenarios={SCENARIOS}
           activeId={activeScenarioId()}

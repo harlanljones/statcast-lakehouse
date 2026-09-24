@@ -27,6 +27,7 @@ const card = (active: boolean): JSX.CSSProperties => ({
 export default function ScenarioRail(props: ScenarioRailProps): JSX.Element {
   return (
     <nav
+      class="scenario-rail"
       aria-label="game stories"
       style={{
         width: "232px",

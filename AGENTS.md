@@ -21,7 +21,7 @@ do not contradict it.
 ```sh
 python3 -m pytest -q                                                # 314 tests (ingestion + serving + export + infra)
 python3 -m ingestion.worker --dry-run --pitches 300 --out data/sample.arrow
-cd web && npm test                       # vitest, 196 tests
+cd web && npm test                       # vitest, 205 tests
 cd web && npm run build                  # vite build -> dist/
 npx tsc -p web/tsconfig.json --noEmit    # typecheck (run from repo root)
 ```

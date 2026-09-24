@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DataFilterExtension } from "@deck.gl/extensions";
-import { ScatterplotLayer } from "@deck.gl/layers";
+import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import {
   CAMERA_VIEWS,
   CATCHER_HEATMAP_VIEW,
@@ -164,6 +164,17 @@ describe("strikeZoneSegments", () => {
     const minY = Math.min(...plate.map(([, y]) => y));
     expect(minY).toBeLessThan(STRIKE_ZONE.y); // point faces negative y
     expect(plate[0]).toEqual(plate[5]); // closed loop
+  });
+
+  it("gives the plate its rulebook shape: 8.5 in sides, 12 in edges to a point 17 in back", () => {
+    const [frontL, frontR, sideR, point, sideL] = segs[4];
+    const len = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    expect(len(frontL, frontR)).toBeCloseTo(17 / 12, 6);
+    expect(len(frontR, sideR)).toBeCloseTo(8.5 / 12, 6);
+    expect(len(sideL, frontL)).toBeCloseTo(8.5 / 12, 6);
+    expect(len(sideR, point)).toBeCloseTo(12 / 12, 2);
+    expect(len(point, sideL)).toBeCloseTo(12 / 12, 2);
+    expect(frontL[1] - point[1]).toBeCloseTo(17 / 12, 6);
   });
 });
 
@@ -936,5 +947,80 @@ describe("buildLayers", () => {
     expect(heatmapLayer).toBeDefined();
     expect(heatmapLayer!.props.coordinateSystem).toBe("cartesian");
   });
-});
 
+  describe("rendering on any screen", () => {
+    const k = {
+      x0: -2.0, y0: 50.0, z0: 5.8,
+      vx0: 5.0, vy0: -130.0, vz0: -4.0,
+      ax: -12.0, ay: 26.0, az: -18.0,
+    };
+    const p1 = pitch({ pitchType: "FF", kinematics: k, szTop: 3.4, szBot: 1.6 });
+    const p2 = pitch({ pitchType: "SL", kinematics: { ...k, vx0: 2.5, az: -24.0 } });
+    const cell = {
+      cellId: 0, xMin: -0.5, xMax: 0.0, zMin: 1.5, zMax: 2.5,
+      polygon: [[-0.5, 1.417, 1.5], [0.0, 1.417, 1.5], [0.0, 1.417, 2.5], [-0.5, 1.417, 2.5]] as [number, number, number][],
+      pitchCount: 5, swingCount: 3, whiffCount: 2, value: 1.0,
+      color: [255, 50, 30, 240] as [number, number, number, number],
+    };
+    const everything = buildLayers({
+      pitches: [p1, p2],
+      speedRange: [60, 105],
+      picked: p1,
+      flightProgress: 0.5,
+      showTunneling: true,
+      showGhostBreak: true,
+      showReleasePoints: true,
+      showPlateCrossings: true,
+      pairedTypes: ["FF", "SL"],
+      arsenalCentroids: computeArsenalCentroids([p1, p2]),
+      showContactSim: true,
+      batSpeed: 75,
+      attackAngleDeg: 25,
+      showDispersion: true,
+      releaseDispersion: {
+        count: 10, meanX: -1.5, meanY: 55, meanZ: 5.8, stdX: 0.1, stdY: 0.2, stdZ: 0.15,
+        covXY: 0, covXZ: 0, covYZ: 0, volumeCuFt: 0.05,
+        wireframeSegments: [[[-1.4, 55.0, 5.8], [-1.6, 55.0, 5.8]]],
+      },
+      showHeatmap: true,
+      heatmapCells: [cell],
+    });
+    const ids = everything.map((l) => l.id);
+
+    it("billboards every path, so lines in the vertical plate plane never collapse to zero width", () => {
+      const paths = everything.filter((l) => l instanceof PathLayer);
+      expect(paths.map((l) => l.id)).toEqual(
+        expect.arrayContaining(["strike-zone", "picked-batter-strike-zone", "tunneling-plane", "picked-break-vector"]),
+      );
+      for (const l of paths) expect({ id: l.id, billboard: l.props.billboard }).toEqual({ id: l.id, billboard: true });
+    });
+
+    it("draws every marker camera-facing with a pixel outline instead of a 1 ft world-unit ring", () => {
+      const markers = everything.filter((l) => l instanceof ScatterplotLayer) as unknown as {
+        id: string;
+        props: { billboard: boolean; lineWidthUnits: string; getLineWidth: number; radiusMinPixels: number };
+      }[];
+      expect(markers.map((l) => l.id)).toEqual(
+        expect.arrayContaining(["plate-crossings", "picked-plate-crossing", "release-points", "baseball-markers"]),
+      );
+      for (const l of markers) {
+        expect({ id: l.id, billboard: l.props.billboard, units: l.props.lineWidthUnits }).toEqual({
+          id: l.id,
+          billboard: true,
+          units: "pixels",
+        });
+        expect(l.props.getLineWidth).toBeLessThanOrEqual(3);
+        expect(l.props.radiusMinPixels).toBeGreaterThan(0);
+      }
+    });
+
+    it("stacks the heatmap under the plate markers and the zone outline on top of both", () => {
+      const heat = ids.indexOf("strike-zone-heatmap");
+      expect(heat).toBe(ids.indexOf("pitch-trajectories") + 1);
+      expect(heat).toBeLessThan(ids.indexOf("plate-crossings"));
+      expect(ids[ids.length - 1]).toBe("strike-zone");
+      const heatLayer = everything[heat] as unknown as { props: { parameters: Record<string, unknown> } };
+      expect(heatLayer.props.parameters.depthWriteEnabled).toBe(false);
+    });
+  });
+});
