@@ -583,7 +583,9 @@ def write_bq(
     """Live path: BigQuery batch load jobs (WRITE_APPEND), one per 5,000-row chunk.
 
     Load jobs are free on the shared slot pool (unlike legacy
-    `tabledata.insertAll` streaming, which is billed and never used here).
+    `tabledata.insertAll` streaming, which is billed and never used here;
+    Google renamed it "Storage Write API (REST)" on 2026-07-27, so neither
+    Storage Write API variant is the free path).
     Quota is 1,500 load jobs per table per day, far above one job per game day.
     `client` may be injected (tests, custom credentials); imported lazily so
     dry-run needs no GCP deps.

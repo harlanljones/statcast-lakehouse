@@ -303,3 +303,18 @@ class TestMainDateArg:
         with pytest.raises(SystemExit) as exc:
             main(["--dry-run", "--date", "not-a-date"])
         assert exc.value.code == 2
+
+
+def test_ingestion_never_calls_streaming_apis():
+    """AGENTS.md: batch load jobs only. insert_rows* is the client wrapper for
+    tabledata.insertAll ("Storage Write API (REST)" since 2026-07-27), and the
+    storage write client is the gRPC variant; both are billed streaming."""
+    import pathlib
+
+    import re
+
+    banned = re.compile(r"\.insert_rows\w*\(|insertAll\(|BigQueryWriteClient|bigquery_storage_v1\.writer")
+    root = pathlib.Path(__file__).resolve().parents[1]
+    for path in root.glob("*.py"):
+        match = banned.search(path.read_text())
+        assert match is None, f"{path.name} uses {match and match.group(0)}"

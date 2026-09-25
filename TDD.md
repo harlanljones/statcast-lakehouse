@@ -100,7 +100,7 @@ Retention is three years (1095 days) on both `fct_pitches` and `bronze_pitches`,
 * **Runtime:** Cloud Run Job (Python 3.11, containerized).
 * **Protocol:** BigQuery batch load jobs (`load_table_from_json`, `WRITE_APPEND`) on the free shared slot pool.
 * **Requirements:**
-1. Do not use legacy streaming API (`tabledata.insertAll`) to eliminate ingestion costs.
+1. Do not use legacy streaming API (`tabledata.insertAll`, renamed "Storage Write API (REST)" by Google on 2026-07-27) to eliminate ingestion costs.
 2. Batch writes in 5,000-row chunks, one load job per chunk. Rows are normalized to JSON-safe values first (`date`/`datetime` become ISO strings), because `load_table_from_json` serializes with a bare `json.dumps`.
 3. Stay inside the 1,500 load jobs per table per day quota (about one job per game day).
 
