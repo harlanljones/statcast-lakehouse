@@ -432,7 +432,9 @@ export function buildLayers(opts: BuildLayersOpts) {
   const layers: (PathLayer<any> | ScatterplotLayer<any> | PolygonLayer<any>)[] = [
     new PathLayer<PitchDatum>({
       id: "pitch-trajectories",
-      pickable: true,
+      // deck.gl >= 9.3 depth picking: info.coordinate is the 3D point on the
+      // hovered path, so the tooltip can say where along the flight it is.
+      pickable: "3d",
       onHover,
       onClick: onHover,
       coordinateSystem: "cartesian" as never,
