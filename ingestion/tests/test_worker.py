@@ -80,11 +80,21 @@ class TestGhostKinematicsAndBreak:
         "ax": -8.0, "ay": 20.0, "az": -22.0,
     }
 
-    def test_ghost_kinematics_clears_lateral_and_sets_gravity(self):
+    def test_ghost_kinematics_keeps_gravity_and_drag_only(self):
         ghost = ghost_kinematics(self.SLIDER)
-        assert ghost["ax"] == 0.0
+        # Pinned closed form, mirrored in web/src/lib/kinematics.test.ts.
+        assert math.isclose(ghost["ax"], -0.29551651184849326, rel_tol=1e-12)
+        assert math.isclose(ghost["az"], -30.82022441300371, rel_tol=1e-12)
         assert ghost["ay"] == self.SLIDER["ay"]
-        assert ghost["az"] == -GRAVITY_FT_S2
+        # The removed part (Magnus) is perpendicular to the mid-flight velocity.
+        t_mid = 0.5 * solve_flight_time(self.SLIDER["y0"], self.SLIDER["vy0"], self.SLIDER["ay"])
+        v = [self.SLIDER[f"v{c}0"] + self.SLIDER[f"a{c}"] * t_mid for c in "xyz"]
+        magnus = [self.SLIDER["ax"] - ghost["ax"], 0.0, self.SLIDER["az"] - ghost["az"]]
+        drag = [ghost["ax"], ghost["ay"], ghost["az"] + GRAVITY_FT_S2]
+        speed = math.sqrt(sum(c * c for c in v))
+        # drag is parallel to v in x/z: its cross-product with v vanishes there.
+        assert math.isclose(drag[0] * v[2] - drag[2] * v[0], 0.0, abs_tol=1e-9)
+        assert abs(sum(m * c for m, c in zip(magnus, v)) / speed) < abs(self.SLIDER["ay"])
         assert ghost["x0"] == self.SLIDER["x0"]
         assert ghost["y0"] == self.SLIDER["y0"]
         assert ghost["z0"] == self.SLIDER["z0"]
@@ -106,8 +116,12 @@ class TestGhostKinematicsAndBreak:
         t_end = solve_flight_time(self.SLIDER["y0"], self.SLIDER["vy0"], self.SLIDER["ay"])
         bv = compute_break_vector(self.SLIDER)
 
-        expected_dx_in = 0.5 * self.SLIDER["ax"] * t_end * t_end * 12.0
-        expected_dz_in = 0.5 * (self.SLIDER["az"] - (-GRAVITY_FT_S2)) * t_end * t_end * 12.0
+        ghost = ghost_kinematics(self.SLIDER)
+        expected_dx_in = 0.5 * (self.SLIDER["ax"] - ghost["ax"]) * t_end * t_end * 12.0
+        expected_dz_in = 0.5 * (self.SLIDER["az"] - ghost["az"]) * t_end * t_end * 12.0
+        # Pinned, mirrored in web/src/lib/kinematics.test.ts.
+        assert math.isclose(bv["h_break_inches"], -9.13221400780742, rel_tol=1e-9)
+        assert math.isclose(bv["v_break_inches"], 10.454714720371594, rel_tol=1e-9)
 
         assert math.isclose(bv["h_break_inches"], expected_dx_in, rel_tol=1e-5)
         assert math.isclose(bv["v_break_inches"], expected_dz_in, rel_tol=1e-5)

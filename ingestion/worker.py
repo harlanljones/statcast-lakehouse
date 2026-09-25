@@ -57,6 +57,14 @@ SCHEMA = pa.schema(
         ("plate_z", pa.float64()),
         ("sz_top", pa.float64()),
         ("sz_bot", pa.float64()),
+        # Plate-appearance context (Savant stand/p_throws/balls/strikes are
+        # pre-pitch values); feeds the xWhiff setup-pitch features.
+        ("stand", pa.string()),
+        ("p_throws", pa.string()),
+        ("balls", pa.int64()),
+        ("strikes", pa.int64()),
+        ("at_bat_number", pa.int64()),
+        ("pitch_number", pa.int64()),
         ("is_swing", pa.int64()),
         ("is_whiff", pa.int64()),
         ("ingestion_time", pa.timestamp("us", tz="UTC")),
@@ -110,11 +118,24 @@ def trajectory(pitch: dict[str, float], n: int = 60) -> list[tuple[float, float,
 
 
 def ghost_kinematics(pitch: dict[str, float]) -> dict[str, float]:
-    """Kinematic parameters without Magnus aerodynamic force (gravity + drag only)."""
+    """Kinematic parameters without Magnus aerodynamic force (gravity + drag only).
+
+    Drag acts along -v, so it is the part of the measured non-gravity
+    acceleration along the mid-flight velocity (Nathan's decomposition); the
+    rest is Magnus. The ghost keeps gravity plus that drag in x and z, and
+    keeps the fitted ay so it reaches the plate at the same time. Validated
+    against pitchphys no-spin flights (test_pitchphys_crosscheck.py).
+    """
+    t_mid = 0.5 * solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
+    vx = pitch["vx0"] + pitch["ax"] * t_mid
+    vy = pitch["vy0"] + pitch["ay"] * t_mid
+    vz = pitch["vz0"] + pitch["az"] * t_mid
+    speed = math.sqrt(vx * vx + vy * vy + vz * vz)
+    drag = (pitch["ax"] * vx + pitch["ay"] * vy + (pitch["az"] + GRAVITY_FT_S2) * vz) / speed
     ghost = dict(pitch)
-    ghost["ax"] = 0.0
+    ghost["ax"] = drag * vx / speed
     ghost["ay"] = pitch["ay"]
-    ghost["az"] = -GRAVITY_FT_S2
+    ghost["az"] = -GRAVITY_FT_S2 + drag * vz / speed
     return ghost
 
 
@@ -126,10 +147,12 @@ def ghost_trajectory(
 
 
 def compute_break_vector(pitch: dict[str, float]) -> dict[str, float]:
-    """Aerodynamic break in inches at plate arrival (Nathan 2012 definition)."""
+    """Aerodynamic break in inches at plate arrival (Nathan 2012 definition):
+    actual minus the drag-corrected ghost, which share the same flight time."""
     t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
-    dx_ft = 0.5 * pitch["ax"] * t_end * t_end
-    dz_ft = 0.5 * (pitch["az"] - (-GRAVITY_FT_S2)) * t_end * t_end
+    ghost = ghost_kinematics(pitch)
+    dx_ft = 0.5 * (pitch["ax"] - ghost["ax"]) * t_end * t_end
+    dz_ft = 0.5 * (pitch["az"] - ghost["az"]) * t_end * t_end
     h_break = dx_ft * 12.0
     v_break = dz_ft * 12.0
     return {
@@ -575,7 +598,9 @@ def write_bq(
     """Live path: BigQuery batch load jobs (WRITE_APPEND), one per 5,000-row chunk.
 
     Load jobs are free on the shared slot pool (unlike legacy
-    `tabledata.insertAll` streaming, which is billed and never used here).
+    `tabledata.insertAll` streaming, which is billed and never used here;
+    Google renamed it "Storage Write API (REST)" on 2026-07-27, so neither
+    Storage Write API variant is the free path).
     Quota is 1,500 load jobs per table per day, far above one job per game day.
     `client` may be injected (tests, custom credentials); imported lazily so
     dry-run needs no GCP deps.

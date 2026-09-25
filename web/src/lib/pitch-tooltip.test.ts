@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PITCH_COLORS, pitchColor, type PitchDatum } from "./deck-layers";
-import { clampTooltipPos, pitchTooltip, pitchTooltipSummary, TOOLTIP_OFFSET } from "./pitch-tooltip";
+import { clampTooltipPos, cursorFlight, pitchTooltip, pitchTooltipSummary, TOOLTIP_OFFSET } from "./pitch-tooltip";
+import { flightTime, PLATE_Y } from "./kinematics";
 
 function pitch(overrides: Partial<PitchDatum> = {}): PitchDatum {
   const pfxX = overrides.pfxX ?? overrides.plateX ?? 0.12;
@@ -271,5 +272,31 @@ describe("pitchTooltip contact sim toggle", () => {
     expect(pitchTooltip(pitch({ kinematics: k }), 72, 18, true)!.simulatedContact).toContain("Sim:");
     expect(pitchTooltip(pitch({ kinematics: k }), 72, 18)!.simulatedContact).toContain("Sim:");
     expect(pitchTooltipSummary(pitch({ kinematics: k }), 72, 18, true)).toContain("Sim:");
+  });
+});
+
+describe("cursorFlight (deck.gl 3D pick → position along the flight)", () => {
+  const kinematics = {
+    x0: -1.5, y0: 50, z0: 6, vx0: 5, vy0: -130, vz0: -5, ax: -10, ay: 28, az: -20,
+  };
+  const d = { pitchType: "FF", releaseSpeed: 95, path: new Float32Array(180), kinematics } as unknown as PitchDatum;
+
+  it("reports distance from the plate and remaining flight time", () => {
+    const c = cursorFlight(d, 26.417);
+    expect(c?.distance).toBe("At 25.0 ft from plate");
+    const expected = flightTime(kinematics) - flightTime(kinematics, 26.417);
+    expect(c?.remaining).toBe(`${expected.toFixed(2)} s to plate`);
+  });
+
+  it("is 0.00 s at the plate and the full flight at release", () => {
+    expect(cursorFlight(d, PLATE_Y)?.remaining).toBe("0.00 s to plate");
+    expect(cursorFlight(d, 50)?.remaining).toBe(`${flightTime(kinematics).toFixed(2)} s to plate`);
+  });
+
+  it("returns null without a 3D point or outside the flight", () => {
+    expect(cursorFlight(d, null)).toBeNull();
+    expect(cursorFlight(d, 55)).toBeNull();
+    expect(cursorFlight(d, 0.5)).toBeNull();
+    expect(cursorFlight(null, 20)).toBeNull();
   });
 });

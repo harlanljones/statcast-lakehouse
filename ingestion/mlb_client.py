@@ -83,6 +83,12 @@ COLUMN_MAP = {
     "plate_z": "plate_z",
     "sz_top": "sz_top",
     "sz_bot": "sz_bot",
+    "stand": "stand",
+    "p_throws": "p_throws",
+    "balls": "balls",
+    "strikes": "strikes",
+    "at_bat_number": "at_bat_number",
+    "pitch_number": "pitch_number",
     "description": "description",
 }
 
@@ -101,8 +107,10 @@ def _to_int(v: Any) -> int | None:
         return None
 
 
-INT_FIELDS = frozenset({"game_id", "pitcher_id", "batter_id"})
-TEXT_FIELDS = frozenset({"pitch_type", "game_date", "description"})
+INT_FIELDS = frozenset(
+    {"game_id", "pitcher_id", "batter_id", "balls", "strikes", "at_bat_number", "pitch_number"}
+)
+TEXT_FIELDS = frozenset({"pitch_type", "game_date", "description", "stand", "p_throws"})
 
 
 class _RawReader(io.RawIOBase):

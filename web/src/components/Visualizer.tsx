@@ -11,7 +11,7 @@ import {
   type ZoneFilter,
   type OutcomeFilter,
 } from "../lib/deck-layers";
-import { pitchTooltip, pitchTooltipSummary, clampTooltipPos } from "../lib/pitch-tooltip";
+import { pitchTooltip, pitchTooltipSummary, clampTooltipPos, cursorFlight } from "../lib/pitch-tooltip";
 import {
   clampViewState,
   controllerOptions,
@@ -88,9 +88,11 @@ export default function Visualizer(props: VisualizerProps) {
   const [pinned, setPinned] = createSignal<PitchDatum | null>(null);
   // Cursor-anchored tooltip position (canvas-relative px, already clamped).
   const [tipPos, setTipPos] = createSignal({ x: 0, y: 0 });
+  // World y (ft from plate) of the hovered point on the path, from 3D picking.
+  const [cursorY, setCursorY] = createSignal<number | null>(null);
   // Estimated rendered card size for clamping (matches the styled card below).
   const CARD_W = 180;
-  const CARD_H = 240;
+  const CARD_H = 270;
 
   const handlePick = (info: PickingInfo<PitchDatum>) => {
     const obj = info.object ?? null;
@@ -101,6 +103,8 @@ export default function Visualizer(props: VisualizerProps) {
       setPicked(obj);
     }
     if (obj) {
+      const coord = info.coordinate;
+      setCursorY(coord && coord.length >= 3 ? coord[1] : null);
       setTipPos(
         clampTooltipPos(
           info.x ?? 0,
@@ -423,6 +427,15 @@ export default function Visualizer(props: VisualizerProps) {
           {t.zoneBounds && <div style={{ color: "#a0e0ff" }}>{t.zoneBounds}</div>}
           <div>{t.zone}</div>
           {t.outcome && <div>{t.outcome}</div>}
+          <Show when={cursorFlight(picked(), cursorY())}>
+            {(c) => (
+              <div style={{ color: "#c8c8ff" }}>
+                {c().distance}
+                {"\n"}
+                {c().remaining}
+              </div>
+            )}
+          </Show>
           {t.simulatedContact && (
             <div style={{ color: "#ff99ff", "margin-top": "3px", "border-top": "1px solid #444", "padding-top": "2px" }}>
               {t.simulatedContact}

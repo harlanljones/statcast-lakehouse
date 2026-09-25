@@ -61,3 +61,14 @@ def test_scenarios_have_distinct_bodies(client):
 
 def test_unknown_scenario_is_404(client):
     assert client.get("/pitches/scenario/nope").status_code == 404
+
+
+def test_scenario_body_is_zstd_compressed(client):
+    """Bodies use zstd IPC compression: same table, fewer bytes on the wire."""
+    body = client.get("/pitches/scenario/twenty-run-night").content
+    table = _table(body)
+    plain = io.BytesIO()
+    with pa.ipc.new_file(plain, table.schema) as writer:
+        writer.write_table(table)
+    assert len(body) < 0.8 * len(plain.getvalue())
+    assert table.equals(SCENARIOS["twenty-run-night"]())

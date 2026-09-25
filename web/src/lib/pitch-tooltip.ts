@@ -4,7 +4,7 @@
  * Visualizer.tsx; this module is unit-tested in pitch-tooltip.test.ts.
  */
 import { isInsideStrikeZone, pitchColor, type PitchDatum } from "./deck-layers";
-import { commitmentPosition } from "./kinematics";
+import { commitmentPosition, flightTime, PLATE_Y } from "./kinematics";
 import { computeCollision } from "./collision";
 
 export interface PitchTooltipInfo {
@@ -129,6 +129,30 @@ export function pitchTooltip(
   };
 }
 
+
+/**
+ * Where along the flight the cursor sits, from a deck.gl 3D pick
+ * (pickable: "3d" returns the world point on the hovered path). `cursorY` is
+ * that point's distance from home plate in feet. Returns null when the point
+ * is off this pitch's flight (behind release or past the plate).
+ */
+export function cursorFlight(
+  d: PitchDatum | null | undefined,
+  cursorY: number | null | undefined,
+): { distance: string; remaining: string } | null {
+  if (!d?.kinematics || cursorY == null || !Number.isFinite(cursorY)) return null;
+  const k = d.kinematics;
+  if (cursorY > k.y0 || cursorY < PLATE_Y) return null;
+  try {
+    const remaining = flightTime(k) - (cursorY === k.y0 ? 0 : flightTime(k, cursorY));
+    return {
+      distance: `At ${round1(cursorY - PLATE_Y)} ft from plate`,
+      remaining: `${remaining.toFixed(2)} s to plate`,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /** Gap in pixels between the pointer and the tooltip card's top-left corner. */
 export const TOOLTIP_OFFSET = { x: 12, y: 12 } as const;

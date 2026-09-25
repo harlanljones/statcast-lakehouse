@@ -36,14 +36,23 @@ export interface BreakVector {
 
 /**
  * Kinematic parameters without aerodynamic Magnus force (gravity and drag only).
- * Drag ay is preserved so flight time to home plate remains identical.
+ * Drag acts along -v, so it is the part of the measured non-gravity
+ * acceleration along the mid-flight velocity (Nathan's decomposition); the
+ * rest is Magnus. Drag ay is preserved so flight time to home plate remains
+ * identical. Mirrors ingestion/worker.py ghost_kinematics exactly.
  */
 export function ghostKinematics(p: PitchKinematics): PitchKinematics {
+  const tMid = 0.5 * flightTime(p);
+  const vx = p.vx0 + p.ax * tMid;
+  const vy = p.vy0 + p.ay * tMid;
+  const vz = p.vz0 + p.az * tMid;
+  const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
+  const drag = (p.ax * vx + p.ay * vy + (p.az + GRAVITY_FT_S2) * vz) / speed;
   return {
     ...p,
-    ax: 0,
+    ax: (drag * vx) / speed,
     ay: p.ay,
-    az: -GRAVITY_FT_S2,
+    az: -GRAVITY_FT_S2 + (drag * vz) / speed,
   };
 }
 
@@ -107,8 +116,9 @@ export function ghostTrajectoryFlat(p: PitchKinematics, n = 60): Float32Array {
  */
 export function computeBreakVector(p: PitchKinematics): BreakVector {
   const tEnd = flightTime(p);
-  const dxFt = 0.5 * p.ax * tEnd * tEnd;
-  const dzFt = 0.5 * (p.az - (-GRAVITY_FT_S2)) * tEnd * tEnd;
+  const ghost = ghostKinematics(p);
+  const dxFt = 0.5 * (p.ax - ghost.ax) * tEnd * tEnd;
+  const dzFt = 0.5 * (p.az - ghost.az) * tEnd * tEnd;
   const hBreakInches = dxFt * 12;
   const vBreakInches = dzFt * 12;
   const totalBreakInches = Math.hypot(hBreakInches, vBreakInches);

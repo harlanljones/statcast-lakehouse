@@ -263,6 +263,95 @@ class TestBqml:
 
         assert eval_features == train_features, f"Feature mismatch: {eval_features ^ train_features}"
 
+    def _train_features(self, name: str) -> set[str]:
+        sql = read(BQML / name)
+        return self._selected_names(re.search(r"AS\nSELECT(.*?)FROM", sql, re.S).group(1))
+
+    def test_xgb21_challenger_config(self):
+        sql = read(BQML / "train_whiff_model_xgb21.sql")
+        assert "CREATE OR REPLACE MODEL `statcast_analytics.model_pitch_whiff_xgb21`" in sql
+        assert "model_type = 'BOOSTED_TREE_CLASSIFIER'" in sql
+        assert "xgboost_version = '2.1'" in sql
+        assert "input_label_cols = ['is_whiff']" in sql
+        assert "is_swing = 1" in sql
+
+    def test_xgb21_challenger_matches_champion(self):
+        """Only the library version may differ, so the comparison is fair."""
+        champ = read(BQML / "train_whiff_model.sql")
+        chall = read(BQML / "train_whiff_model_xgb21.sql")
+        assert self._train_features("train_whiff_model_xgb21.sql") == self._train_features(
+            "train_whiff_model.sql"
+        )
+        champ_where = re.search(r"\nWHERE (.*)", champ, re.S).group(1)
+        chall_where = re.search(r"\nWHERE (.*)", chall, re.S).group(1)
+        assert champ_where.strip() == chall_where.strip()
+
+    COMPARED = {
+        "model_pitch_whiff": "train_whiff_model.sql",
+        "model_pitch_whiff_xgb21": "train_whiff_model_xgb21.sql",
+        "model_pitch_whiff_ctx": "train_whiff_model_ctx.sql",
+    }
+
+    def test_compare_evaluates_every_model_on_its_train_features(self):
+        sql = read(BQML / "compare_whiff_models.sql")
+        branches = re.findall(
+            r"ML\.EVALUATE\(\s*MODEL `statcast_analytics\.(\w+)`,\s*\(\s*SELECT(.*?)FROM", sql, re.S
+        )
+        assert [m for m, _ in branches] == list(self.COMPARED)
+        for model, inner in branches:
+            assert self._selected_names(inner) == self._train_features(self.COMPARED[model]), model
+        assert sql.count("game_date = @target_date") == len(self.COMPARED)
+        assert sql.count("is_swing = 1") == len(self.COMPARED)
+
+    def _derived_block(self, sql: str) -> str:
+        """The feature-deriving subquery (window definitions included)."""
+        block = re.search(r"FROM \(\s*SELECT\s*\*,(.*?)WINDOW(.*?)\)\s*WHERE is_swing", sql, re.S)
+        derived = re.sub(r"\n\s*WHERE game_date[^\n]*", "", block.group(1))
+        return re.sub(r"\s+", " ", derived + "WINDOW" + block.group(2)).strip()
+
+    def test_ctx_features_derived_identically_in_train_and_compare(self):
+        train = read(BQML / "train_whiff_model_ctx.sql")
+        compare = read(BQML / "compare_whiff_models.sql")
+        assert self._derived_block(train) == self._derived_block(compare)
+
+    def test_ctx_windows_stay_inside_one_game_date(self):
+        """Every window partitions by game_date: no cross-day leakage, and
+        the per-day scan in compare sees exactly what training saw."""
+        sql = read(BQML / "train_whiff_model_ctx.sql")
+        windows = re.findall(r"(\w+) AS \(PARTITION BY ([^)]*)\)", sql)
+        assert {name for name, _ in windows} == {"pa", "outing"}
+        for _, spec in windows:
+            assert spec.startswith("game_date, game_id"), spec
+        assert "at_bat_number IS NOT NULL" in sql
+
+    def test_tabfm_benchmark_uses_champion_features_under_cap(self):
+        sql = read(BQML / "benchmark_tabfm_whiff.sql")
+        champion = self._train_features("train_whiff_model.sql")
+        selects = re.findall(r"CREATE TEMP TABLE \w+ AS\nSELECT(.*?)FROM", sql, re.S)
+        assert len(selects) == 2
+        for sel in selects:
+            assert self._selected_names(sel) == champion
+        assert len(champion - {"is_whiff"}) <= 20  # TabFM input cap
+        assert "label_col => 'is_whiff'" in sql
+
+    def test_tabfm_context_precedes_target_day(self):
+        """Context rows come strictly before the held-out day."""
+        sql = read(BQML / "benchmark_tabfm_whiff.sql")
+        assert "game_date < @target_date" in sql
+        assert "game_date = @target_date" in sql
+        assert "LIMIT 10000" in sql
+
+    def test_tabfm_benchmark_is_never_scheduled(self):
+        infra = (REPO / "infra").rglob("*")
+        for f in infra:
+            if f.is_file() and f.suffix in {".tf", ".py", ".sh", ".yaml", ".yml"}:
+                assert "benchmark_tabfm" not in f.read_text(), f
+
+    def test_ctx_base_columns_exist_in_fct_schema(self):
+        fct_cols = set(fct_columns_from_ddl())
+        for col in ("stand", "p_throws", "balls", "strikes", "at_bat_number", "pitch_number"):
+            assert col in fct_cols, col
+
 
 # ----------------------------------------------------- cost-guard invariants
 # AGENTS.md free-tier rule: every scan of fct_pitches must prune on game_date

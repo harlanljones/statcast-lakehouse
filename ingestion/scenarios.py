@@ -88,6 +88,16 @@ def real_pitches(game_day: date | None = None, limit: int | None = None) -> pa.T
     return table
 
 
+def ipc_write_options() -> pa.ipc.IpcWriteOptions:
+    """zstd IPC body compression for everything served to clients.
+
+    arrow-js >= 21.1 decodes it once web/src/lib/arrow-loader.ts registers the
+    codec, and pyarrow reads it natively. zstd output is deterministic, so the
+    static export stays byte-identical to the API and ETags stay stable.
+    """
+    return pa.ipc.IpcWriteOptions(compression="zstd")
+
+
 def export_scenarios(out_dir: str | Path) -> list[Path]:
     """Copy the curated scenario slices as Arrow IPC assets for static hosting."""
     out = Path(out_dir)
@@ -96,7 +106,7 @@ def export_scenarios(out_dir: str | Path) -> list[Path]:
     for scenario_id, build in SCENARIOS.items():
         table = build()
         path = out / f"{scenario_id}.arrow"
-        with pa.ipc.new_file(str(path), table.schema) as writer:
+        with pa.ipc.new_file(str(path), table.schema, options=ipc_write_options()) as writer:
             writer.write_table(table)
         written.append(path)
     return written

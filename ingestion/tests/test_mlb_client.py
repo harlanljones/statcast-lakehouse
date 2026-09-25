@@ -36,6 +36,10 @@ def statcast_record(**overrides: Any) -> dict[str, Any]:
         "plate_z": "2.418",
         "sz_top": "3.417",
         "sz_bot": "1.543",
+        "stand": "L",
+        "p_throws": "R",
+        "balls": "1",
+        "strikes": "2",
         "description": "swinging_strike",
     }
     rec.update(overrides)
@@ -80,6 +84,18 @@ class TestRowMapping:
         row = _row(statcast_record())
         assert row["pitch_type"] == "FF"
         assert row["game_date"] == "2026-09-14"
+
+    def test_plate_appearance_context(self):
+        row = _row(statcast_record(at_bat_number="37", pitch_number="4"))
+        assert (row["stand"], row["p_throws"]) == ("L", "R")
+        assert (row["balls"], row["strikes"]) == (1, 2)
+        assert (row["at_bat_number"], row["pitch_number"]) == (37, 4)
+        for k in ("balls", "strikes", "at_bat_number", "pitch_number"):
+            assert isinstance(row[k], int)
+
+    def test_missing_context_is_none(self):
+        row = _row(statcast_record(balls="", stand=None))
+        assert row["balls"] is None and row["stand"] is None
 
     def test_descriptions_are_popped(self):
         assert "description" not in _row(statcast_record())

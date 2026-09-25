@@ -19,9 +19,9 @@ do not contradict it.
 ## Commands (all verified)
 
 ```sh
-python3 -m pytest -q                                                # 314 tests (ingestion + serving + export + infra)
+python3 -m pytest -q                                                # 331 tests (ingestion + serving + export + infra)
 python3 -m ingestion.worker --dry-run --pitches 300 --out data/sample.arrow
-cd web && npm test                       # vitest, 205 tests
+cd web && npm test                       # vitest, 209 tests
 cd web && npm run build                  # vite build -> dist/
 npx tsc -p web/tsconfig.json --noEmit    # typecheck (run from repo root)
 ```
@@ -56,6 +56,9 @@ uvicorn; the live BigQuery load-job path needs GOOGLE_APPLICATION_CREDENTIALS.
 - Queries must always filter on `game_date` (require_partition_filter is
   TRUE; free-tier scan budget is the constraint).
 - Ingestion writes with BigQuery batch load jobs only — never legacy `tabledata.insertAll` streaming.
+  Since 2026-07-27 Google calls that API "Storage Write API (REST)" (and the
+  gRPC one "Storage Write API (gRPC)"); both are streaming paths and both are
+  off-limits here, whatever the docs call them.
 - Web tests: vitest; Python tests: pytest under `ingestion/tests/`.
 
 ## Non-goals / invariants

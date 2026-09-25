@@ -44,7 +44,9 @@ BigQuery (fct_pitches, partition-filtered scans)
 
 - **Load jobs over legacy insertAll** — legacy streaming is billed; batch
   load jobs run on the free shared slot pool (quota 1,500 jobs per table per
-  day), keeping the project at $0.
+  day), keeping the project at $0. Google renamed `tabledata.insertAll` to
+  "Storage Write API (REST)" on 2026-07-27; neither Storage Write API variant
+  is used here.
 - **In-warehouse ML (BQML)** — no model-hosting tier to pay for; inference
   cost is query-scan cost, already bounded by partitioning.
 - **Arrow IPC serving, no JSON** — typed arrays go straight into deck.gl
