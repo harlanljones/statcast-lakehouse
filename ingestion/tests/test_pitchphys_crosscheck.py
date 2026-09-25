@@ -1,15 +1,16 @@
 """Ghost trajectory vs a real no-spin integration (offline, pinned reference).
 
-worker.ghost_kinematics removes spin by setting ax = 0 and az = -g while
-keeping the fitted ay. That drops the drag components along x and z, so the
-ghost is not quite where a spinless ball would land, and IVB/HB (actual minus
-ghost) absorb the difference. The reference crossings come from pitchphys
-(Lyu 2022 drag, spin = 0) for all 497 checked-in real pitches; regenerate
-with ``python -m ingestion.pitchphys_reference``.
+worker.ghost_kinematics keeps gravity plus the drag part of the measured
+acceleration (its component along the mid-flight velocity) and the fitted
+ay. The reference crossings come from pitchphys (Lyu 2022 drag, spin = 0)
+for all 497 checked-in real pitches; regenerate with
+``python -m ingestion.pitchphys_reference``.
 
-The bounds below pin today's error, measured 2026-09-25: the ghost lands
-about 1.5 in low (so IVB reads about 1.5 in high) and up to about 2.4 in
-off horizontally. Tighten them if the ghost gains a drag correction.
+Measured 2026-09-25: before the drag correction the ghost landed about
+1.5 in low (IVB read about 1.5 in high) and up to 2.4 in off horizontally.
+With it, the median error is under 0.3 in on both axes and horizontal error
+stays under 0.9 in. The remaining gap is mostly fitted ay drag versus the
+Lyu drag model, not the method.
 """
 import json
 import statistics
@@ -45,13 +46,13 @@ def test_reference_covers_every_real_pitch():
     assert (ref["source"], ref["model"], ref["forces"]) == ("pitchphys", "lyu", ["gravity", "drag"])
 
 
-def test_ghost_vertical_bias_is_pinned():
+def test_ghost_vertical_error_is_bounded():
     _, dz = ghost_errors_inches()
-    assert -2.0 < statistics.median(dz) < -1.0
-    assert max(abs(e) for e in dz) < 3.5
+    assert abs(statistics.median(dz)) < 0.5
+    assert max(abs(e) for e in dz) < 3.25
 
 
 def test_ghost_horizontal_error_is_bounded():
     dx, _ = ghost_errors_inches()
-    assert abs(statistics.mean(dx)) < 0.75
-    assert max(abs(e) for e in dx) < 3.0
+    assert abs(statistics.mean(dx)) < 0.25
+    assert max(abs(e) for e in dx) < 1.0

@@ -69,11 +69,13 @@ describe("ghostKinematics and breakVector", () => {
     ax: -8.0, ay: 20.0, az: -22.0,
   };
 
-  it("ghostKinematics clears lateral break and sets standard downward gravity", () => {
+  it("ghostKinematics keeps gravity plus drag along the mid-flight velocity", () => {
     const ghost = ghostKinematics(SLIDER);
-    expect(ghost.ax).toBe(0);
+    // Pinned closed form, mirrored in ingestion/tests/test_worker.py.
+    expect(ghost.ax).toBeCloseTo(-0.29551651184849326, 10);
+    expect(ghost.az).toBeCloseTo(-30.82022441300371, 10);
     expect(ghost.ay).toBe(SLIDER.ay);
-    expect(ghost.az).toBe(-GRAVITY_FT_S2);
+    expect(ghost.az).toBeGreaterThan(-GRAVITY_FT_S2); // drag slows the descent
     expect(ghost.x0).toBe(SLIDER.x0);
     expect(ghost.y0).toBe(SLIDER.y0);
     expect(ghost.z0).toBe(SLIDER.z0);
@@ -102,8 +104,12 @@ describe("ghostKinematics and breakVector", () => {
     const tEnd = flightTime(SLIDER);
     const breakVec = computeBreakVector(SLIDER);
 
-    const expectedDxInches = 0.5 * SLIDER.ax * tEnd * tEnd * 12;
-    const expectedDzInches = 0.5 * (SLIDER.az - (-GRAVITY_FT_S2)) * tEnd * tEnd * 12;
+    const ghost = ghostKinematics(SLIDER);
+    const expectedDxInches = 0.5 * (SLIDER.ax - ghost.ax) * tEnd * tEnd * 12;
+    const expectedDzInches = 0.5 * (SLIDER.az - ghost.az) * tEnd * tEnd * 12;
+    // Pinned, mirrored in ingestion/tests/test_worker.py.
+    expect(breakVec.hBreakInches).toBeCloseTo(-9.13221400780742, 8);
+    expect(breakVec.vBreakInches).toBeCloseTo(10.454714720371594, 8);
 
     expect(breakVec.hBreakInches).toBeCloseTo(expectedDxInches, 5);
     expect(breakVec.vBreakInches).toBeCloseTo(expectedDzInches, 5);

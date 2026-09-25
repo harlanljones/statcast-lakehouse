@@ -115,7 +115,9 @@ items 3+ are completed offline (no stubs in code).
 
 ## 13. Aerodynamic break vectors & ghost-trajectory visualization (Sprint 5 — Completed offline)
 - Aerodynamic separation: `ghost_kinematics` and `ghostTrajectory` solve trajectory
-  under gravity and drag without Magnus acceleration ($a_x = 0$, $a_z = -32.174$ ft/s²).
+  under gravity and drag without Magnus acceleration: gravity plus the drag component of the
+  measured acceleration along the mid-flight velocity (updated 2026-09-25 after the pitchphys
+  cross-check; the earlier $a_x = 0$, $a_z = -32.174$ ft/s² ghost overstated IVB by about 1.5 in).
 - Nathan 2012 break vectors: `compute_break_vector` / `computeBreakVector` calculate
   induced vertical break (IVB) and horizontal break (HB) in inches at plate arrival;
   `breakVectorSegment` connects ghost arrival point to actual pitch arrival.

@@ -118,11 +118,24 @@ def trajectory(pitch: dict[str, float], n: int = 60) -> list[tuple[float, float,
 
 
 def ghost_kinematics(pitch: dict[str, float]) -> dict[str, float]:
-    """Kinematic parameters without Magnus aerodynamic force (gravity + drag only)."""
+    """Kinematic parameters without Magnus aerodynamic force (gravity + drag only).
+
+    Drag acts along -v, so it is the part of the measured non-gravity
+    acceleration along the mid-flight velocity (Nathan's decomposition); the
+    rest is Magnus. The ghost keeps gravity plus that drag in x and z, and
+    keeps the fitted ay so it reaches the plate at the same time. Validated
+    against pitchphys no-spin flights (test_pitchphys_crosscheck.py).
+    """
+    t_mid = 0.5 * solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
+    vx = pitch["vx0"] + pitch["ax"] * t_mid
+    vy = pitch["vy0"] + pitch["ay"] * t_mid
+    vz = pitch["vz0"] + pitch["az"] * t_mid
+    speed = math.sqrt(vx * vx + vy * vy + vz * vz)
+    drag = (pitch["ax"] * vx + pitch["ay"] * vy + (pitch["az"] + GRAVITY_FT_S2) * vz) / speed
     ghost = dict(pitch)
-    ghost["ax"] = 0.0
+    ghost["ax"] = drag * vx / speed
     ghost["ay"] = pitch["ay"]
-    ghost["az"] = -GRAVITY_FT_S2
+    ghost["az"] = -GRAVITY_FT_S2 + drag * vz / speed
     return ghost
 
 
@@ -134,10 +147,12 @@ def ghost_trajectory(
 
 
 def compute_break_vector(pitch: dict[str, float]) -> dict[str, float]:
-    """Aerodynamic break in inches at plate arrival (Nathan 2012 definition)."""
+    """Aerodynamic break in inches at plate arrival (Nathan 2012 definition):
+    actual minus the drag-corrected ghost, which share the same flight time."""
     t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
-    dx_ft = 0.5 * pitch["ax"] * t_end * t_end
-    dz_ft = 0.5 * (pitch["az"] - (-GRAVITY_FT_S2)) * t_end * t_end
+    ghost = ghost_kinematics(pitch)
+    dx_ft = 0.5 * (pitch["ax"] - ghost["ax"]) * t_end * t_end
+    dz_ft = 0.5 * (pitch["az"] - ghost["az"]) * t_end * t_end
     h_break = dx_ft * 12.0
     v_break = dz_ft * 12.0
     return {
