@@ -23,7 +23,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 
-from ingestion.scenarios import SCENARIOS, real_pitches
+from ingestion.scenarios import SCENARIOS, ipc_write_options, real_pitches
 from serving.storylines import load_storylines
 
 app = FastAPI(title="statcast-lakehouse serving", version="0.1.0")
@@ -55,7 +55,7 @@ def _etag_matches(header_value: str, etag: str) -> bool:
 
 def _serialize(table) -> tuple[bytes, str]:
     sink = io.BytesIO()
-    with pa.ipc.new_file(sink, table.schema) as writer:
+    with pa.ipc.new_file(sink, table.schema, options=ipc_write_options()) as writer:
         writer.write_table(table)
     body = sink.getvalue()
     return body, _etag_for(body)

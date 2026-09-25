@@ -1,5 +1,6 @@
 /** Arrow IPC loader: byte stream -> columnar table -> per-pitch GPU data. */
-import { tableFromIPC, type Table } from "apache-arrow";
+import { tableFromIPC, compressionRegistry, CompressionType, type Table } from "apache-arrow";
+import { decompress as zstdDecompress } from "fzstd";
 import {
   trajectoryFlat,
   computeBreakVector,
@@ -19,6 +20,17 @@ export interface DatePartition {
   game_date: string;
   rows: number;
 }
+
+// The server and export_batch.py write zstd-compressed IPC bodies; arrow-js
+// decodes them only with a registered codec (decode-only is all we need).
+// fzstd can return a view at an unaligned offset, and arrow-js builds
+// BigInt64Array/Float64Array views straight onto it, so realign when needed.
+compressionRegistry.set(CompressionType.ZSTD, {
+  decode: (bytes) => {
+    const out = zstdDecompress(bytes);
+    return out.byteOffset % 8 === 0 ? out : out.slice();
+  },
+});
 
 /** Arrow int64 ids arrive as bigint; the UI only needs plain numbers (MLB ids are far below 2^53). */
 function idNumber(v: unknown): number | undefined {
