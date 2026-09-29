@@ -2,8 +2,16 @@ name: CI
 
 on:
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'data/**'
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'data/**'
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -25,6 +33,13 @@ jobs:
       - name: Run pytest
         run: python -m pytest -q
 
+      # Consolidated terraform-lint here to avoid a dedicated runner and 1-minute rounding penalty for a 6s check
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - name: terraform fmt
+        run: terraform -chdir=infra fmt -check
+
   web-tests:
     runs-on: ubuntu-latest
     defaults:
@@ -43,28 +58,40 @@ jobs:
         run: npx tsc -p tsconfig.json --noEmit
       - run: npm run build
 
-  terraform-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.9.8
-      - name: terraform fmt
-        run: terraform -chdir=infra fmt -check
-
   docker-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for relevant docker/backend changes
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "$BASE" "${{ github.sha }}" | grep -qE '^(ingestion|serving)/'; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: docker/setup-buildx-action@v3
+        if: steps.check.outputs.build == 'true'
       - name: Build ingestion image
+        if: steps.check.outputs.build == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ingestion/Dockerfile
           push: false
       - name: Build serving image
+        if: steps.check.outputs.build == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .

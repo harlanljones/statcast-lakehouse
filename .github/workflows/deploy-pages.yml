@@ -8,6 +8,10 @@ name: Deploy demo (Cloudflare Pages)
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'warehouse/**'
   workflow_dispatch:
 
 concurrency:
