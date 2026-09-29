@@ -19,7 +19,7 @@ do not contradict it.
 ## Commands (all verified)
 
 ```sh
-python3 -m pytest -q                                                # 331 tests (ingestion + serving + export + infra)
+python3 -m pytest -q                                                # 345 tests (ingestion + serving + export + infra)
 python3 -m ingestion.worker --dry-run --pitches 300 --out data/sample.arrow
 cd web && npm test                       # vitest, 209 tests
 cd web && npm run build                  # vite build -> dist/

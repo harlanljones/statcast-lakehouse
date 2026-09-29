@@ -13,8 +13,7 @@ from typing import Any
 
 import pyarrow as pa
 
-from ingestion.scenarios import DATA_DIR, SCENARIO_FILES
-from ingestion.worker import SCHEMA
+from ingestion.scenarios import DATA_DIR, SCENARIO_FILES, SLICE_SCHEMA
 
 GAME_IDS = (746011, 775300, 746679)
 OHTANI_GAME = 746011
@@ -100,7 +99,10 @@ def _to_row(
         "pitch_number": event.get("pitchNumber"),
         "is_swing": int(swing),
         "is_whiff": int(swing and whiff),
+        "extension": pitch.get("extension"),
         "ingestion_time": day,
+        "pitcher_name": play["matchup"]["pitcher"].get("fullName"),
+        "batter_name": play["matchup"]["batter"].get("fullName"),
     }
 
 
@@ -126,10 +128,10 @@ def refresh() -> dict[str, int]:
     for scenario_id, rows in tables.items():
         if not rows:
             raise ValueError(f"scenario {scenario_id!r} selected no real pitches")
-        table = pa.Table.from_pylist(rows, schema=SCHEMA)
+        table = pa.Table.from_pylist(rows, schema=SLICE_SCHEMA)
         path = DATA_DIR / SCENARIO_FILES[scenario_id]
         with path.open("wb") as sink:
-            with pa.ipc.new_file(sink, SCHEMA) as writer:
+            with pa.ipc.new_file(sink, SLICE_SCHEMA) as writer:
                 writer.write_table(table)
         counts[scenario_id] = table.num_rows
     return counts

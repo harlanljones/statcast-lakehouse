@@ -129,8 +129,11 @@ items 3+ are completed offline (no stubs in code).
 - Acceptance: 91 vitest tests across 6 files; Python and TS kinematics mirrored and pinned.
 
 ## 14. 3D Release point clustering, release extension & spin-rate telemetry (Sprint 6 — Completed offline)
-- Release geometry & physics: `PITCHING_RUBBER_Y_FT` (60.5 ft) and `release_extension` /
-  `releaseExtension` ($60.5 - y_0$) defined in Python and TypeScript with mirrored tests.
+- Release geometry & physics: `PITCHING_RUBBER_Y_FT` (60.5 ft) and `extrapolate_to_release` /
+  `extrapolateToRelease` defined in Python and TypeScript with mirrored tests. MLB's
+  x0/y0/z0 are measured at the 50 ft plane (so $60.5 - y_0$ is not the extension); the
+  feed's `extension` column (feet, nullable) back-extrapolates the constant-acceleration
+  path to the release plane $y = 60.5 - \text{extension}$.
 - Arrow loader extraction: `web/src/lib/arrow-loader.ts` extracts `release_spin_rate`
   and derives `extension` from kinematics for each pitch.
 - 3D Release clustering layer: `web/src/lib/deck-layers.ts` provides `release-points`

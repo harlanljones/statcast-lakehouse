@@ -89,6 +89,7 @@ COLUMN_MAP = {
     "strikes": "strikes",
     "at_bat_number": "at_bat_number",
     "pitch_number": "pitch_number",
+    "release_extension": "extension",
     "description": "description",
 }
 

@@ -1,6 +1,7 @@
 """Curated MLB game slices: schema, provenance identity, and stable selection."""
 from __future__ import annotations
 
+import pyarrow as pa
 import pytest
 
 from ingestion import scenarios
@@ -20,7 +21,7 @@ def test_scenario_is_a_stable_schema_valid_slice_of_its_real_game(scenario_id, i
     game_id, row_count = identity
     table = scenarios.SCENARIOS[scenario_id]()
     assert table.num_rows == row_count
-    assert table.schema.equals(SCHEMA)
+    assert table.schema.equals(scenarios.SLICE_SCHEMA)
     assert table.equals(scenarios.SCENARIOS[scenario_id]())
     rows = table.to_pylist()
     assert {row["game_id"] for row in rows} == {game_id}
@@ -28,6 +29,28 @@ def test_scenario_is_a_stable_schema_valid_slice_of_its_real_game(scenario_id, i
     assert all(len(row["pitch_id"]) == 36 for row in rows)
     assert all(not row["is_whiff"] or row["is_swing"] for row in rows)
     assert all(row["pitcher_id"] > 100_000 and row["batter_id"] > 100_000 for row in rows)
+
+
+def test_slices_without_extension_or_name_columns_are_filled_with_null(tmp_path, monkeypatch):
+    # The checked-in files predate extension / pitcher_name / batter_name.
+    table = scenarios.SCENARIOS["freeman-walk-off"]()
+    for column in ("extension", "pitcher_name", "batter_name"):
+        assert table.column(column).null_count == table.num_rows
+    # A file that has them keeps its values.
+    full = table.set_column(
+        table.schema.get_field_index("extension"), "extension",
+        pa.array([6.5] * table.num_rows, pa.float64()),
+    )
+    path = tmp_path / "full.arrow"
+    with pa.ipc.new_file(str(path), full.schema) as writer:
+        writer.write_table(full)
+    monkeypatch.setitem(scenarios.SCENARIO_FILES, "freeman-walk-off", "full.arrow")
+    monkeypatch.setattr(scenarios, "DATA_DIR", tmp_path)
+    scenarios.scenario_table.cache_clear()
+    try:
+        assert set(scenarios.scenario_table("freeman-walk-off").column("extension").to_pylist()) == {6.5}
+    finally:
+        scenarios.scenario_table.cache_clear()
 
 
 def test_registry_contains_only_documented_real_game_slices():
