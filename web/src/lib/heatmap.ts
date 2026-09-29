@@ -75,6 +75,14 @@ export const DENSITY_COLOR_STOPS: Array<{
   { pos: 1.0, color: [255, 50, 30, 240] },
 ];
 
+/**
+ * whiff_rate mode: a cell needs at least this many swings before its rate is
+ * colored. Below it (one whiff on one swing is "100%") the cell is treated as
+ * no data and drawn with the density gradient's zero stop, so a single swing
+ * never paints a saturated cell. `value` still carries the raw rate.
+ */
+export const MIN_SWINGS_FOR_WHIFF_COLOR = 3;
+
 export const WHIFF_COLOR_STOPS: Array<{
   pos: number;
   color: [number, number, number, number];
@@ -90,7 +98,8 @@ export const WHIFF_COLOR_STOPS: Array<{
  * Compute spatial strike zone density or whiff frequency grid.
  *
  * @param pitches Set of pitch events to aggregate
- * @param mode "density" (pitch concentration) or "whiff_rate" (whiffs / swings)
+ * @param mode "density" (pitch concentration) or "whiff_rate" (whiffs / swings;
+ *   cells with fewer than MIN_SWINGS_FOR_WHIFF_COLOR swings render as no data)
  * @param nx Number of horizontal divisions (default: 6)
  * @param nz Number of vertical divisions (default: 6)
  */
@@ -171,7 +180,10 @@ export function computeStrikeZoneHeatmap(
     } else {
       const rate = cell.swingCount > 0 ? (cell.whiffCount / cell.swingCount) : 0;
       cell.value = rate * 100.0;
-      cell.color = interpolateColor(rate, WHIFF_COLOR_STOPS);
+      cell.color =
+        cell.swingCount < MIN_SWINGS_FOR_WHIFF_COLOR
+          ? [...DENSITY_COLOR_STOPS[0].color]
+          : interpolateColor(rate, WHIFF_COLOR_STOPS);
     }
   }
 

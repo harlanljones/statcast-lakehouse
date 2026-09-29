@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyPresetTo, type PresetSetters } from "./scenario-state";
+import { applyPresetFiltersTo, applyPresetTo, type PresetSetters } from "./scenario-state";
 import { LIVE_PRESET, SCENARIOS, scenarioById, type LayerKey, type ScenarioPreset } from "./scenarios";
 
 const LAYER_KEYS: LayerKey[] = [
@@ -88,6 +88,22 @@ describe("applyPresetTo", () => {
     expect(state.batSpeed).toBe(75);
     expect(state.attackAngleDeg).toBe(10);
     expect(Object.values(state.layers).every((v) => v === false)).toBe(true);
+  });
+
+  it("applyPresetFiltersTo rewrites only the filters, never the view or layers", () => {
+    const { state, setters } = fakeApp();
+    const preset = scenarioById("twenty-run-night")!.preset;
+    applyPresetFiltersTo(preset, setters);
+    expect(state.speedRange).toEqual(preset.speedRange);
+    expect(state.plateXRange).toEqual(preset.plateXRange);
+    expect(state.plateZRange).toEqual(preset.plateZRange);
+    expect(state.zoneFilter).toBe(preset.zoneFilter);
+    expect(state.outcomeFilter).toBe(preset.outcomeFilter);
+    expect([...(state.selectedTypes ?? [])]).toEqual(preset.selectedTypes);
+    expect(state.view).toBe("");
+    expect(state.layerWrites).toBe(0);
+    expect(state.batSpeed).toBeNaN();
+    expect(state.heatmapMode).toBe("");
   });
 
   it("copies selectedTypes into a fresh Set so presets are never mutated", () => {

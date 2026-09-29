@@ -1,6 +1,7 @@
 import { For, Show, type JSX } from "solid-js";
 import type { Scenario, ScenarioId } from "../lib/scenarios";
-import { THEME } from "./ui";
+import type { DatePartition } from "../lib/arrow-loader";
+import { THEME, uid } from "./ui";
 
 export interface ScenarioRailProps {
   scenarios: readonly Scenario[];
@@ -10,53 +11,59 @@ export interface ScenarioRailProps {
   onLive: () => void;
   /** Live data needs the API; the static (Cloudflare Pages) build hides it. */
   showLive?: boolean;
+  /** Live-data date picker: shown when Live is active and partitions exist. */
+  datePartitions?: readonly DatePartition[];
+  selectedDate?: string;
+  onSelectDate?: (date: string) => void;
+  onLoadSample?: () => void;
+  loading?: boolean;
 }
 
-const card = (active: boolean): JSX.CSSProperties => ({
-  display: "block",
-  width: "100%",
-  "text-align": "left",
-  padding: "10px 12px",
-  color: THEME.text,
-  background: active ? "rgba(255, 255, 255, 0.07)" : "transparent",
-  border: `1px solid ${active ? "var(--accent)" : THEME.border}`,
-  "border-left-width": "3px",
-  "border-left-color": active ? "var(--accent)" : THEME.border,
-});
-
 export default function ScenarioRail(props: ScenarioRailProps): JSX.Element {
+  const dateId = uid("live-date");
   return (
-    <nav
-      class="scenario-rail"
-      aria-label="game stories"
-      style={{
-        width: "232px",
-        "flex-shrink": "0",
-        display: "flex",
-        "flex-direction": "column",
-        gap: "8px",
-        padding: "12px",
-        background: THEME.panel,
-        "border-right": `1px solid ${THEME.border}`,
-        "overflow-y": "auto",
-      }}
-    >
+    <nav class="scenario-rail" aria-label="game stories">
       <For each={props.scenarios}>
         {(s) => (
-          <button class="ui-ctl" aria-pressed={props.activeId === s.id} onClick={() => props.onSelect(s.id)} style={card(props.activeId === s.id)}>
-            <div style={{ display: "flex", "justify-content": "space-between", "align-items": "baseline" }}>
-              <strong style={{ "font-size": "14px" }}>{s.title}</strong>
-              <span style={{ color: THEME.muted, "font-size": "11px" }}>{s.dateLabel}</span>
-            </div>
-            <div style={{ color: THEME.muted, "font-size": "12px", "margin-top": "4px", "line-height": "1.35" }}>{s.hook}</div>
+          <button class="ui-ctl ui-card" aria-pressed={props.activeId === s.id} onClick={() => props.onSelect(s.id)}>
+            <strong style={{ display: "block", "font-size": "14px" }}>{s.title}</strong>
+            <span style={{ display: "block", "white-space": "nowrap", color: THEME.muted, "font-size": "11px", "margin-top": "1px" }}>
+              {s.dateLabel}
+            </span>
+            <span style={{ display: "block", color: THEME.muted, "font-size": "12px", "margin-top": "4px", "line-height": "1.35" }}>{s.hook}</span>
           </button>
         )}
       </For>
       <Show when={props.showLive ?? true}>
-        <button class="ui-ctl" aria-pressed={props.liveActive} onClick={props.onLive} style={{ ...card(props.liveActive), "margin-top": "auto" }}>
-          <strong style={{ "font-size": "13px" }}>Live data</strong>
-          <div style={{ color: THEME.muted, "font-size": "12px", "margin-top": "4px" }}>Browse real date partitions</div>
-        </button>
+        <div class="rail-live">
+          <button class="ui-ctl ui-card" aria-pressed={props.liveActive} onClick={props.onLive}>
+            <strong style={{ display: "block", "font-size": "13px" }}>Live data</strong>
+            <span style={{ display: "block", color: THEME.muted, "font-size": "12px", "margin-top": "4px" }}>Browse real date partitions</span>
+          </button>
+          <Show when={props.liveActive}>
+            <button class="ui-ctl ui-ghost" onClick={() => props.onLoadSample?.()} disabled={props.loading}>
+              {props.loading ? "Loading…" : "Load sample pitches"}
+            </button>
+            <Show when={props.datePartitions && props.datePartitions.length > 0}>
+              <label for={dateId} style={{ color: THEME.muted, "font-size": "11px" }}>Date partition</label>
+              <select
+                id={dateId}
+                class="ui-select"
+                value={props.selectedDate ?? ""}
+                onChange={(e) => props.onSelectDate?.(e.currentTarget.value)}
+              >
+                <option value="">Select date partition…</option>
+                <For each={props.datePartitions}>
+                  {(p) => (
+                    <option value={p.game_date} selected={p.game_date === props.selectedDate}>
+                      {p.game_date} ({p.rows} rows)
+                    </option>
+                  )}
+                </For>
+              </select>
+            </Show>
+          </Show>
+        </div>
       </Show>
     </nav>
   );

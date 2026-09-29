@@ -23,9 +23,9 @@ export interface PitchTooltipInfo {
   break?: string;
   /** Spin rate in RPM, e.g. "2350 rpm" */
   spin?: string;
-  /** Release coordinates, e.g. "Rel (+1.5, 5.8) ft" */
+  /** Release coordinates "Rel (+1.5, 5.8) ft", or "At 50 ft (+1.5, 5.8)" when extension is unknown. */
   release?: string;
-  /** Extension from rubber, e.g. "Ext 6.2 ft" */
+  /** Extension from rubber, e.g. "Ext 6.2 ft"; omitted when unknown. */
   extension?: string;
   /** Batter-specific strike zone bounds, e.g. "Zone [1.5, 3.4] ft" */
   zoneBounds?: string;
@@ -83,9 +83,15 @@ export function pitchTooltip(
   if (d.kinematics) {
     const k = d.kinematics;
     const signX = k.x0 >= 0 ? "+" : "";
-    release = `Rel (${signX}${round1(k.x0)}, ${round1(k.z0)}) ft`;
-    const ext = d.extension ?? (60.5 - k.y0);
-    extension = `Ext ${round1(ext)} ft`;
+    const xz = `(${signX}${round1(k.x0)}, ${round1(k.z0)})`;
+    if (d.extension != null && Number.isFinite(d.extension)) {
+      // Kinematics were moved to the true release point using this extension.
+      release = `Rel ${xz} ft`;
+      extension = `Ext ${round1(d.extension)} ft`;
+    } else {
+      // Statcast's x0/y0/z0 are measured at the y = 50 ft plane, not at the hand.
+      release = `At 50 ft ${xz}`;
+    }
   }
 
   let zoneBounds: string | undefined;

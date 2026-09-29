@@ -25,7 +25,8 @@ MLB Stats API (baseballsavant statcast endpoint)
      batches via manifest.json under STATCAST_BATCH_DIR (path-contained);
      /pitches/sample byte-stable, capped)
   -> web/src/lib/kinematics.ts (9-parameter solver -> 60-pt path, Float32Array;
-     ghost trajectories, Nathan 2012 break vectors, release extension)
+     ghost trajectories, Nathan 2012 break vectors; x0/y0/z0 are measured at the
+     50 ft plane, and the `extension` column back-extrapolates to release)
   -> Deck.gl (GPU trajectory rendering, ghost break vectors, 3D release clustering;
      DataFilterExtension uniform filters, tunneling commitment plane)
 ```

@@ -9,7 +9,8 @@ import {
   ghostTrajectoryFlat,
   computeBreakVector,
   breakVectorSegment,
-  releaseExtension,
+  extrapolateToRelease,
+  type PitchKinematics,
   COMMITMENT_PLANE_Y_FT,
   solveCommitmentTime,
   commitmentPosition,
@@ -133,11 +134,60 @@ describe("ghostKinematics and breakVector", () => {
     expect(dz * 12).toBeCloseTo(computeBreakVector(SLIDER).vBreakInches, 5);
   });
 
-  it("releaseExtension calculates distance from pitching rubber (60.5 ft)", () => {
+  it("the pitching rubber sits 60.5 ft from the plate", () => {
     expect(PITCHING_RUBBER_Y_FT).toBe(60.5);
-    expect(releaseExtension(55.0)).toBeCloseTo(5.5, 6);
-    expect(releaseExtension(54.2)).toBeCloseTo(6.3, 6);
-    expect(releaseExtension(SLIDER.y0)).toBeCloseTo(60.5 - SLIDER.y0, 6);
+  });
+});
+
+describe("extrapolateToRelease", () => {
+  // Statcast measures x0/y0/z0 at y = 50 ft; extension moves them to the hand.
+  const p: PitchKinematics = { x0: -1.5, y0: 50, z0: 6.0, vx0: 2.0, vy0: -130, vz0: -5.0, ax: -8.0, ay: 25.0, az: -20.0 };
+  // The root of 12.5 t^2 - 130 t - 4 = 0 closest to zero from below (other root: +10.43).
+  const T = -0.030678732248808273;
+
+  it("re-expresses the nine parameters at y = 60.5 - extension (Python worker mirror values)", () => {
+    const r = extrapolateToRelease(p, 6.5);
+    expect(r.y0).toBe(54.0);
+    expect(r.x0).toBeCloseTo(-1.5651222029471927, 10);
+    expect(r.z0).toBeCloseTo(6.1439818151201, 10);
+    expect(r.vx0).toBeCloseTo(2.2454298579904663, 10);
+    expect(r.vy0).toBeCloseTo(-130.7669683062202, 10);
+    expect(r.vz0).toBeCloseTo(-4.386425355023834, 10);
+    expect([r.ax, r.ay, r.az]).toEqual([p.ax, p.ay, p.az]);
+    expect(flightTime(p)).toBeCloseTo(0.38820615570450684, 10);
+    expect(flightTime(r)).toBeCloseTo(0.41888488795331513, 10);
+  });
+
+  it("runs the flight backwards: the original point is recovered at -t and flight time grows by |t|", () => {
+    const r = extrapolateToRelease(p, 6.5);
+    const back = positionAt(r, -T);
+    expect(back[0]).toBeCloseTo(p.x0, 9);
+    expect(back[1]).toBeCloseTo(p.y0, 9);
+    expect(back[2]).toBeCloseTo(p.z0, 9);
+    expect(flightTime(r)).toBeCloseTo(flightTime(p) + Math.abs(T), 9);
+  });
+
+  it("returns the input unchanged without a usable extension", () => {
+    expect(extrapolateToRelease(p, null)).toBe(p);
+    expect(extrapolateToRelease(p, undefined)).toBe(p);
+    expect(extrapolateToRelease(p, Number.NaN)).toBe(p);
+    expect(extrapolateToRelease(p, 0)).toBe(p);
+    expect(extrapolateToRelease(p, -1)).toBe(p);
+    expect(extrapolateToRelease(p, 12)).toBe(p);
+  });
+
+  it("returns the input unchanged when no real root exists", () => {
+    // Decelerating so hard that the ball never gets back to y = 54 in the past.
+    const odd: PitchKinematics = { ...p, vy0: -1, ay: -400 };
+    expect(extrapolateToRelease(odd, 6.5)).toBe(odd);
+  });
+
+  it("handles a zero y-acceleration (linear) case", () => {
+    const lin: PitchKinematics = { ...p, ay: 0 };
+    const r = extrapolateToRelease(lin, 6.5);
+    expect(r.y0).toBe(54);
+    expect(r.vy0).toBe(-130);
+    expect(r.x0).toBeCloseTo(p.x0 - p.vx0 * (4 / 130) + 0.5 * p.ax * (4 / 130) ** 2, 9);
   });
 });
 

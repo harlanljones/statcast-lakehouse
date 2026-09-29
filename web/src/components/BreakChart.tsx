@@ -1,11 +1,14 @@
-import { For, Show, type JSX } from "solid-js";
+import { For, Show, createEffect, createMemo, type JSX } from "solid-js";
 import type { PitchDatum } from "../lib/deck-layers";
 import { pitchColor } from "../lib/deck-layers";
 import {
   breakToSvgCoords,
   breakGridTicks,
+  nearestDot,
   DEFAULT_BREAK_RANGE_INCHES,
+  type BreakDot,
 } from "../lib/break-chart-math";
+import { Panel, PanelHeader, THEME } from "./ui";
 
 export interface BreakChartProps {
   pitches: PitchDatum[];
@@ -16,10 +19,16 @@ export interface BreakChartProps {
   range?: number;
 }
 
+const AXIS_LABEL_PX = "11";
+
 /**
  * 2D Aerodynamic Movement Profile (Break Chart: IVB vs HB).
  * Plots Induced Vertical Break vs Horizontal Break in inches.
  * Center (0, 0) represents the ghost pitch trajectory without Magnus acceleration.
+ *
+ * The dots are drawn on a HiDPI canvas (a few thousand dots stay cheap, and
+ * hover is a nearest-dot scan on mousemove); the grid, axes, labels and the
+ * picked ring are SVG on top.
  */
 export default function BreakChart(props: BreakChartProps): JSX.Element {
   const width = () => props.width ?? 210;
@@ -27,8 +36,21 @@ export default function BreakChart(props: BreakChartProps): JSX.Element {
   const range = () => props.range ?? DEFAULT_BREAK_RANGE_INCHES;
   const padding = 22;
 
+  let wrap!: HTMLDivElement;
+  let canvas!: HTMLCanvasElement;
+
   const ticks = () => breakGridTicks(range(), 10);
   const origin = () => breakToSvgCoords(0, 0, width(), height(), range(), padding);
+
+  const dots = createMemo<BreakDot<PitchDatum>[]>(() => {
+    const out: BreakDot<PitchDatum>[] = [];
+    for (const p of props.pitches) {
+      if (!p.breakVector) continue;
+      const c = breakToSvgCoords(p.breakVector.hBreakInches, p.breakVector.vBreakInches, width(), height(), range(), padding);
+      out.push({ x: c.x, y: c.y, item: p });
+    }
+    return out;
+  });
 
   const pickedCoord = () => {
     if (!props.picked?.breakVector) return null;
@@ -36,193 +58,130 @@ export default function BreakChart(props: BreakChartProps): JSX.Element {
     return breakToSvgCoords(bv.hBreakInches, bv.vBreakInches, width(), height(), range(), padding);
   };
 
+  createEffect(() => {
+    const w = width();
+    const h = height();
+    const all = dots();
+    const picked = props.picked;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    let pickedDot: BreakDot<PitchDatum> | null = null;
+    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.4)";
+    ctx.globalAlpha = 0.75;
+    for (const d of all) {
+      if (d.item === picked) {
+        pickedDot = d;
+        continue;
+      }
+      const [r, g, b] = pitchColor(d.item.pitchType);
+      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    if (pickedDot) {
+      const [r, g, b] = pitchColor(pickedDot.item.pitchType);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(pickedDot.x, pickedDot.y, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  });
+
+  const hit = (e: MouseEvent) => {
+    const r = wrap.getBoundingClientRect();
+    return nearestDot(dots(), e.clientX - r.left, e.clientY - r.top);
+  };
+  const onMove = (e: MouseEvent) => {
+    const h = hit(e);
+    wrap.style.cursor = h ? "pointer" : "default";
+    const bv = h?.item.breakVector;
+    wrap.title = h && bv ? `${h.item.pitchType}: IVB ${bv.vBreakInches.toFixed(1)}" HB ${bv.hBreakInches.toFixed(1)}"` : "";
+    if (h && h.item !== props.picked) props.onPick?.(h.item);
+  };
+  const onClick = (e: MouseEvent) => {
+    const h = hit(e);
+    if (h) props.onPick?.(h.item);
+  };
+
   return (
-    <div
-      role="region"
-      aria-label="pitch movement profile break chart"
-      style={{
-        position: "absolute",
-        top: "14px",
-        right: "14px",
-        background: "rgba(15, 15, 22, 0.92)",
-        border: "1px solid rgba(255, 255, 255, 0.2)",
-        "border-radius": "8px",
-        padding: "8px",
-        "box-shadow": "0 6px 18px rgba(0, 0, 0, 0.6)",
-        "backdrop-filter": "blur(4px)",
-        color: "#ccc",
-        "font-family": "monospace",
-        "font-size": "11px",
-        "user-select": "none",
-        "z-index": "10",
-      }}
-    >
-      <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center", "margin-bottom": "4px" }}>
-        <span style={{ "font-weight": "bold", color: "#eee" }}>Movement Profile</span>
-        <span style={{ "font-size": "10px", color: "#888" }}>IVB vs HB (in)</span>
-      </div>
-
-      <svg
-        width={width()}
-        height={height()}
-        viewBox={`0 0 ${width()} ${height()}`}
-        style={{ display: "block", overflow: "visible" }}
+    <Panel label="pitch movement profile break chart" width={width() + 30}>
+      <PanelHeader title="Movement Profile" subtitle="IVB vs HB (in)" />
+      <div
+        ref={wrap}
+        style={{ position: "relative", width: `${width()}px`, height: `${height()}px` }}
+        onMouseMove={onMove}
+        onClick={onClick}
       >
-        {/* Background plot area */}
-        <rect
-          x={padding}
-          y={padding}
-          width={width() - 2 * padding}
-          height={height() - 2 * padding}
-          fill="rgba(0, 0, 0, 0.35)"
-          stroke="rgba(255, 255, 255, 0.1)"
-          rx="4"
+        <canvas
+          ref={canvas}
+          aria-hidden="true"
+          style={{ position: "absolute", left: "0", top: "0", width: `${width()}px`, height: `${height()}px` }}
         />
-
-        {/* Grid lines */}
-        <For each={ticks()}>
-          {(tick) => {
-            if (tick === 0) return null;
-            const c = breakToSvgCoords(tick, tick, width(), height(), range(), padding);
-            return (
-              <>
-                {/* Vertical grid line */}
-                <line
-                  x1={c.x}
-                  y1={padding}
-                  x2={c.x}
-                  y2={height() - padding}
-                  stroke="rgba(255, 255, 255, 0.08)"
-                  stroke-dasharray="2,2"
-                />
-                {/* Horizontal grid line */}
-                <line
-                  x1={padding}
-                  y1={c.y}
-                  x2={width() - padding}
-                  y2={c.y}
-                  stroke="rgba(255, 255, 255, 0.08)"
-                  stroke-dasharray="2,2"
-                />
-              </>
-            );
-          }}
-        </For>
-
-        {/* Major Axis Lines (0, 0) */}
-        <line
-          x1={origin().x}
-          y1={padding}
-          x2={origin().x}
-          y2={height() - padding}
-          stroke="rgba(255, 255, 255, 0.3)"
-          stroke-width="1.2"
-        />
-        <line
-          x1={padding}
-          y1={origin().y}
-          x2={width() - padding}
-          y2={origin().y}
-          stroke="rgba(255, 255, 255, 0.3)"
-          stroke-width="1.2"
-        />
-
-        {/* Origin zero marker */}
-        <circle
-          cx={origin().x}
-          cy={origin().y}
-          r="2.5"
-          fill="rgba(255, 255, 255, 0.5)"
-        />
-
-        {/* Axis Labels */}
-        <text
-          x={width() - padding + 2}
-          y={origin().y + 3}
-          fill="#888"
-          font-size="9"
-          text-anchor="start"
+        <svg
+          role="img"
+          aria-label={`Break chart: induced vertical break against horizontal break for ${dots().length} pitches`}
+          width={width()}
+          height={height()}
+          viewBox={`0 0 ${width()} ${height()}`}
+          style={{ position: "absolute", left: "0", top: "0", overflow: "visible", "pointer-events": "none" }}
         >
-          +HB
-        </text>
-        <text
-          x={padding - 2}
-          y={origin().y + 3}
-          fill="#888"
-          font-size="9"
-          text-anchor="end"
-        >
-          -HB
-        </text>
-        <text
-          x={origin().x}
-          y={padding - 4}
-          fill="#888"
-          font-size="9"
-          text-anchor="middle"
-        >
-          +IVB
-        </text>
-        <text
-          x={origin().x}
-          y={height() - padding + 12}
-          fill="#888"
-          font-size="9"
-          text-anchor="middle"
-        >
-          -IVB
-        </text>
+          {/* Background plot area */}
+          <rect
+            x={padding}
+            y={padding}
+            width={width() - 2 * padding}
+            height={height() - 2 * padding}
+            fill="none"
+            stroke="rgba(255, 255, 255, 0.1)"
+            rx="4"
+          />
 
-        {/* Pitch Break Dots */}
-        <For each={props.pitches}>
-          {(p) => {
-            if (!p.breakVector) return null;
-            const coord = breakToSvgCoords(
-              p.breakVector.hBreakInches,
-              p.breakVector.vBreakInches,
-              width(),
-              height(),
-              range(),
-              padding,
-            );
-            const isPicked = p === props.picked;
-            const [r, g, b] = pitchColor(p.pitchType);
+          {/* Grid lines */}
+          <For each={ticks()}>
+            {(tick) => {
+              if (tick === 0) return null;
+              const c = breakToSvgCoords(tick, tick, width(), height(), range(), padding);
+              return (
+                <>
+                  <line x1={c.x} y1={padding} x2={c.x} y2={height() - padding} stroke="rgba(255, 255, 255, 0.08)" stroke-dasharray="2,2" />
+                  <line x1={padding} y1={c.y} x2={width() - padding} y2={c.y} stroke="rgba(255, 255, 255, 0.08)" stroke-dasharray="2,2" />
+                </>
+              );
+            }}
+          </For>
 
-            return (
-              <circle
-                cx={coord.x}
-                cy={coord.y}
-                r={isPicked ? 4.5 : 3}
-                fill={`rgb(${r}, ${g}, ${b})`}
-                opacity={isPicked ? 1 : 0.75}
-                stroke={isPicked ? "#fff" : "rgba(0,0,0,0.4)"}
-                stroke-width={isPicked ? 1.5 : 0.8}
-                style={{ cursor: "pointer", transition: "r 0.15s, opacity 0.15s" }}
-                onMouseEnter={() => props.onPick?.(p)}
-                onClick={() => props.onPick?.(p)}
-              >
-                <title>{`${p.pitchType}: IVB ${p.breakVector.vBreakInches.toFixed(1)}" HB ${p.breakVector.hBreakInches.toFixed(1)}"`}</title>
-              </circle>
-            );
-          }}
-        </For>
+          {/* Major axis lines (0, 0) */}
+          <line x1={origin().x} y1={padding} x2={origin().x} y2={height() - padding} stroke="rgba(255, 255, 255, 0.3)" stroke-width="1.2" />
+          <line x1={padding} y1={origin().y} x2={width() - padding} y2={origin().y} stroke="rgba(255, 255, 255, 0.3)" stroke-width="1.2" />
+          <circle cx={origin().x} cy={origin().y} r="2.5" fill="rgba(255, 255, 255, 0.5)" />
 
-        {/* Emphasized Picked Pitch Ring */}
-        <Show when={pickedCoord()}>
-          {(coord) => (
-            <circle
-              cx={coord().x}
-              cy={coord().y}
-              r="7"
-              fill="none"
-              stroke="#ffd700"
-              stroke-width="2"
-              stroke-dasharray="3,2"
-              pointer-events="none"
-            />
-          )}
-        </Show>
-      </svg>
-    </div>
+          {/* Axis labels */}
+          <text x={width() - padding + 2} y={origin().y + 4} fill={THEME.muted} font-size={AXIS_LABEL_PX} text-anchor="start">+HB</text>
+          <text x={padding - 2} y={origin().y + 4} fill={THEME.muted} font-size={AXIS_LABEL_PX} text-anchor="end">-HB</text>
+          <text x={origin().x} y={padding - 5} fill={THEME.muted} font-size={AXIS_LABEL_PX} text-anchor="middle">+IVB</text>
+          <text x={origin().x} y={height() - padding + 13} fill={THEME.muted} font-size={AXIS_LABEL_PX} text-anchor="middle">-IVB</text>
+
+          {/* Emphasized picked pitch ring */}
+          <Show when={pickedCoord()}>
+            {(coord) => (
+              <circle cx={coord().x} cy={coord().y} r="7" fill="none" stroke={THEME.gold} stroke-width="2" stroke-dasharray="3,2" />
+            )}
+          </Show>
+        </svg>
+      </div>
+    </Panel>
   );
 }

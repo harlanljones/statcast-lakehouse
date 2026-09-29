@@ -17,6 +17,11 @@ import pyarrow as pa
 
 from ingestion.worker import SCHEMA
 
+# Scenario slices carry the fct_pitches columns plus display names from the
+# game feed. Files written before a column existed are filled with NULL.
+SLICE_SCHEMA = pa.schema(
+    [*SCHEMA, pa.field("pitcher_name", pa.string()), pa.field("batter_name", pa.string())]
+)
 DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "scenarios"
 SCENARIO_FILES = {
     "twenty-run-night": "twenty-run-night.arrow",
@@ -37,7 +42,12 @@ def scenario_table(scenario_id: str) -> pa.Table:
     path = DATA_DIR / filename
     with path.open("rb") as source:
         table = pa.ipc.open_file(source).read_all()
-    if not table.schema.equals(SCHEMA):
+    # Tolerate slices that predate extension / display-name columns (NULL fill).
+    for field in SLICE_SCHEMA:
+        if field.name not in table.schema.names:
+            table = table.append_column(field, pa.nulls(table.num_rows, field.type))
+    table = table.select(SLICE_SCHEMA.names)
+    if not table.schema.equals(SLICE_SCHEMA):
         raise ValueError(f"{path} does not match worker.SCHEMA")
     return table
 
@@ -58,7 +68,7 @@ def _all_real_pitches() -> pa.Table:
         if pitch_id not in seen:
             seen.add(pitch_id)
             keep.append(index)
-    unique = combined.take(keep)
+    unique = combined.take(keep).select(SCHEMA.names)
     # Stable sort: games in date order, pitches in their source (game) order.
     order = sorted(range(unique.num_rows), key=unique.column("game_date").to_pylist().__getitem__)
     return unique.take(order)

@@ -36,6 +36,33 @@ export type LensId =
   | "heatmapMode"
   | "contact";
 
+/** Every lens, in display order: what the header's "All controls" (and Live data) shows. */
+export const ALL_LENSES: readonly LensId[] = [
+  "camera",
+  "flight",
+  "types",
+  "speed",
+  "plate",
+  "zone",
+  "outcome",
+  "heatmapMode",
+  "contact",
+];
+
+/** Layer-toggle labels, in display order (LensPanel's "All controls" row). */
+export const LAYER_TOGGLES: readonly { key: LayerKey; label: string }[] = [
+  { key: "tunneling", label: "Tunneling plane" },
+  { key: "ghostBreak", label: "Ghost break" },
+  { key: "releasePoints", label: "Release points" },
+  { key: "plateCrossings", label: "Plate crossings" },
+  { key: "breakChart", label: "Break chart" },
+  { key: "pairComparison", label: "Pitch pairs" },
+  { key: "contactSim", label: "Contact sim" },
+  { key: "dispersion", label: "Release dispersion" },
+  { key: "fatigue", label: "Fatigue" },
+  { key: "heatmap", label: "Zone heatmap" },
+];
+
 export interface ScenarioPreset {
   view: CameraViewName;
   speedRange: [number, number];
@@ -82,9 +109,10 @@ const NO_LAYERS: Record<LayerKey, boolean> = {
 
 const BASE: ScenarioPreset = {
   view: "Catcher",
-  speedRange: [70, 105],
-  plateXRange: [-2.5, 2.5],
-  plateZRange: [0, 5],
+  // Eephus pitches in the checked-in data are ~49 mph; a floor of 70 silently hid them.
+  speedRange: [40, 105],
+  plateXRange: [-3, 3],
+  plateZRange: [-1, 6],
   zoneFilter: "all",
   outcomeFilter: "all",
   selectedTypes: [],
@@ -154,7 +182,7 @@ export const SCENARIOS: readonly Scenario[] = [
     lookFor:
       "This slice contains every pitch from Ohtani's six plate appearances: three homers, two doubles and a single. The plate locations and pitch outcomes come from the game feed; the 50/50 milestone is linked to MLB's game story.",
     tryThis: "Set the outcome filter to Whiffs, then compare those locations with the pitches he put in play.",
-    lens: ["camera", "flight", "types", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
     preset: preset({
       view: "Batter",
       layers: { plateCrossings: true, heatmap: true },
@@ -173,7 +201,7 @@ export const SCENARIOS: readonly Scenario[] = [
     lookFor:
       "The four recorded pitches from the top of the seventh, ending with Ohtani's 50th home run of the season. Trajectory and plate crossing values are from the MLB game feed for this at-bat.",
     tryThis: "Scrub the flight path and compare the final pitch's crossing with the earlier pitches in the at-bat.",
-    lens: ["camera", "flight", "types", "plate"],
+    lens: ["camera", "flight", "types", "speed", "plate"],
     preset: preset({ view: "Batter", layers: { plateCrossings: true, ghostBreak: true } }),
   },
   {

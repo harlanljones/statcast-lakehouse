@@ -4,7 +4,7 @@ import { decompress as zstdDecompress } from "fzstd";
 import {
   trajectoryFlat,
   computeBreakVector,
-  releaseExtension,
+  extrapolateToRelease,
   commitmentPosition,
   type PitchKinematics,
 } from "./kinematics";
@@ -59,10 +59,44 @@ function sourcePlayId(explicitPlayId: unknown, pitchId: unknown): string | undef
   return id && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id) ? id : undefined;
 }
 
+/** Row accessor over one Arrow column, or null when the column is absent. */
+type Getter = (i: number) => unknown;
+
+/**
+ * Hoisted per-column accessor. A column with no nulls and a typed-array
+ * representation is read straight from `toArray()` (zero-copy for a single
+ * chunk); anything else (nullable columns, strings, int64) goes through the
+ * Vector's `get`, because `toArray()` would silently turn NULLs into 0/NaN.
+ */
+function columnGetter(table: Table, name: string): Getter | null {
+  const vec = table.getChild(name);
+  if (!vec) return null;
+  if (vec.nullCount === 0) {
+    const arr = vec.toArray();
+    if (ArrayBuffer.isView(arr) && !(arr instanceof DataView)) {
+      const typed = arr as unknown as ArrayLike<unknown>;
+      return (i) => typed[i];
+    }
+  }
+  return (i) => vec.get(i);
+}
+
+/** Finite number or undefined (NULL, NaN and non-numeric all read as missing). */
+function finiteOrUndefined(v: unknown): number | undefined {
+  if (v == null) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 /**
  * Parse an Arrow IPC response and precompute GPU-ready paths.
- * Column access is zero-copy typed arrays; trajectory math runs once per
- * pitch at load time, never during interaction.
+ * Column access is hoisted out of the row loop (typed arrays where the column
+ * has no nulls); trajectory math runs once per pitch at load time, never
+ * during interaction.
+ *
+ * Statcast's x0/y0/z0 sit on the y = 50 ft plane, not at the hand. When the
+ * optional nullable `extension` column (ft) is present the nine parameters are
+ * moved back to the true release point before any path/break/commitment math.
  */
 export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const table = tableFromIPC(buffer);
@@ -72,28 +106,35 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const ax = col("ax"), ay = col("ay"), az = col("az");
   const speed = col("release_speed");
 
-  const plateXCol = table.getChild("plate_x");
-  const plateZCol = table.getChild("plate_z");
-  const isSwingCol = table.getChild("is_swing");
-  const isWhiffCol = table.getChild("is_whiff");
-  const spinCol = table.getChild("release_spin_rate");
-  const szTopCol = table.getChild("sz_top");
-  const szBotCol = table.getChild("sz_bot");
-  const pitcherCol = table.getChild("pitcher_id");
-  const batterCol = table.getChild("batter_id");
-  const pitcherNameCol = table.getChild("pitcher_name");
-  const batterNameCol = table.getChild("batter_name");
-  const gameCol = table.getChild("game_id");
-  const pitchIdCol = table.getChild("pitch_id");
-  const playIdCol = table.getChild("play_id");
+  const plateX = columnGetter(table, "plate_x");
+  const plateZ = columnGetter(table, "plate_z");
+  const isSwing = columnGetter(table, "is_swing");
+  const isWhiff = columnGetter(table, "is_whiff");
+  const spin = columnGetter(table, "release_spin_rate");
+  const szTop = columnGetter(table, "sz_top");
+  const szBot = columnGetter(table, "sz_bot");
+  const extension = columnGetter(table, "extension");
+  const atBat = columnGetter(table, "at_bat_number");
+  const pitchNum = columnGetter(table, "pitch_number");
+  const pitcherId = columnGetter(table, "pitcher_id");
+  const batterId = columnGetter(table, "batter_id");
+  const pitcherName = columnGetter(table, "pitcher_name");
+  const batterName = columnGetter(table, "batter_name");
+  const gameId = columnGetter(table, "game_id");
+  const pitchId = columnGetter(table, "pitch_id");
+  const playId = columnGetter(table, "play_id");
+  const pitchType = columnGetter(table, "pitch_type");
 
   const pitches: PitchDatum[] = [];
-  for (let i = 0; i < table.numRows; i++) {
-    const k: PitchKinematics = {
+  const n = table.numRows;
+  for (let i = 0; i < n; i++) {
+    const ext = extension ? finiteOrUndefined(extension(i)) : undefined;
+    const measured: PitchKinematics = {
       x0: x0[i], y0: y0[i], z0: z0[i],
       vx0: vx0[i], vy0: vy0[i], vz0: vz0[i],
       ax: ax[i], ay: ay[i], az: az[i],
     };
+    const k = extrapolateToRelease(measured, ext);
     let path: Float32Array;
     try {
       path = trajectoryFlat(k);
@@ -105,46 +146,35 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
     const fallbackX = path[(N - 1) * 3];
     const fallbackZ = path[(N - 1) * 3 + 2];
 
-    const rawPlateX = plateXCol?.get(i);
-    const rawPlateZ = plateZCol?.get(i);
-    const plateX = rawPlateX != null && !isNaN(Number(rawPlateX)) ? Number(rawPlateX) : fallbackX;
-    const plateZ = rawPlateZ != null && !isNaN(Number(rawPlateZ)) ? Number(rawPlateZ) : fallbackZ;
+    const px = plateX ? finiteOrUndefined(plateX(i)) ?? fallbackX : fallbackX;
+    const pz = plateZ ? finiteOrUndefined(plateZ(i)) ?? fallbackZ : fallbackZ;
 
-    const rawSwing = isSwingCol?.get(i);
-    const rawWhiff = isWhiffCol?.get(i);
-    const isSwing = rawSwing != null ? Number(rawSwing) : undefined;
-    const isWhiff = rawWhiff != null ? Number(rawWhiff) : undefined;
-
-    const rawSpin = spinCol?.get(i);
-    const spinRate = rawSpin != null && !isNaN(Number(rawSpin)) ? Number(rawSpin) : undefined;
-    const extension = releaseExtension(k.y0);
-
-    const rawSzTop = szTopCol?.get(i);
-    const rawSzBot = szBotCol?.get(i);
-    const szTop = rawSzTop != null && !isNaN(Number(rawSzTop)) ? Number(rawSzTop) : undefined;
-    const szBot = rawSzBot != null && !isNaN(Number(rawSzBot)) ? Number(rawSzBot) : undefined;
+    const rawSwing = isSwing?.(i);
+    const rawWhiff = isWhiff?.(i);
 
     pitches.push({
-      pitcherId: idNumber(pitcherCol?.get(i)),
-      batterId: idNumber(batterCol?.get(i)),
-      pitcherName: displayName(pitcherNameCol?.get(i)),
-      batterName: displayName(batterNameCol?.get(i)),
-      gameId: idNumber(gameCol?.get(i)),
-      pitchId: idString(pitchIdCol?.get(i)),
-      playId: sourcePlayId(playIdCol?.get(i), pitchIdCol?.get(i)),
+      pitcherId: idNumber(pitcherId?.(i)),
+      batterId: idNumber(batterId?.(i)),
+      pitcherName: displayName(pitcherName?.(i)),
+      batterName: displayName(batterName?.(i)),
+      gameId: idNumber(gameId?.(i)),
+      pitchId: idString(pitchId?.(i)),
+      playId: sourcePlayId(playId?.(i), pitchId?.(i)),
+      atBatNumber: idNumber(atBat?.(i)),
+      pitchNumber: idNumber(pitchNum?.(i)),
       path,
       releaseSpeed: speed[i],
-      spinRate,
-      extension,
-      szTop,
-      szBot,
-      plateX,
-      plateZ,
-      pfxX: plateX,
-      pfxZ: plateZ,
-      pitchType: String(table.getChild("pitch_type")?.get(i) ?? ""),
-      isSwing,
-      isWhiff,
+      spinRate: spin ? finiteOrUndefined(spin(i)) : undefined,
+      extension: ext,
+      szTop: szTop ? finiteOrUndefined(szTop(i)) : undefined,
+      szBot: szBot ? finiteOrUndefined(szBot(i)) : undefined,
+      plateX: px,
+      plateZ: pz,
+      pfxX: px,
+      pfxZ: pz,
+      pitchType: String(pitchType?.(i) ?? ""),
+      isSwing: rawSwing != null ? Number(rawSwing) : undefined,
+      isWhiff: rawWhiff != null ? Number(rawWhiff) : undefined,
       kinematics: k,
       breakVector: computeBreakVector(k),
       commitmentPoint: commitmentPosition(k),
@@ -200,17 +230,15 @@ export async function fetchPitches(url: string): Promise<PitchTable> {
 
 /**
  * Fetch available date partitions from /pitches/dates.
- * Returns default [{ game_date: "2026-09-14", rows: 300 }] if 503 or network error.
+ * Returns [] on any error or non-array body: never a fabricated partition.
  */
 export async function fetchDatePartitions(): Promise<DatePartition[]> {
   try {
     const res = await fetch("/pitches/dates");
-    if (!res.ok) {
-      return [{ game_date: "2026-09-14", rows: 300 }];
-    }
+    if (!res.ok) return [];
     const data = await res.json();
-    return Array.isArray(data) ? data : [{ game_date: "2026-09-14", rows: 300 }];
+    return Array.isArray(data) ? data : [];
   } catch {
-    return [{ game_date: "2026-09-14", rows: 300 }];
+    return [];
   }
 }

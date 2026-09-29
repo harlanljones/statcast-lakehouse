@@ -1,23 +1,8 @@
-import { For, type JSX } from "solid-js";
+import { For, Show, createUniqueId, type JSX } from "solid-js";
+import { THEME, SCENE_ACCENT } from "../lib/theme";
 
-export const THEME = {
-  bg: "#020617",
-  panel: "rgba(10, 15, 30, 0.95)",
-  border: "rgba(255, 255, 255, 0.12)",
-  text: "#e2e8f0",
-  muted: "#94a3b8",
-  accent: "#60a5fa",
-  gold: "#fbbf24",
-} as const;
-
-/** Type scale (px): meta 11, body 12-13, title 16, figure 26. */
-export const SCENE_ACCENT: Record<string, string> = {
-  "twenty-run-night": "#38bdf8",
-  "ohtani-50-50": "#fb923c",
-  "ohtani-50th-home-run": "#c4b5fd",
-  "freeman-walk-off": "#f87171",
-  "snell-no-hitter": "#4ade80",
-};
+// Tokens live in lib/theme.ts (mirrored as CSS custom properties in app.css).
+export { THEME, SCENE_ACCENT };
 
 export interface SegmentedProps<T extends string> {
   label: string;
@@ -35,18 +20,7 @@ export function Segmented<T extends string>(props: SegmentedProps<T>): JSX.Eleme
       <div style={{ display: "flex", gap: "2px" }}>
         <For each={props.options}>
           {(o) => (
-            <button
-              class="ui-ctl"
-              aria-pressed={props.value === o.value}
-              onClick={() => props.onChange(o.value)}
-              style={{
-                padding: "3px 9px",
-                "font-size": "12px",
-                color: props.value === o.value ? "#0b1220" : THEME.text,
-                background: props.value === o.value ? "var(--accent, #60a5fa)" : "transparent",
-                border: `1px solid ${props.value === o.value ? "var(--accent, #60a5fa)" : THEME.border}`,
-              }}
-            >
+            <button class="ui-ctl ui-seg" aria-pressed={props.value === o.value} onClick={() => props.onChange(o.value)}>
               {o.label}
             </button>
           )}
@@ -79,10 +53,105 @@ export function RangeField(props: RangeFieldProps): JSX.Element {
         value={props.value}
         onInput={(e) => props.onChange(Number(e.currentTarget.value))}
       />
-      <span style={{ "font-variant-numeric": "tabular-nums", "min-width": "52px" }}>
+      <span class="mono" style={{ "min-width": "52px" }}>
         {props.value}
         {props.unit ?? ""}
       </span>
     </label>
   );
 }
+
+export interface ToggleProps {
+  label: string;
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  title?: string;
+}
+
+/** Checkbox + visible label, used for the layer toggles. */
+export function Toggle(props: ToggleProps): JSX.Element {
+  return (
+    <label class="ui-ctl ui-toggle" title={props.title}>
+      <input type="checkbox" checked={props.checked} onChange={(e) => props.onChange(e.currentTarget.checked)} />
+      {props.label}
+    </label>
+  );
+}
+
+export interface CloseButtonProps {
+  label: string;
+  onClick: () => void;
+}
+
+export function CloseButton(props: CloseButtonProps): JSX.Element {
+  return (
+    <button class="ui-ctl ui-ghost ui-close" onClick={props.onClick} aria-label={props.label}>
+      ✕
+    </button>
+  );
+}
+
+export interface PanelProps {
+  /** Accessible name of the region. */
+  label: string;
+  /** Preferred width in px (full width when the docks flow below the canvas on phones). */
+  width?: number;
+  children: JSX.Element;
+}
+
+/**
+ * Overlay card. Positioning is the dock's job (Visualizer's .viz-dock-*):
+ * the panel is a shrinkable, scrollable flex child so it can never leave the
+ * canvas. Body text is the UI font at 12px; put numeric readouts in `.mono`.
+ */
+export function Panel(props: PanelProps): JSX.Element {
+  return (
+    <section
+      role="region"
+      aria-label={props.label}
+      class="ui-panel"
+      style={{
+        "--panel-w": props.width ? `${props.width}px` : undefined,
+        background: THEME.panel,
+        border: `1px solid ${THEME.border}`,
+        "border-radius": "8px",
+        padding: "12px 14px",
+        "font-size": "12px",
+        "line-height": "1.4",
+        color: THEME.text,
+        "box-shadow": "0 6px 20px rgba(0, 0, 0, 0.65)",
+        "user-select": "none",
+      }}
+    >
+      {props.children}
+    </section>
+  );
+}
+
+export interface PanelHeaderProps {
+  title: string;
+  subtitle?: string;
+  /** Renders a close button when given. */
+  onClose?: () => void;
+  closeLabel?: string;
+  titleColor?: string;
+}
+
+export function PanelHeader(props: PanelHeaderProps): JSX.Element {
+  return (
+    <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center", gap: "8px", "margin-bottom": "8px" }}>
+      <span style={{ "font-weight": "600", color: props.titleColor ?? THEME.text }}>{props.title}</span>
+      <span style={{ display: "inline-flex", "align-items": "center", gap: "8px" }}>
+        <Show when={props.subtitle}>
+          <span style={{ "font-size": "11px", color: THEME.muted }}>{props.subtitle}</span>
+        </Show>
+        <Show when={props.onClose}>
+          <CloseButton label={props.closeLabel ?? `Close ${props.title}`} onClick={() => props.onClose?.()} />
+        </Show>
+      </span>
+    </div>
+  );
+}
+
+/** Stable unique id for label/for pairing. */
+export const uid = (prefix: string): string => `${prefix}-${createUniqueId()}`;

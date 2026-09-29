@@ -67,6 +67,8 @@ SCHEMA = pa.schema(
         ("pitch_number", pa.int64()),
         ("is_swing", pa.int64()),
         ("is_whiff", pa.int64()),
+        # MLB pitchData.extension: feet from the rubber to the release point.
+        ("extension", pa.float64()),
         ("ingestion_time", pa.timestamp("us", tz="UTC")),
     ]
 )
@@ -75,7 +77,8 @@ SCHEMA = pa.schema(
 def solve_flight_time(y0: float, vy0: float, ay: float, y_end: float = PLATE_Y_FT) -> float:
     """Solve a y(t) = y0 + vy0*t + 0.5*ay*t^2 for the crossing of y_end.
 
-    The ball travels from y0 (~55 ft, release) toward the plate with negative
+    The ball travels from y0 (the 50 ft measurement plane of MLB's
+    9-parameter fit, not the release point) toward the plate with negative
     vy0, so the larger quadratic root is the physically meaningful one.
     Raises ValueError when the discriminant is negative (ball never reaches
     the plate) or both roots are non-positive.
@@ -173,8 +176,57 @@ def break_vector_segment(
 
 
 def release_extension(y0: float) -> float:
-    """Extension in feet from the pitching rubber (60.5 ft) to release point."""
+    """Distance in feet from the pitching rubber (60.5 ft) to the plane y = y0.
+
+    Not the pitcher's extension for MLB data: x0/y0/z0 are measured at the
+    50 ft plane. Use the feed's ``extension`` column for the real value.
+    """
     return PITCHING_RUBBER_Y_FT - y0
+
+
+def extrapolate_to_release(pitch: dict[str, Any], extension_ft: float | None) -> dict[str, Any]:
+    """Back-extrapolate the 9-parameter fit from the 50 ft plane to release.
+
+    The release plane is y = 60.5 - extension_ft. Solve
+    y0 + vy0*t + 0.5*ay*t^2 = y_rel for the root t <= 0 closest to zero and
+    move position and velocity to that time (accelerations are constant).
+    Returns the pitch unchanged when the extension is missing, NaN, outside
+    (0, 12) ft, or the plane is never reached. Mirrored numerically by
+    ``extrapolateToRelease`` in web/src/lib/kinematics.ts.
+    """
+    if (
+        extension_ft is None
+        or math.isnan(extension_ft)
+        or extension_ft <= 0.0
+        or extension_ft >= 12.0
+    ):
+        return pitch
+    y_rel = PITCHING_RUBBER_Y_FT - extension_ft
+    a = 0.5 * pitch["ay"]
+    b = pitch["vy0"]
+    c = pitch["y0"] - y_rel
+    if abs(a) < 1e-12:  # degenerate: constant-velocity fit
+        if b == 0:
+            return pitch
+        roots = [-c / b]
+    else:
+        disc = b * b - 4.0 * a * c
+        if disc < 0:
+            return pitch
+        root = math.sqrt(disc)
+        roots = [(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)]
+    past = [t for t in roots if t <= 0.0]
+    if not past:
+        return pitch
+    t = max(past)
+    out = dict(pitch)
+    out["x0"] = pitch["x0"] + pitch["vx0"] * t + 0.5 * pitch["ax"] * t * t
+    out["y0"] = y_rel
+    out["z0"] = pitch["z0"] + pitch["vz0"] * t + 0.5 * pitch["az"] * t * t
+    out["vx0"] = pitch["vx0"] + pitch["ax"] * t
+    out["vy0"] = pitch["vy0"] + pitch["ay"] * t
+    out["vz0"] = pitch["vz0"] + pitch["az"] * t
+    return out
 
 
 def solve_commitment_time(y0: float, vy0: float, ay: float) -> float:

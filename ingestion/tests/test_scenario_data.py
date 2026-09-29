@@ -2,6 +2,7 @@
 import pyarrow as pa
 
 from ingestion import scenario_data
+from ingestion.scenarios import SLICE_SCHEMA
 from ingestion.worker import SCHEMA
 
 COORDS = {
@@ -10,14 +11,14 @@ COORDS = {
 }
 
 
-def pitch(number, balls_after, strikes_after, desc="Ball"):
+def pitch(number, balls_after, strikes_after, desc="Ball", **extra):
     return {
         "isPitch": True,
         "playId": f"p{number}",
         "pitchNumber": number,
         "count": {"balls": balls_after, "strikes": strikes_after, "outs": 0},
         "details": {"description": desc, "type": {"code": "FF"}},
-        "pitchData": {"coordinates": COORDS, "startSpeed": 95.0},
+        "pitchData": {"coordinates": COORDS, "startSpeed": 95.0, **extra},
     }
 
 
@@ -37,7 +38,7 @@ def feed():
                 pitch(1, 1, 0),
                 # Pitch-clock violation: not a pitch, but it changes the count.
                 {"isPitch": False, "count": {"balls": 2, "strikes": 0, "outs": 0}},
-                pitch(2, 2, 1, "Swinging Strike"),
+                pitch(2, 2, 1, "Swinging Strike", extension=6.4),
             ],
         }]}},
     }
@@ -51,10 +52,14 @@ def test_refresh_writes_pre_pitch_count_and_hands(tmp_path, monkeypatch):
 
     assert scenario_data.refresh() == {"snell-no-hitter": 2}
     table = pa.ipc.open_file(tmp_path / "snell.arrow").read_all()
-    assert table.schema.equals(SCHEMA)
+    assert table.schema.equals(SLICE_SCHEMA)
+    assert table.schema.names[: len(SCHEMA)] == SCHEMA.names
     rows = table.to_pylist()
     assert [(r["balls"], r["strikes"]) for r in rows] == [(0, 0), (2, 0)]
     assert [r["pitch_number"] for r in rows] == [1, 2]
     assert {r["at_bat_number"] for r in rows} == {5}
     assert {(r["stand"], r["p_throws"]) for r in rows} == {("L", "L")}
     assert [r["is_whiff"] for r in rows] == [0, 1]
+    # Feed extension is carried when present and NULL when absent; names ride along.
+    assert [r["extension"] for r in rows] == [None, 6.4]
+    assert {(r["pitcher_name"], r["batter_name"]) for r in rows} == {("Blake Snell", "Someone")}

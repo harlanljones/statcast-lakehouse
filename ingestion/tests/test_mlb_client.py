@@ -93,6 +93,11 @@ class TestRowMapping:
         for k in ("balls", "strikes", "at_bat_number", "pitch_number"):
             assert isinstance(row[k], int)
 
+    def test_extension_present_and_absent(self):
+        assert _row(statcast_record(release_extension="6.4"))["extension"] == pytest.approx(6.4)
+        assert _row(statcast_record())["extension"] is None
+        assert _row(statcast_record(release_extension=""))["extension"] is None
+
     def test_missing_context_is_none(self):
         row = _row(statcast_record(balls="", stand=None))
         assert row["balls"] is None and row["stand"] is None

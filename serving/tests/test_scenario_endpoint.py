@@ -8,8 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import serving.app as app_module
-from ingestion.scenarios import SCENARIOS
-from ingestion.worker import SCHEMA
+from ingestion.scenarios import SCENARIOS, SLICE_SCHEMA
 
 MEDIA_ARROW = "application/vnd.apache.arrow.file"
 SCENARIO_ROWS = {
@@ -38,7 +37,7 @@ def test_scenario_returns_real_game_slice_as_arrow(client, sid, row_count):
     assert r.headers["content-type"].startswith(MEDIA_ARROW)
     t = _table(r.content)
     assert t.num_rows == row_count
-    assert t.schema.equals(SCHEMA)
+    assert t.schema.equals(SLICE_SCHEMA)
 
 
 def test_scenario_is_byte_stable_with_etag_and_304(client):

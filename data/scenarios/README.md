@@ -27,8 +27,15 @@ the feed's `playId` to `pitch_id`, and `coordinates` to `worker.SCHEMA`: `x0/y0/
 pitch type, batter/pitcher ids, and strike-zone bounds. Swing and whiff flags
 come from the source event description. Batter and pitcher hand, the count
 before each pitch, at-bat number, and pitch number fill the plate-appearance
-context columns. The checked-in files predate those columns, so they hold
-nulls there until the next refresh. Scenario selection is performed on
+context columns. The feed's `pitchData.extension` (feet from the rubber to
+the release point) fills `extension`, and `matchup.pitcher.fullName` /
+`matchup.batter.fullName` fill the nullable string columns `pitcher_name` and
+`batter_name` (slice files only, not `fct_pitches`). `x0/y0/z0` are measured
+at the 50 ft plane, not at release; `extension` lets clients back-extrapolate
+to the release plane. The checked-in slices predate `extension`,
+`pitcher_name` and `batter_name`, so those columns read as nulls
+(`ingestion.scenarios` fills them on load) until you refresh locally with
+`python -m ingestion.scenario_data` (needs network access to statsapi.mlb.com). Scenario selection is performed on
 the original game id, batter or pitcher, inning, and play result as shown in
 the table.
 

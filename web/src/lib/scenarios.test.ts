@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { CAMERA_VIEWS } from "./deck-layers";
 import {
+  ALL_LENSES,
   DEFAULT_SCENARIO_ID,
+  LAYER_TOGGLES,
   LIVE_PRESET,
   SCENARIOS,
   STATIC_SCENARIOS,
@@ -38,6 +40,32 @@ describe("real-game story catalog", () => {
       expect(s.lens.length).toBeGreaterThan(0);
       expect(s.preset.layers.contactSim).toBe(false);
     }
+  });
+
+  it("starts every scenario with a speed floor below the slowest real pitch (eephus ~49 mph)", () => {
+    for (const s of SCENARIOS) expect(s.preset.speedRange[0]).toBeLessThanOrEqual(49);
+    expect(LIVE_PRESET.speedRange).toEqual([40, 105]);
+  });
+
+  it("base plate ranges cover pitches outside the old 2.5 ft / 0-5 ft bounds", () => {
+    for (const s of SCENARIOS) {
+      expect(s.preset.plateXRange).toEqual([-3, 3]);
+      expect(s.preset.plateZRange).toEqual([-1, 6]);
+    }
+  });
+
+  it("offers the speed lens wherever the speed range can hide pitches", () => {
+    for (const s of SCENARIOS) expect(s.lens, s.id).toContain("speed");
+  });
+
+  it("lists every lens and every layer toggle for the all-controls view", () => {
+    expect(new Set(ALL_LENSES).size).toBe(ALL_LENSES.length);
+    for (const s of SCENARIOS) for (const l of s.lens) expect(ALL_LENSES).toContain(l);
+    expect(LAYER_TOGGLES.map((t) => t.key).sort()).toEqual(Object.keys(LIVE_PRESET.layers).sort());
+    expect(LAYER_TOGGLES.map((t) => t.label)).toEqual([
+      "Tunneling plane", "Ghost break", "Release points", "Plate crossings", "Break chart",
+      "Pitch pairs", "Contact sim", "Release dispersion", "Fatigue", "Zone heatmap",
+    ]);
   });
 
   it("defaults to a real game story", () => {

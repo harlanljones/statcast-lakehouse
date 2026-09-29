@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS `statcast_analytics.fct_pitches` (
   pitch_number INT64,
   is_swing INT64,
   is_whiff INT64,
+  extension FLOAT64,
   plate_location GEOGRAPHY
 )
 PARTITION BY game_date

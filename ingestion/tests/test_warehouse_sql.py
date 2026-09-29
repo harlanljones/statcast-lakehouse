@@ -114,6 +114,7 @@ class TestFctPitchesSchema:
             "plate_z": "2.418",
             "sz_top": "3.417",
             "sz_bot": "1.543",
+            "release_extension": "6.4",
             "description": "swinging_strike",
         }
         row = map_row(record)
@@ -489,3 +490,12 @@ class TestCostGuards:
         assert re.search(r"f\.game_date\s*=\s*@target_date\b", sql)
         assert re.search(r"st_contains\s*\(\s*z\.zone_geom\s*,\s*f\.plate_location\s*\)", sql)
         assert re.search(r"statcast_analytics\.fct_pitches", sql)
+
+
+def test_07_add_extension_migrates_bronze_and_fct_and_merge_names_it():
+    sql = read(DDL / "07_add_extension.sql")
+    for table in ("bronze_pitches", "fct_pitches"):
+        assert f"ALTER TABLE `statcast_analytics.{table}`" in sql
+    assert sql.count("ADD COLUMN IF NOT EXISTS extension FLOAT64") == 2
+    assert sql.count("extension") >= 2
+    assert "extension, plate_location" in read(DDL / "03_curate_day.sql")

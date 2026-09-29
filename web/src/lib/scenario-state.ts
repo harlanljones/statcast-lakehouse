@@ -36,6 +36,25 @@ export const LAYER_KEYS: readonly LayerKey[] = [
   "heatmap",
 ];
 
+/** The filter subset of PresetSetters (what "Reset filters" rewrites). */
+export type FilterSetters = Pick<
+  PresetSetters,
+  "setSpeedRange" | "setPlateXRange" | "setPlateZRange" | "setZoneFilter" | "setOutcomeFilter" | "setSelectedTypes"
+>;
+
+/**
+ * Re-apply only a preset's filters (speed, plate ranges, zone, outcome, pitch
+ * types), leaving camera and layers as the user has them.
+ */
+export function applyPresetFiltersTo(p: ScenarioPreset, s: FilterSetters): void {
+  s.setSpeedRange(p.speedRange);
+  s.setPlateXRange(p.plateXRange);
+  s.setPlateZRange(p.plateZRange);
+  s.setZoneFilter(p.zoneFilter);
+  s.setOutcomeFilter(p.outcomeFilter);
+  s.setSelectedTypes(new Set(p.selectedTypes));
+}
+
 export function applyPresetTo(p: ScenarioPreset, s: PresetSetters): void {
   s.setView(p.view);
   s.setSpeedRange(p.speedRange);

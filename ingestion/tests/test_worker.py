@@ -22,6 +22,7 @@ from ingestion.worker import (
     break_vector_segment,
     PITCHING_RUBBER_Y_FT,
     release_extension,
+    extrapolate_to_release,
     COMMITMENT_PLANE_Y_FT,
     solve_commitment_time,
     commitment_position,
@@ -143,6 +144,57 @@ class TestGhostKinematicsAndBreak:
         assert math.isclose(release_extension(55.0), 5.5, rel_tol=1e-6)
         assert math.isclose(release_extension(54.2), 6.3, rel_tol=1e-6)
         assert math.isclose(release_extension(self.SLIDER["y0"]), 60.5 - self.SLIDER["y0"], rel_tol=1e-6)
+
+
+class TestExtrapolateToRelease:
+    # MLB x0/y0/z0 are measured at the 50 ft plane; extension back-extrapolates
+    # to release. Pinned values (mirrored in web/src/lib/kinematics.test.ts):
+    #   t   = -0.030678732248808273  (root of 12.5 t^2 - 130 t - 4 = 0 nearest 0)
+    #   x0  = -1.5651222029471927    z0  = 6.1439818151201
+    #   vx0 = 2.2454298579904663     vy0 = -130.7669683062202
+    #   vz0 = -4.386425355023834     y0  = 54.0 (exact)
+    PITCH = {"x0": -1.5, "y0": 50.0, "z0": 6.0, "vx0": 2.0, "vy0": -130.0, "vz0": -5.0,
+             "ax": -8.0, "ay": 25.0, "az": -20.0}
+    T = -0.030678732248808273
+
+    def test_pinned_values(self):
+        r = extrapolate_to_release(self.PITCH, 6.5)
+        assert r["y0"] == 54.0
+        assert math.isclose(r["x0"], -1.5651222029471927, rel_tol=1e-12)
+        assert math.isclose(r["z0"], 6.1439818151201, rel_tol=1e-12)
+        assert math.isclose(r["vx0"], 2.2454298579904663, rel_tol=1e-12)
+        assert math.isclose(r["vy0"], -130.7669683062202, rel_tol=1e-12)
+        assert math.isclose(r["vz0"], -4.386425355023834, rel_tol=1e-12)
+        for k in ("ax", "ay", "az"):
+            assert r[k] == self.PITCH[k]
+
+    def test_forward_evaluation_recovers_original_release_plane_state(self):
+        r = extrapolate_to_release(self.PITCH, 6.5)
+        x, y, z = position_at(r, -self.T)
+        assert abs(x - self.PITCH["x0"]) < 1e-9
+        assert abs(y - self.PITCH["y0"]) < 1e-9
+        assert abs(z - self.PITCH["z0"]) < 1e-9
+
+    def test_flight_time_grows_by_the_extrapolated_interval(self):
+        r = extrapolate_to_release(self.PITCH, 6.5)
+        t0 = solve_flight_time(self.PITCH["y0"], self.PITCH["vy0"], self.PITCH["ay"])
+        t1 = solve_flight_time(r["y0"], r["vy0"], r["ay"])
+        assert abs(t1 - (t0 + abs(self.T))) < 1e-9
+
+    def test_does_not_mutate_input_and_keeps_other_keys(self):
+        pitch = dict(self.PITCH, pitch_type="FF")
+        before = dict(pitch)
+        assert extrapolate_to_release(pitch, 6.5)["pitch_type"] == "FF"
+        assert pitch == before
+
+    @pytest.mark.parametrize("ext", [None, float("nan"), 0.0, -1.0, 12.0, 15.0])
+    def test_invalid_extension_returns_pitch_unchanged(self, ext):
+        assert extrapolate_to_release(self.PITCH, ext) == self.PITCH
+
+    def test_no_real_root_returns_pitch_unchanged(self):
+        # ay large and positive with vy0 ~ 0: y never reaches the release plane.
+        stuck = dict(self.PITCH, vy0=-1.0, ay=-50.0)
+        assert extrapolate_to_release(stuck, 6.5) == stuck
 
 
 class TestCommitmentPlaneAndTunneling:

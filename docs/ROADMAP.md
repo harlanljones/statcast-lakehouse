@@ -129,8 +129,11 @@ items 3+ are completed offline (no stubs in code).
 - Acceptance: 91 vitest tests across 6 files; Python and TS kinematics mirrored and pinned.
 
 ## 14. 3D Release point clustering, release extension & spin-rate telemetry (Sprint 6 — Completed offline)
-- Release geometry & physics: `PITCHING_RUBBER_Y_FT` (60.5 ft) and `release_extension` /
-  `releaseExtension` ($60.5 - y_0$) defined in Python and TypeScript with mirrored tests.
+- Release geometry & physics: `PITCHING_RUBBER_Y_FT` (60.5 ft) and `extrapolate_to_release` /
+  `extrapolateToRelease` defined in Python and TypeScript with mirrored tests. MLB's
+  x0/y0/z0 are measured at the 50 ft plane (so $60.5 - y_0$ is not the extension); the
+  feed's `extension` column (feet, nullable) back-extrapolates the constant-acceleration
+  path to the release plane $y = 60.5 - \text{extension}$.
 - Arrow loader extraction: `web/src/lib/arrow-loader.ts` extracts `release_spin_rate`
   and derives `extension` from kinematics for each pitch.
 - 3D Release clustering layer: `web/src/lib/deck-layers.ts` provides `release-points`
@@ -260,3 +263,30 @@ items 3+ are completed offline (no stubs in code).
 - Web: the player card treats the sample as real data, so its MLB links are live.
 - Acceptance: `ingestion/tests/test_scenarios.py` pins the dedup, order, date filter, and that each sample
   pitch's `plate_x`/`plate_z` matches where its 9 parameters cross the plate (within 0.01 ft).
+
+## 2026-09-28 web audit fixes (Completed)
+Web app only (`web/`); Python side changes are tracked separately.
+- **Correctness.** One filter predicate (`passesFilters` in `deck-layers.ts`) backs both the GPU
+  mask and the CPU count/panels (batter-specific zone, `plateX ?? pfxX`); analysis panels
+  (heatmap, break chart, arsenal, dispersion, fatigue, whiff rate, player card) follow the
+  filters via a `visiblePitches` memo while the 3D layers still receive the full array.
+  Speed floor is 40 mph (eephus ~49) and every scenario has the speed lens; the story caption shows
+  "N hidden by filters" with a "Reset filters" action. Fatigue buckets are per pitcher (pinned pitch,
+  else majority), ordered by `at_bat_number`/`pitch_number` when present; panel text is in^3, 1 sigma vs
+  the 1.5 sigma ellipsoid. Statcast x0/y0/z0 are measured at y = 50 ft: `extrapolateToRelease` moves
+  them to the hand using the optional nullable `extension` column (NULL = no extrapolation; mirrors
+  `ingestion/worker.py`); the tooltip says "At 50 ft" when extension is unknown.
+- **One control system.** `ControlPanel` is gone: the header's "All controls" shows `LensPanel` with
+  every lens plus layer toggles; the date picker and "Load sample pitches" live in the rail's Live
+  card. Shared `Panel`/`PanelHeader`/`Toggle` primitives, overlay docks (`.viz-dock-*`), `app.css`
+  with THEME custom properties, no `!important`, rail strip <= 1000 px, phone stack <= 720 px with
+  docks below the canvas. Whiff-rate heatmap cells with < 3 swings render as no data.
+- **Performance.** Flight playback uses `TripsLayer` (only `currentTime` changes per frame; layer
+  accessors/filter props are identity-stable, filter extension is a singleton); hover is
+  rAF-coalesced and ignored during drags (no `_pickAndCallback` patch) and the picked layers are built
+  separately. Vendor chunks (deck / arrow / solid) and lazy 2D panels; break-chart dots on a HiDPI
+  canvas; hoisted Arrow column accessors.
+- **Accessibility.** Focusable canvas with arrow-key pitch stepping and camera keys, debounced count
+  live region, pinned-pitch announcement only, contrast-checked palette, 28/36 px targets,
+  reduced-motion Play jumps to 100%, pitch-name chip labels, `fetchDatePartitions` returns `[]` on
+  failure instead of a fabricated partition.

@@ -52,3 +52,37 @@ export function breakGridTicks(range: number = DEFAULT_BREAK_RANGE_INCHES, step:
   }
   return ticks;
 }
+
+export interface BreakDot<T> {
+  x: number;
+  y: number;
+  item: T;
+}
+
+/** Hover hit radius (CSS px) for the canvas dots. */
+export const BREAK_HIT_RADIUS_PX = 6;
+
+/**
+ * Nearest dot within `maxDist` px of (x, y), or null. A plain linear scan:
+ * the chart holds at most a few thousand dots and this runs once per mousemove.
+ */
+export function nearestDot<T>(
+  dots: readonly BreakDot<T>[],
+  x: number,
+  y: number,
+  maxDist: number = BREAK_HIT_RADIUS_PX,
+): BreakDot<T> | null {
+  let best: BreakDot<T> | null = null;
+  let bestD2 = maxDist * maxDist;
+  for (let i = 0; i < dots.length; i++) {
+    const dx = dots[i].x - x;
+    const dy = dots[i].y - y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= bestD2) {
+      // Later dots draw on top, so on an exact tie prefer the later one.
+      best = dots[i];
+      bestD2 = d2;
+    }
+  }
+  return best;
+}
