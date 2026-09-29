@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   breakToSvgCoords,
   breakGridTicks,
+  nearestDot,
   DEFAULT_BREAK_RANGE_INCHES,
 } from "./break-chart-math";
 
@@ -49,5 +50,30 @@ describe("break-chart-math", () => {
 
   it("defaults to 25 inches range", () => {
     expect(DEFAULT_BREAK_RANGE_INCHES).toBe(25);
+  });
+});
+
+describe("nearestDot (canvas hover picking)", () => {
+  const dots = [
+    { x: 50, y: 50, item: "a" },
+    { x: 100, y: 100, item: "b" },
+    { x: 103, y: 100, item: "c" },
+  ];
+
+  it("returns the nearest dot within the radius", () => {
+    expect(nearestDot(dots, 52, 51)?.item).toBe("a");
+    expect(nearestDot(dots, 102, 100)?.item).toBe("c");
+    expect(nearestDot(dots, 100.4, 100)?.item).toBe("b");
+  });
+
+  it("returns null when nothing is within 6 px", () => {
+    expect(nearestDot(dots, 60, 60)).toBeNull();
+    expect(nearestDot(dots, 56.1, 50)).toBeNull();
+    expect(nearestDot(dots, 55.9, 50)?.item).toBe("a");
+    expect(nearestDot([], 1, 1)).toBeNull();
+  });
+
+  it("honours a custom radius", () => {
+    expect(nearestDot(dots, 60, 50, 12)?.item).toBe("a");
   });
 });

@@ -5,10 +5,10 @@
  * filter ranges — no JavaScript array filtering on the interaction path.
  */
 import { DataFilterExtension } from "@deck.gl/extensions";
-import { PathLayer, ScatterplotLayer, PolygonLayer, type PathLayerProps } from "@deck.gl/layers";
-import type { PickingInfo } from "@deck.gl/core";
-import { type AccessorFunction } from "@deck.gl/core";
-import type { OrbitViewState } from "@deck.gl/core";
+import { PathLayer, ScatterplotLayer, PolygonLayer } from "@deck.gl/layers";
+import { TripsLayer } from "@deck.gl/geo-layers";
+import { COORDINATE_SYSTEM } from "@deck.gl/core";
+import type { AccessorFunction, OrbitViewState, PickingInfo } from "@deck.gl/core";
 import {
   trajectoryFlat,
   ghostTrajectoryFlat,
@@ -48,6 +48,7 @@ export interface PitchDatum {
   isSwing?: number;
   isWhiff?: number;
   spinRate?: number;
+  /** Pitcher extension in ft (from the optional `extension` column); undefined when unknown. */
   extension?: number;
   szTop?: number;
   szBot?: number;
@@ -64,6 +65,9 @@ export interface PitchDatum {
   pitchId?: string;
   /** MLB per-pitch video id; real data only. */
   playId?: string;
+  /** Plate-appearance and pitch order within the game; nullable in older files. */
+  atBatNumber?: number;
+  pitchNumber?: number;
 }
 
 export const FILTER_SIZE = 4;
@@ -160,9 +164,10 @@ export function filterRange(
   return [speed, hBreak, vBreak, types];
 }
 
-/** GPU uniform filter extension shared by all trajectory layers (filterSize=4). */
+/** Singleton GPU uniform filter extension shared by all filtered layers (filterSize=4). */
+const FILTER_EXTENSION = new DataFilterExtension({ filterSize: FILTER_SIZE });
 export function dataFilterExtension() {
-  return new DataFilterExtension({ filterSize: FILTER_SIZE });
+  return FILTER_EXTENSION;
 }
 
 /**
@@ -294,13 +299,56 @@ export function diamondWireframeSegments(): WireSegment[] {
  * DataFilterExtension props are attached at runtime by the `extensions` prop;
  * deck.gl's base typings don't include them, so the filtered props are cast.
  */
-type FilteredPathProps<D> = Partial<Omit<PathLayerProps<D>, "data">> & {
-  getFilterValue: AccessorFunction<D, [number, number, number, number]>;
-  filterRange: [[number, number], [number, number], [number, number], [number, number]];
-};
+type FilterRange4 = [[number, number], [number, number], [number, number], [number, number]];
 
 export type ZoneFilter = "all" | "in_zone" | "out_of_zone";
 export type OutcomeFilter = "all" | "swings" | "whiffs";
+
+/** The filter state shared by the GPU masks (buildLayers) and the CPU counts/panels (App). */
+export interface FilterOpts {
+  speedRange: [number, number];
+  plateXRange?: [number, number];
+  plateZRange?: [number, number];
+  zoneFilter?: ZoneFilter;
+  outcomeFilter?: OutcomeFilter;
+  selectedTypes?: ReadonlySet<string> | null;
+}
+
+type CriteriaOpts = Pick<FilterOpts, "zoneFilter" | "outcomeFilter" | "selectedTypes">;
+
+/**
+ * Categorical criteria (type set, zone, outcome): the part of the filter that
+ * rides the 4th GPU channel as a 0/1 mask. The batter-specific zone
+ * (szTop/szBot) applies when the datum carries it; plateX falls back to pfxX.
+ */
+function passesCriteria(d: PitchDatum, { zoneFilter, outcomeFilter, selectedTypes }: CriteriaOpts): boolean {
+  if (selectedTypes && selectedTypes.size > 0 && !selectedTypes.has(d.pitchType)) return false;
+  if (zoneFilter === "in_zone" || zoneFilter === "out_of_zone") {
+    const px = d.plateX ?? d.pfxX ?? 0;
+    const pz = d.plateZ ?? d.pfxZ ?? 0;
+    const inside = isInsideStrikeZone(px, pz, d.szTop, d.szBot);
+    if (zoneFilter === "in_zone" ? !inside : inside) return false;
+  }
+  if (outcomeFilter === "swings" && !d.isSwing) return false;
+  if (outcomeFilter === "whiffs" && !d.isWhiff) return false;
+  return true;
+}
+
+/**
+ * CPU mirror of the GPU filter: true when DataFilterExtension would draw `d`
+ * for these options. Used for counts and analysis panels (memoized on state
+ * change, never on the interaction/frame path). Ranges are inclusive, like the
+ * GPU's [min, max] test.
+ */
+export function passesFilters(d: PitchDatum, opts: FilterOpts): boolean {
+  const [sLo, sHi] = opts.speedRange;
+  if (d.releaseSpeed < sLo || d.releaseSpeed > sHi) return false;
+  const px = d.plateX ?? d.pfxX ?? 0;
+  const pz = d.plateZ ?? d.pfxZ ?? 0;
+  if (opts.plateXRange && (px < opts.plateXRange[0] || px > opts.plateXRange[1])) return false;
+  if (opts.plateZRange && (pz < opts.plateZRange[0] || pz > opts.plateZRange[1])) return false;
+  return passesCriteria(d, opts);
+}
 
 export interface BuildLayersOpts {
   pitches: PitchDatum[];
@@ -324,12 +372,15 @@ export interface BuildLayersOpts {
    */
   onHover?: (info: PickingInfo<PitchDatum>) => void;
   /**
-   * Currently picked pitch datum (hover/click). Drives a per-datum GPU width
-   * accessor that emphasizes the hovered trajectory — a layer attribute
-   * accessor, NOT CPU-side filtering; filter uniforms are untouched.
+   * Currently picked pitch datum. When given, the picked-highlight layers
+   * are appended (see pickedLayers); Visualizer builds them separately so a
+   * hover never rebuilds the base layers.
    */
   picked?: PitchDatum | null;
+  /** Flight playback position in [0, 1]; undefined draws the full paths. */
   flightProgress?: number;
+  /** True while the flight animation runs: the trail (TripsLayer) is the only moving layer. */
+  isPlaying?: boolean;
   showTunneling?: boolean;
   showGhostBreak?: boolean;
   showReleasePoints?: boolean;
@@ -367,103 +418,162 @@ export function markerStyle(outlinePx: number, minRadiusPx = 2) {
 }
 
 /**
+ * Props shared by every GPU-filtered layer: the four-channel filter value and
+ * range, the extension, and the update triggers. The result is memoized on the
+ * filter state so consecutive buildLayers calls (a hover, a playback frame)
+ * hand deck.gl identical accessor and range references, and only real filter
+ * changes re-evaluate attributes.
+ */
+export interface FilteredLayerProps {
+  getFilterValue: AccessorFunction<PitchDatum, [number, number, number, number]>;
+  filterRange: FilterRange4;
+  extensions: [DataFilterExtension];
+  updateTriggers: {
+    filterRange: unknown[];
+    getFilterValue: unknown[];
+  };
+}
+
+let lastFiltered: { key: unknown[]; props: FilteredLayerProps } | null = null;
+
+export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
+  const { speedRange, hBreakRange, vBreakRange, plateXRange, plateZRange, zoneFilter, outcomeFilter } = opts;
+  const selectedTypes = opts.selectedTypes ?? null;
+  const hasTypeFilter = Boolean(selectedTypes && selectedTypes.size > 0);
+  const hasZoneFilter = zoneFilter === "in_zone" || zoneFilter === "out_of_zone";
+  const hasOutcomeFilter = outcomeFilter === "swings" || outcomeFilter === "whiffs";
+  const typeRange: [number, number] = hasTypeFilter || hasZoneFilter || hasOutcomeFilter ? [0.5, 1.5] : OPEN_RANGE;
+  const xRange = plateXRange ?? hBreakRange ?? OPEN_RANGE;
+  const zRange = plateZRange ?? vBreakRange ?? OPEN_RANGE;
+
+  const key = [
+    speedRange[0], speedRange[1], xRange[0], xRange[1], zRange[0], zRange[1],
+    typeRange[0], typeRange[1], selectedTypes, zoneFilter ?? "all", outcomeFilter ?? "all",
+    selectedTypes ? selectedTypes.size : 0,
+  ];
+  if (lastFiltered && lastFiltered.key.every((v, i) => v === key[i])) return lastFiltered.props;
+
+  const criteria: CriteriaOpts = { zoneFilter, outcomeFilter, selectedTypes };
+  const props: FilteredLayerProps = {
+    getFilterValue: (d) => [
+      d.releaseSpeed,
+      d.plateX ?? d.pfxX ?? 0,
+      d.plateZ ?? d.pfxZ ?? 0,
+      passesCriteria(d, criteria) ? 1 : 0,
+    ],
+    filterRange: filterRange(speedRange, xRange, zRange, typeRange),
+    extensions: [FILTER_EXTENSION],
+    updateTriggers: {
+      filterRange: [speedRange, xRange, zRange, typeRange],
+      getFilterValue: [selectedTypes, zoneFilter ?? "all", outcomeFilter ?? "all"],
+    },
+  };
+  lastFiltered = { key, props };
+  return props;
+}
+
+// Module-level accessors: stable identities across buildLayers calls, so
+// deck.gl sees non-flight layers as unchanged while a flight plays.
+const getPitchPath = (d: PitchDatum) => d.path;
+const getTrajectoryColor = (d: PitchDatum): [number, number, number, number] => [...pitchColor(d.pitchType), 220];
+const getGhostPath = (d: PitchDatum) => d.ghostPath ?? (d.kinematics ? ghostTrajectoryFlat(d.kinematics) : d.path);
+const getPitchFill190 = (d: PitchDatum): [number, number, number, number] => [...pitchColor(d.pitchType), 190];
+const getPitchFill200 = (d: PitchDatum): [number, number, number, number] => [...pitchColor(d.pitchType), 200];
+const getPitchStroke = (d: PitchDatum): [number, number, number, number] => [...pitchColor(d.pitchType), 255];
+const getTunnelPosition = (d: PitchDatum): [number, number, number] => {
+  if (d.commitmentPoint) return d.commitmentPoint;
+  if (d.kinematics) return commitmentPosition(d.kinematics);
+  return [0, 23.8, 3.0];
+};
+const getPlateCrossing = (d: PitchDatum): [number, number, number] => [
+  d.plateX ?? d.pfxX ?? 0,
+  STRIKE_ZONE.y,
+  d.plateZ ?? d.pfxZ ?? 2.5,
+];
+const getReleasePosition = (d: PitchDatum): [number, number, number] => {
+  if (d.kinematics) return [d.kinematics.x0, d.kinematics.y0, d.kinematics.z0];
+  if (d.path && d.path.length >= 3) return [d.path[0], d.path[1], d.path[2]];
+  return [0, 55, 5.5];
+};
+const getSegmentPath = (s: WireSegment) => s;
+
+/** TripsLayer timestamps: point i of the 60-point path is at i/59 of the flight. */
+const PATH_POINTS = 60;
+const PATH_TIMESTAMPS: Float32Array = Float32Array.from({ length: PATH_POINTS }, (_, i) => i / (PATH_POINTS - 1));
+const getPathTimestamps = () => PATH_TIMESTAMPS;
+
+/**
  * Full layer set for the visualizer. Filtering is 100% GPU-side: pitch data
  * is passed unfiltered and the slider/type selections land in
  * DataFilterExtension uniforms (TDD §5.3 invariant — zero per-frame JS
  * filtering).
+ *
+ * During playback the only prop that changes between frames is the
+ * TripsLayer's `currentTime` uniform; every other layer receives identical
+ * data and accessor references and is not re-evaluated.
  */
 export function buildLayers(opts: BuildLayersOpts) {
   const {
     pitches,
-    speedRange,
-    hBreakRange,
-    vBreakRange,
-    plateXRange,
-    plateZRange,
-    zoneFilter,
-    outcomeFilter,
-    selectedTypes,
     onHover,
     picked,
     flightProgress,
+    isPlaying,
     showTunneling,
     showGhostBreak,
     showReleasePoints,
     showPlateCrossings,
     pairedTypes,
     arsenalCentroids,
-    showContactSim,
-    batSpeed,
-    attackAngleDeg,
     showDispersion,
     releaseDispersion,
     showHeatmap,
     heatmapCells,
   } = opts;
-  const ext = dataFilterExtension();
+  const filtered = filteredLayerProps(opts);
 
-  const hasTypeFilter = Boolean(selectedTypes && selectedTypes.size > 0);
-  const hasZoneFilter = zoneFilter === "in_zone" || zoneFilter === "out_of_zone";
-  const hasOutcomeFilter = outcomeFilter === "swings" || outcomeFilter === "whiffs";
-  const anyCriteriaActive = hasTypeFilter || hasZoneFilter || hasOutcomeFilter;
-
-  const typeRange: [number, number] = anyCriteriaActive ? [0.5, 1.5] : OPEN_RANGE;
-  const xRange = plateXRange ?? hBreakRange ?? OPEN_RANGE;
-  const zRange = plateZRange ?? vBreakRange ?? OPEN_RANGE;
-
-  const filteredProps: FilteredPathProps<PitchDatum> = {
-    getFilterValue: (d) => {
-      const px = d.plateX ?? d.pfxX ?? 0;
-      const pz = d.plateZ ?? d.pfxZ ?? 0;
-      const typePass = !hasTypeFilter || selectedTypes!.has(d.pitchType);
-      const zonePass =
-        !hasZoneFilter ||
-        (zoneFilter === "in_zone"
-          ? isInsideStrikeZone(px, pz, d.szTop, d.szBot)
-          : !isInsideStrikeZone(px, pz, d.szTop, d.szBot));
-      const outcomePass =
-        !hasOutcomeFilter ||
-        (outcomeFilter === "swings" ? Boolean(d.isSwing) : Boolean(d.isWhiff));
-      const mask = typePass && zonePass && outcomePass ? 1 : 0;
-      return [d.releaseSpeed, px, pz, mask];
-    },
-    filterRange: filterRange(speedRange, xRange, zRange, typeRange),
+  const trajectoryProps = {
+    id: "pitch-trajectories",
+    // deck.gl >= 9.3 depth picking: info.coordinate is the 3D point on the
+    // hovered path, so the tooltip can say where along the flight it is.
+    pickable: "3d" as const,
+    onHover,
+    onClick: onHover,
+    coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+    data: pitches,
+    // path is a flat 60-point [x,y,z] array — consumed directly, zero-copy.
+    getPath: getPitchPath,
+    getColor: getTrajectoryColor,
+    getWidth: TRAJECTORY_WIDTH,
+    widthUnits: "meters" as const,
+    widthMinPixels: 1.5,
+    billboard: true,
+    // Fade the bundle when the heatmap is on so the zone stays legible.
+    opacity: showHeatmap && heatmapCells && heatmapCells.length > 0 ? 0.35 : 0.9,
+    ...filtered,
   };
-  const layers: (PathLayer<any> | ScatterplotLayer<any> | PolygonLayer<any>)[] = [
-    new PathLayer<PitchDatum>({
-      id: "pitch-trajectories",
-      // deck.gl >= 9.3 depth picking: info.coordinate is the 3D point on the
-      // hovered path, so the tooltip can say where along the flight it is.
-      pickable: "3d",
-      onHover,
-      onClick: onHover,
-      coordinateSystem: "cartesian" as never,
-      data: pitches,
-      // path is a flat 60-point [x,y,z] array — consumed directly, zero-copy.
-      getPath: (d) => d.path,
-      getColor: (d) => [...pitchColor(d.pitchType), 220],
-      getWidth: TRAJECTORY_WIDTH,
-      widthUnits: "meters",
-      widthMinPixels: 1.5,
-      billboard: true,
-      // Fade the bundle when the heatmap is on so the zone stays legible.
-      opacity: showHeatmap && heatmapCells && heatmapCells.length > 0 ? 0.35 : 0.9,
-      ...filteredProps,
-      extensions: [ext],
-      updateTriggers: {
-        filterRange: [speedRange, xRange, zRange, typeRange],
-        getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
-      },
-    }),
+  const layers: (PathLayer<any> | TripsLayer<any> | ScatterplotLayer<any> | PolygonLayer<any>)[] = [
+    flightProgress !== undefined
+      ? // The trail up to the ball: timestamps 0..1 along the path, trailLength 1
+        // keeps the whole path behind the ball visible. currentTime is a
+        // uniform, so scrubbing/playing never re-uploads attributes.
+        new TripsLayer<PitchDatum>({
+          ...trajectoryProps,
+          getTimestamps: getPathTimestamps,
+          currentTime: flightProgress,
+          trailLength: 1.0,
+          fadeTrail: false,
+        })
+      : new PathLayer<PitchDatum>(trajectoryProps),
   ];
 
   if (showTunneling) {
     layers.push(
       new PathLayer<WireSegment>({
         id: "tunneling-plane",
-        coordinateSystem: "cartesian" as never,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         data: tunnelingPlaneSegments(),
-        getPath: (s) => s,
+        getPath: getSegmentPath,
         getColor: [255, 215, 0],
         getWidth: 0.03,
         widthUnits: "meters",
@@ -473,27 +583,18 @@ export function buildLayers(opts: BuildLayersOpts) {
       }),
       new ScatterplotLayer<PitchDatum>({
         id: "tunnel-points",
-        coordinateSystem: "cartesian" as never,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         data: pitches,
-        getPosition: (d: PitchDatum): [number, number, number] => {
-          if (d.commitmentPoint) return d.commitmentPoint;
-          if (d.kinematics) return commitmentPosition(d.kinematics);
-          return [0, 23.8, 3.0];
-        },
+        getPosition: getTunnelPosition,
         getRadius: 0.08,
         radiusUnits: "meters",
         stroked: true,
         filled: true,
-        getFillColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 190],
+        getFillColor: getPitchFill190,
         getLineColor: [255, 255, 255, 200],
         ...markerStyle(1),
-        extensions: [ext],
-        ...filteredProps,
-        updateTriggers: {
-          getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
-          filterRange: [speedRange, xRange, zRange, typeRange],
-        },
-      } as never),
+        ...filtered,
+      }),
     );
   }
 
@@ -501,157 +602,39 @@ export function buildLayers(opts: BuildLayersOpts) {
     layers.unshift(
       new PathLayer<PitchDatum>({
         id: "ghost-trajectories",
-        coordinateSystem: "cartesian" as never,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         data: pitches,
-        getPath: (d) => d.ghostPath ?? (d.kinematics ? ghostTrajectoryFlat(d.kinematics) : d.path),
+        getPath: getGhostPath,
         getColor: [200, 220, 240, 80],
         getWidth: TRAJECTORY_WIDTH * 0.75,
         widthUnits: "meters",
         widthMinPixels: 1.0,
         billboard: true,
         opacity: 0.6,
-        ...filteredProps,
-        extensions: [ext],
-        updateTriggers: {
-          filterRange: [speedRange, xRange, zRange, typeRange],
-          getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
-        },
+        ...filtered,
       }),
     );
   }
 
-  if (picked?.kinematics) {
-    const k = picked.kinematics;
-    layers.push(
-      new PathLayer<PitchDatum>({
-        id: "picked-ghost-trajectory",
-        coordinateSystem: "cartesian" as never,
-        data: [picked],
-        getPath: () => picked.ghostPath ?? ghostTrajectoryFlat(k),
-        getColor: [220, 240, 255, 230],
-        getWidth: TRAJECTORY_WIDTH * 1.5,
-        widthUnits: "meters",
-        widthMinPixels: 2.0,
-        billboard: true,
-        opacity: 0.95,
-      }),
-      new PathLayer<WireSegment>({
-        id: "picked-break-vector",
-        coordinateSystem: "cartesian" as never,
-        data: [breakVectorSegment(k)],
-        getPath: (s) => s,
-        getColor: [255, 215, 0],
-        getWidth: 0.04,
-        widthUnits: "meters",
-        billboard: true,
-        widthMinPixels: 2.5,
-        opacity: 1.0,
-      }),
-      new ScatterplotLayer<PitchDatum>({
-        id: "picked-release-point",
-        coordinateSystem: "cartesian" as never,
-        data: [picked],
-        getPosition: () => [k.x0, k.y0, k.z0],
-        getRadius: 0.18,
-        radiusUnits: "meters",
-        stroked: true,
-        filled: true,
-        getFillColor: [255, 215, 0, 240],
-        getLineColor: [255, 255, 255, 255],
-        ...markerStyle(2.5, 4),
-      } as never),
-      new ScatterplotLayer<PitchDatum>({
-        id: "picked-tunnel-point",
-        coordinateSystem: "cartesian" as never,
-        data: [picked],
-        getPosition: () => picked.commitmentPoint ?? commitmentPosition(k),
-        getRadius: 0.14,
-        radiusUnits: "meters",
-        stroked: true,
-        filled: true,
-        getFillColor: [255, 215, 0, 240],
-        getLineColor: [255, 255, 255, 255],
-        ...markerStyle(2.0, 4),
-      } as never),
-    );
-  }
-
-  if (picked) {
-    layers.push(
-      new PathLayer<PitchDatum>({
-        id: "picked-pitch-highlight",
-        coordinateSystem: "cartesian" as never,
-        data: [picked],
-        getPath: (d) => d.path,
-        getColor: (d) => [...pitchColor(d.pitchType), 255],
-        getWidth: TRAJECTORY_WIDTH * PICKED_WIDTH_MULTIPLIER,
-        widthUnits: "meters",
-        widthMinPixels: 2.5,
-        billboard: true,
-        opacity: 1.0,
-      }),
-    );
-    const px = picked.plateX ?? picked.pfxX ?? 0;
-    const pz = picked.plateZ ?? picked.pfxZ ?? 2.5;
-    layers.push(
-      new ScatterplotLayer<PitchDatum>({
-        id: "picked-plate-crossing",
-        coordinateSystem: "cartesian" as never,
-        data: [picked],
-        getPosition: () => [px, STRIKE_ZONE.y, pz],
-        getRadius: 0.1,
-        radiusUnits: "meters",
-        stroked: true,
-        filled: true,
-        getFillColor: [255, 215, 0, 240],
-        getLineColor: [255, 255, 255, 255],
-        ...markerStyle(2.0, 4),
-      } as never),
-    );
-    if (picked.szTop != null && picked.szBot != null) {
-      layers.push(
-        new PathLayer<WireSegment>({
-          id: "picked-batter-strike-zone",
-          coordinateSystem: "cartesian" as never,
-          data: batterStrikeZoneSegments(picked.szTop, picked.szBot),
-          getPath: (s) => s,
-          getColor: [0, 220, 255],
-          getWidth: 0.04,
-          widthUnits: "meters",
-          billboard: true,
-          widthMinPixels: 2.0,
-          opacity: 0.9,
-        }),
-      );
-    }
-  }
+  if (picked) layers.push(...pickedLayers(picked, opts));
 
   if (showPlateCrossings) {
     layers.push(
       new ScatterplotLayer<PitchDatum>({
         id: "plate-crossings",
-        coordinateSystem: "cartesian" as never,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         data: pitches,
-        getPosition: (d: PitchDatum): [number, number, number] => [
-          d.plateX ?? d.pfxX ?? 0,
-          STRIKE_ZONE.y,
-          d.plateZ ?? d.pfxZ ?? 2.5,
-        ],
+        getPosition: getPlateCrossing,
         getRadius: 0.06,
         radiusUnits: "meters",
         stroked: true,
         filled: true,
-        getFillColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 190],
+        getFillColor: getPitchFill190,
         // Dark hairline: a dense cluster reads as separate dots, not a white blob.
         getLineColor: [10, 15, 30, 220],
         ...markerStyle(1, 1.5),
-        extensions: [ext],
-        ...filteredProps,
-        updateTriggers: {
-          getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
-          filterRange: [speedRange, xRange, zRange, typeRange],
-        },
-      } as never),
+        ...filtered,
+      }),
     );
   }
 
@@ -659,39 +642,29 @@ export function buildLayers(opts: BuildLayersOpts) {
     layers.push(
       new ScatterplotLayer<PitchDatum>({
         id: "release-points",
-        coordinateSystem: "cartesian" as never,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         data: pitches,
-        getPosition: (d: PitchDatum): [number, number, number] => {
-          if (d.kinematics) {
-            return [d.kinematics.x0, d.kinematics.y0, d.kinematics.z0];
-          }
-          if (d.path && d.path.length >= 3) {
-            return [d.path[0], d.path[1], d.path[2]];
-          }
-          return [0, 55, 5.5];
-        },
+        getPosition: getReleasePosition,
         getRadius: 0.12,
         radiusUnits: "meters",
         stroked: true,
         filled: true,
-        getFillColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 200],
+        getFillColor: getPitchFill200,
         getLineColor: [255, 255, 255, 200],
         ...markerStyle(1.5),
-        extensions: [ext],
-        ...filteredProps,
-        updateTriggers: {
-          getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
-          filterRange: [speedRange, xRange, zRange, typeRange],
-        },
-      } as never),
+        ...filtered,
+      }),
     );
   }
 
-  if (flightProgress !== undefined) {
+  // The ball marker is only drawn while paused (scrubbing); during playback the
+  // head of the trail is the ball, and this layer's per-frame position update
+  // would be the one thing that re-uploads attributes.
+  if (flightProgress !== undefined && !isPlaying) {
     layers.push(
       new ScatterplotLayer<PitchDatum>({
         id: "baseball-markers",
-        coordinateSystem: "cartesian" as never,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         data: pitches,
         getPosition: (d: PitchDatum): [number, number, number] => {
           const idx = Math.min(59, Math.max(0, Math.floor(flightProgress * 59)));
@@ -706,16 +679,11 @@ export function buildLayers(opts: BuildLayersOpts) {
         stroked: true,
         filled: true,
         getFillColor: [255, 255, 255, 240],
-        getLineColor: (d: PitchDatum) => [...pitchColor(d.pitchType), 255],
+        getLineColor: getPitchStroke,
         ...markerStyle(1.5),
-        extensions: [ext],
-        ...filteredProps,
-        updateTriggers: {
-          getPosition: flightProgress,
-          getFilterValue: [selectedTypes ?? null, zoneFilter ?? "all", outcomeFilter ?? "all"],
-          filterRange: [speedRange, xRange, zRange, typeRange],
-        },
-      } as never),
+        ...filtered,
+        updateTriggers: { ...filtered.updateTriggers, getPosition: flightProgress },
+      }),
     );
   }
 
@@ -726,9 +694,9 @@ export function buildLayers(opts: BuildLayersOpts) {
       layers.push(
         new PathLayer<WireSegment>({
           id: "paired-tunnel-envelope",
-          coordinateSystem: "cartesian" as never,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
           data: tunnelingEnvelopeSegments(c1, c2),
-          getPath: (s) => s,
+          getPath: getSegmentPath,
           getColor: [255, 180, 0, 220],
           getWidth: 0.04,
           widthUnits: "meters",
@@ -738,7 +706,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         }),
         new PathLayer<ArsenalCentroid>({
           id: "paired-centroid-paths",
-          coordinateSystem: "cartesian" as never,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
           data: [c1, c2],
           getPath: (c) => trajectoryFlat(c.kinematics),
           getColor: (c) => [...pitchColor(c.pitchType), 240],
@@ -752,57 +720,11 @@ export function buildLayers(opts: BuildLayersOpts) {
     }
   }
 
-  if (showContactSim && picked && picked.kinematics) {
-    const col = computeCollision(picked.kinematics, batSpeed ?? 75.0, attackAngleDeg ?? 10.0);
-    if (col.contactQuality !== "Whiff" && col.distanceFt > 0) {
-      const tEnd = flightTime(picked.kinematics);
-      const origin = positionAt(picked.kinematics, tEnd);
-      const battedTrajectory = projectBattedTrajectory(
-        origin,
-        col.exitSpeedMph,
-        col.launchAngleDeg,
-        col.sprayAngleDeg,
-        col.hangTimeS,
-        40
-      );
-      const color = CONTACT_QUALITY_COLORS[col.contactQuality] ?? [255, 255, 255];
-      const landingPt = battedTrajectory[battedTrajectory.length - 1];
-
-      layers.push(
-        new PathLayer<[number, number, number][]>({
-          id: "simulated-batted-trajectory",
-          coordinateSystem: "cartesian" as never,
-          data: [battedTrajectory],
-          getPath: (d: [number, number, number][]) => d,
-          getColor: [...color, 240],
-          getWidth: TRAJECTORY_WIDTH * 1.6,
-          widthUnits: "meters",
-          billboard: true,
-          widthMinPixels: 2.5,
-          opacity: 0.95,
-        }),
-        new ScatterplotLayer<[number, number, number]>({
-          id: "simulated-landing-spot",
-          coordinateSystem: "cartesian" as never,
-          data: [landingPt],
-          getPosition: (p: [number, number, number]) => p,
-          getRadius: 0.35,
-          radiusUnits: "meters",
-          stroked: true,
-          filled: true,
-          getFillColor: [...color, 180],
-          getLineColor: [255, 255, 255, 240],
-          ...markerStyle(1.5),
-        } as never),
-      );
-    }
-  }
-
   if (showDispersion && releaseDispersion && releaseDispersion.wireframeSegments.length > 0) {
     layers.push(
       new PathLayer<[number, number, number][]>({
         id: "release-dispersion-ellipsoid",
-        coordinateSystem: "cartesian" as never,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         data: releaseDispersion.wireframeSegments,
         getPath: (d: [number, number, number][]) => d,
         getColor: [255, 215, 0, 220],
@@ -824,7 +746,7 @@ export function buildLayers(opts: BuildLayersOpts) {
       0,
       new PolygonLayer<HeatmapCell>({
         id: "strike-zone-heatmap",
-        coordinateSystem: "cartesian" as never,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         data: heatmapCells,
         // SolidPolygon tessellates in the layer's x/y plane; the cells live in
         // the plate plane (x, PLATE_Y, z), so feed [x, z, y] and swap y/z back
@@ -842,7 +764,7 @@ export function buildLayers(opts: BuildLayersOpts) {
         opacity: 0.85,
         // Draw over the pitch-path bundle instead of being depth-occluded by it,
         // without writing depth that would hide the outline and markers after it.
-        parameters: { depthCompare: "always", depthWriteEnabled: false } as never,
+        parameters: { depthCompare: "always", depthWriteEnabled: false },
       }),
     );
   }
@@ -856,9 +778,9 @@ export function buildLayers(opts: BuildLayersOpts) {
     // horizontal edges were seen edge-on from behind the plate.
     new PathLayer<WireSegment>({
       id: "strike-zone",
-      coordinateSystem: "cartesian" as never,
+      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
       data: diamondWireframeSegments(),
-      getPath: (s) => s,
+      getPath: getSegmentPath,
       getColor: [255, 255, 255],
       getWidth: 0.03,
       widthUnits: "meters",
@@ -867,6 +789,171 @@ export function buildLayers(opts: BuildLayersOpts) {
       opacity: 0.85,
     }),
   );
+
+  return layers;
+}
+
+/**
+ * Highlight layers for the hovered/pinned pitch. Built separately from the
+ * base bundle so a hover only swaps these few single-datum layers and never
+ * re-diffs the (large) base layers; Visualizer concatenates [...base, ...picked].
+ */
+export function pickedLayers(
+  picked: PitchDatum | null | undefined,
+  opts: Pick<BuildLayersOpts, "showContactSim" | "batSpeed" | "attackAngleDeg"> = {},
+) {
+  const layers: (PathLayer<any> | ScatterplotLayer<any>)[] = [];
+  if (!picked) return layers;
+
+  if (picked.kinematics) {
+    const k = picked.kinematics;
+    layers.push(
+      new PathLayer<PitchDatum>({
+        id: "picked-ghost-trajectory",
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        data: [picked],
+        getPath: () => picked.ghostPath ?? ghostTrajectoryFlat(k),
+        getColor: [220, 240, 255, 230],
+        getWidth: TRAJECTORY_WIDTH * 1.5,
+        widthUnits: "meters",
+        widthMinPixels: 2.0,
+        billboard: true,
+        opacity: 0.95,
+      }),
+      new PathLayer<WireSegment>({
+        id: "picked-break-vector",
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        data: [breakVectorSegment(k)],
+        getPath: getSegmentPath,
+        getColor: [255, 215, 0],
+        getWidth: 0.04,
+        widthUnits: "meters",
+        billboard: true,
+        widthMinPixels: 2.5,
+        opacity: 1.0,
+      }),
+      new ScatterplotLayer<PitchDatum>({
+        id: "picked-release-point",
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        data: [picked],
+        getPosition: () => [k.x0, k.y0, k.z0],
+        getRadius: 0.18,
+        radiusUnits: "meters",
+        stroked: true,
+        filled: true,
+        getFillColor: [255, 215, 0, 240],
+        getLineColor: [255, 255, 255, 255],
+        ...markerStyle(2.5, 4),
+      }),
+      new ScatterplotLayer<PitchDatum>({
+        id: "picked-tunnel-point",
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        data: [picked],
+        getPosition: () => picked.commitmentPoint ?? commitmentPosition(k),
+        getRadius: 0.14,
+        radiusUnits: "meters",
+        stroked: true,
+        filled: true,
+        getFillColor: [255, 215, 0, 240],
+        getLineColor: [255, 255, 255, 255],
+        ...markerStyle(2.0, 4),
+      }),
+    );
+  }
+
+  layers.push(
+    new PathLayer<PitchDatum>({
+      id: "picked-pitch-highlight",
+      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+      data: [picked],
+      getPath: getPitchPath,
+      getColor: getPitchStroke,
+      getWidth: TRAJECTORY_WIDTH * PICKED_WIDTH_MULTIPLIER,
+      widthUnits: "meters",
+      widthMinPixels: 2.5,
+      billboard: true,
+      opacity: 1.0,
+    }),
+  );
+  const px = picked.plateX ?? picked.pfxX ?? 0;
+  const pz = picked.plateZ ?? picked.pfxZ ?? 2.5;
+  layers.push(
+    new ScatterplotLayer<PitchDatum>({
+      id: "picked-plate-crossing",
+      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+      data: [picked],
+      getPosition: () => [px, STRIKE_ZONE.y, pz],
+      getRadius: 0.1,
+      radiusUnits: "meters",
+      stroked: true,
+      filled: true,
+      getFillColor: [255, 215, 0, 240],
+      getLineColor: [255, 255, 255, 255],
+      ...markerStyle(2.0, 4),
+    }),
+  );
+  if (picked.szTop != null && picked.szBot != null) {
+    layers.push(
+      new PathLayer<WireSegment>({
+        id: "picked-batter-strike-zone",
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        data: batterStrikeZoneSegments(picked.szTop, picked.szBot),
+        getPath: getSegmentPath,
+        getColor: [0, 220, 255],
+        getWidth: 0.04,
+        widthUnits: "meters",
+        billboard: true,
+        widthMinPixels: 2.0,
+        opacity: 0.9,
+      }),
+    );
+  }
+
+  if (opts.showContactSim && picked.kinematics) {
+    const col = computeCollision(picked.kinematics, opts.batSpeed ?? 75.0, opts.attackAngleDeg ?? 10.0);
+    if (col.contactQuality !== "Whiff" && col.distanceFt > 0) {
+      const tEnd = flightTime(picked.kinematics);
+      const origin = positionAt(picked.kinematics, tEnd);
+      const battedTrajectory = projectBattedTrajectory(
+        origin,
+        col.exitSpeedMph,
+        col.launchAngleDeg,
+        col.sprayAngleDeg,
+        col.hangTimeS,
+        40
+      );
+      const color = CONTACT_QUALITY_COLORS[col.contactQuality] ?? [255, 255, 255];
+      const landingPt = battedTrajectory[battedTrajectory.length - 1];
+
+      layers.push(
+        new PathLayer<[number, number, number][]>({
+          id: "simulated-batted-trajectory",
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          data: [battedTrajectory],
+          getPath: (d: [number, number, number][]) => d,
+          getColor: [...color, 240],
+          getWidth: TRAJECTORY_WIDTH * 1.6,
+          widthUnits: "meters",
+          billboard: true,
+          widthMinPixels: 2.5,
+          opacity: 0.95,
+        }),
+        new ScatterplotLayer<[number, number, number]>({
+          id: "simulated-landing-spot",
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          data: [landingPt],
+          getPosition: (p: [number, number, number]) => p,
+          getRadius: 0.35,
+          radiusUnits: "meters",
+          stroked: true,
+          filled: true,
+          getFillColor: [...color, 180],
+          getLineColor: [255, 255, 255, 240],
+          ...markerStyle(1.5),
+        }),
+      );
+    }
+  }
 
   return layers;
 }

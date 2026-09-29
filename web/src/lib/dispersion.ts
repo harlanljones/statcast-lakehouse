@@ -8,7 +8,6 @@
  */
 
 import type { PitchDatum } from "./deck-layers";
-import { PITCHING_RUBBER_Y_FT } from "./kinematics";
 
 export interface ReleaseDispersion {
   count: number;
@@ -33,11 +32,12 @@ export interface FatigueBucket {
   avgReleaseSpeed: number;
   avgReleaseZ: number;
   avgReleaseX: number;
-  avgExtension: number;
+  /** Mean of the pitches' reported extension (ft); null when none report it. */
+  avgExtension: number | null;
   whiffPct: number;
   deltaVelocityMph: number;
   deltaReleaseZInches: number;
-  deltaExtensionInches: number;
+  deltaExtensionInches: number | null;
 }
 
 /**
@@ -198,23 +198,77 @@ export function computeReleaseDispersion(
 }
 
 /**
- * Partition pitches into count buckets to quantify velocity drop and arm angle fatigue.
+ * The pitcher a fatigue analysis is about: the pinned pitch's pitcher when
+ * given, else the pitcher who threw the most pitches (ties: lowest id), else
+ * undefined when the data carries no pitcher ids.
+ */
+export function fatiguePitcher(
+  pitches: readonly PitchDatum[],
+  pinnedPitcherId?: number | null,
+): number | undefined {
+  if (pinnedPitcherId != null) return pinnedPitcherId;
+  const counts = new Map<number, number>();
+  for (const p of pitches) {
+    if (p.pitcherId == null) continue;
+    counts.set(p.pitcherId, (counts.get(p.pitcherId) ?? 0) + 1);
+  }
+  let best: number | undefined;
+  let bestCount = 0;
+  for (const [id, n] of counts) {
+    if (n > bestCount || (n === bestCount && best !== undefined && id < best)) {
+      best = id;
+      bestCount = n;
+    }
+  }
+  return best;
+}
+
+/** Distinct pitcher ids present in the pitches. */
+export function distinctPitcherCount(pitches: readonly PitchDatum[]): number {
+  return new Set(pitches.filter((p) => p.pitcherId != null).map((p) => p.pitcherId)).size;
+}
+
+/**
+ * One pitcher's pitches in throwing order: sorted by (atBatNumber, pitchNumber)
+ * when every pitch carries both; otherwise the data's own order is kept.
+ */
+export function pitcherPitchesInOrder(
+  pitches: readonly PitchDatum[],
+  pitcherId: number | undefined,
+): PitchDatum[] {
+  const own = pitcherId === undefined ? [...pitches] : pitches.filter((p) => p.pitcherId === pitcherId);
+  if (own.length > 0 && own.every((p) => p.atBatNumber != null && p.pitchNumber != null)) {
+    return own
+      .map((p, i) => ({ p, i }))
+      .sort((a, b) => a.p.atBatNumber! - b.p.atBatNumber! || a.p.pitchNumber! - b.p.pitchNumber! || a.i - b.i)
+      .map((e) => e.p);
+  }
+  return own;
+}
+
+/**
+ * Partition ONE pitcher's pitches into count buckets to quantify velocity drop
+ * and arm-slot fatigue. `pitcherId` defaults to fatiguePitcher(pitches); other
+ * pitchers' pitches are ignored so mixed pitchers are never pooled. Extension
+ * is averaged only over pitches that report it (null when none do).
  */
 export function computeFatigueBuckets(
   pitches: PitchDatum[],
-  bucketSize = 25
+  bucketSize = 25,
+  pitcherId: number | undefined = fatiguePitcher(pitches),
 ): FatigueBucket[] {
   if (!pitches || pitches.length === 0 || bucketSize <= 0) {
     return [];
   }
+  const ordered = pitcherPitchesInOrder(pitches, pitcherId);
 
   const buckets: FatigueBucket[] = [];
   let baseSpeed: number | null = null;
   let baseZ: number | null = null;
   let baseExt: number | null = null;
 
-  for (let i = 0; i < pitches.length; i += bucketSize) {
-    const chunk = pitches.slice(i, i + bucketSize);
+  for (let i = 0; i < ordered.length; i += bucketSize) {
+    const chunk = ordered.slice(i, i + bucketSize);
     const count = chunk.length;
     if (count === 0) continue;
 
@@ -222,20 +276,18 @@ export function computeFatigueBuckets(
     let sumZ = 0;
     let sumX = 0;
     let sumExt = 0;
+    let extCount = 0;
     let swings = 0;
     let whiffs = 0;
 
     for (const p of chunk) {
       sumSpeed += p.releaseSpeed;
-      const z = p.kinematics ? p.kinematics.z0 : p.plateZ ?? 5.5;
-      const x = p.kinematics ? p.kinematics.x0 : p.plateX ?? 0.0;
-      const y = p.kinematics ? p.kinematics.y0 : 54.5;
-      const ext = p.extension ?? (PITCHING_RUBBER_Y_FT - y);
-
-      sumZ += z;
-      sumX += x;
-      sumExt += ext;
-
+      sumZ += p.kinematics ? p.kinematics.z0 : p.plateZ ?? 5.5;
+      sumX += p.kinematics ? p.kinematics.x0 : p.plateX ?? 0.0;
+      if (p.extension != null && Number.isFinite(p.extension)) {
+        sumExt += p.extension;
+        extCount++;
+      }
       if (p.isSwing) swings++;
       if (p.isWhiff) whiffs++;
     }
@@ -243,18 +295,14 @@ export function computeFatigueBuckets(
     const avgSpeed = sumSpeed / count;
     const avgZ = sumZ / count;
     const avgX = sumX / count;
-    const avgExt = sumExt / count;
+    const avgExt = extCount > 0 ? sumExt / extCount : null;
     const whiffPct = swings > 0 ? (whiffs / swings) * 100.0 : 0.0;
 
-    if (baseSpeed === null || baseZ === null || baseExt === null) {
+    if (baseSpeed === null || baseZ === null) {
       baseSpeed = avgSpeed;
       baseZ = avgZ;
-      baseExt = avgExt;
     }
-
-    const deltaSpeed = avgSpeed - baseSpeed;
-    const deltaZIn = (avgZ - baseZ) * 12.0;
-    const deltaExtIn = (avgExt - baseExt) * 12.0;
+    if (baseExt === null && avgExt !== null) baseExt = avgExt;
 
     buckets.push({
       bucketIndex: buckets.length,
@@ -266,11 +314,17 @@ export function computeFatigueBuckets(
       avgReleaseX: avgX,
       avgExtension: avgExt,
       whiffPct,
-      deltaVelocityMph: deltaSpeed,
-      deltaReleaseZInches: deltaZIn,
-      deltaExtensionInches: deltaExtIn,
+      deltaVelocityMph: avgSpeed - baseSpeed,
+      deltaReleaseZInches: (avgZ - baseZ) * 12.0,
+      deltaExtensionInches: avgExt !== null && baseExt !== null ? (avgExt - baseExt) * 12.0 : null,
     });
   }
 
   return buckets;
+}
+
+/** One-line note for the fatigue panel when the visible pitches span several pitchers. */
+export function fatigueNote(label: string | undefined, pitcherCount: number | undefined): string | null {
+  if (!pitcherCount || pitcherCount <= 1) return null;
+  return `Showing ${label ?? "one pitcher"} (1 of ${pitcherCount} pitchers); pin a pitch to choose`;
 }

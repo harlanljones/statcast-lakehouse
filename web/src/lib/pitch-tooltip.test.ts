@@ -123,6 +123,7 @@ describe("pitchTooltip", () => {
     const info = pitchTooltip(
       pitch({
         spinRate: 2380.4,
+        extension: 6.2,
         kinematics: {
           x0: -1.75,
           y0: 54.3,
@@ -140,6 +141,22 @@ describe("pitchTooltip", () => {
     expect(info.release).toBe("Rel (-1.8, 5.8) ft");
     expect(info.extension).toBe("Ext 6.2 ft");
     expect(info.tunnel).toBe("Tunnel (-0.9, 4.2) ft");
+  });
+
+  it("labels the release point 'At 50 ft' and omits Ext when extension is unknown", () => {
+    const info = pitchTooltip(
+      pitch({
+        kinematics: { x0: -1.75, y0: 50, z0: 5.82, vx0: 3, vy0: -130, vz0: -5, ax: 5, ay: 0, az: -15 },
+      }),
+    )!;
+    expect(info.release).toBe("At 50 ft (-1.8, 5.8)");
+    expect(info.extension).toBeUndefined();
+    expect(pitchTooltipSummary(pitch({
+      kinematics: { x0: 1.5, y0: 50, z0: 6.0, vx0: 0, vy0: -130, vz0: 0, ax: 0, ay: 0, az: 0 },
+    }), undefined, undefined, false)).toContain("At 50 ft (+1.5, 6.0)");
+    expect(pitchTooltipSummary(pitch({
+      kinematics: { x0: 1.5, y0: 50, z0: 6.0, vx0: 0, vy0: -130, vz0: 0, ax: 0, ay: 0, az: 0 },
+    }), undefined, undefined, false)).not.toContain("Ext");
   });
 
   it("formats explicit commitmentPoint when present", () => {
@@ -178,6 +195,7 @@ describe("pitchTooltip", () => {
           spinRate: 2450,
           plateX: 0.1,
           plateZ: 2.5,
+          extension: 6.0,
           kinematics: {
             x0: 1.5,
             y0: 54.5,

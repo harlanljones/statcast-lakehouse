@@ -27,6 +27,10 @@ function ipcBuffer(rows: {
   releaseSpinRate?: Float64Array | number[];
   szTop?: Float64Array | number[];
   szBot?: Float64Array | number[];
+  /** Nullable optional columns: plain arrays so NULLs survive. */
+  extension?: (number | null)[];
+  atBatNumber?: (number | null)[];
+  pitchNumber?: (number | null)[];
   /** int64 ids (arrive as bigint) and string ids, as in the real schema. */
   ids?: {
     pitcherId?: bigint[];
@@ -62,6 +66,9 @@ function ipcBuffer(rows: {
   if (rows.releaseSpinRate) arrays.release_spin_rate = new Float64Array(rows.releaseSpinRate);
   if (rows.szTop) arrays.sz_top = new Float64Array(rows.szTop);
   if (rows.szBot) arrays.sz_bot = new Float64Array(rows.szBot);
+  if (rows.extension) arrays.extension = rows.extension;
+  if (rows.atBatNumber) arrays.at_bat_number = rows.atBatNumber;
+  if (rows.pitchNumber) arrays.pitch_number = rows.pitchNumber;
   if (rows.ids?.pitcherId) arrays.pitcher_id = new BigInt64Array(rows.ids.pitcherId);
   if (rows.ids?.batterId) arrays.batter_id = new BigInt64Array(rows.ids.batterId);
   if (rows.ids?.pitcherName) arrays.pitcher_name = rows.ids.pitcherName;
@@ -140,7 +147,7 @@ describe("loadPitchTable", () => {
     expect(pitches[1].isWhiff).toBe(0);
   });
 
-  it("extracts release_spin_rate and derives extension from kinematics y0", () => {
+  it("extracts release_spin_rate; extension is undefined without an extension column (y0 is not the hand)", () => {
     const buf = ipcBuffer({
       count: 2,
       pitchTypes: ["FF", "SL"],
@@ -150,9 +157,45 @@ describe("loadPitchTable", () => {
     const { pitches } = loadPitchTable(buf);
     expect(pitches).toHaveLength(2);
     expect(pitches[0].spinRate).toBeCloseTo(2420);
-    expect(pitches[0].extension).toBeCloseTo(6.0); // 60.5 - 54.5
+    expect(pitches[0].extension).toBeUndefined();
     expect(pitches[1].spinRate).toBeCloseTo(2680);
-    expect(pitches[1].extension).toBeCloseTo(5.5); // 60.5 - 55.0
+    expect(pitches[1].extension).toBeUndefined();
+    // No extrapolation: the kinematics are exactly the measured row.
+    expect(pitches[0].kinematics!.y0).toBe(54.5);
+  });
+
+  it("reads the nullable extension column and moves kinematics to the release plane only where present", () => {
+    const buf = ipcBuffer({
+      count: 3,
+      pitchTypes: ["FF", "SL", "CU"],
+      y0: [50, 50, 50],
+      extension: [6.5, null, 6.0],
+    });
+    const { pitches } = loadPitchTable(buf);
+    expect(pitches).toHaveLength(3);
+    expect(pitches[0].extension).toBe(6.5);
+    expect(pitches[0].kinematics!.y0).toBe(54.0); // 60.5 - 6.5
+    expect(pitches[0].path[1]).toBeCloseTo(54.0, 5); // path starts at the hand
+    expect(pitches[1].extension).toBeUndefined(); // NULL is not 0
+    expect(pitches[1].kinematics!.y0).toBe(50);
+    expect(pitches[1].path[1]).toBeCloseTo(50, 5);
+    expect(pitches[2].extension).toBe(6.0);
+    expect(pitches[2].kinematics!.y0).toBe(54.5);
+    // Commitment and break math run on the extrapolated kinematics.
+    expect(pitches[0].commitmentPoint![1]).toBeCloseTo(23.8, 6);
+  });
+
+  it("reads nullable at_bat_number / pitch_number and leaves NULLs unset", () => {
+    const { pitches } = loadPitchTable(ipcBuffer({
+      count: 2,
+      pitchTypes: ["FF", "SL"],
+      atBatNumber: [3, null],
+      pitchNumber: [2, null],
+    }));
+    expect(pitches[0]).toMatchObject({ atBatNumber: 3, pitchNumber: 2 });
+    expect(pitches[1].atBatNumber).toBeUndefined();
+    expect(pitches[1].pitchNumber).toBeUndefined();
+    expect(loadPitchTable(ipcBuffer({ count: 1, pitchTypes: ["FF"] })).pitches[0].atBatNumber).toBeUndefined();
   });
 
   it("extracts sz_top and sz_bot when present", () => {
@@ -362,16 +405,24 @@ describe("fetchDatePartitions", () => {
     expect(fetch).toHaveBeenCalledWith("/pitches/dates");
   });
 
-  it("returns default partition on 503 response", async () => {
+  it("returns no partitions on a 503 response (never a fabricated one)", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("Service Unavailable", { status: 503 })),
     );
     const result = await fetchDatePartitions();
-    expect(result).toEqual([{ game_date: "2026-09-14", rows: 300 }]);
+    expect(result).toEqual([]);
   });
 
-  it("returns default partition on network error", async () => {
+  it("returns no partitions when the body is not an array", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: "nope" }), { status: 200 })),
+    );
+    expect(await fetchDatePartitions()).toEqual([]);
+  });
+
+  it("returns no partitions on network error", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -379,6 +430,6 @@ describe("fetchDatePartitions", () => {
       }),
     );
     const result = await fetchDatePartitions();
-    expect(result).toEqual([{ game_date: "2026-09-14", rows: 300 }]);
+    expect(result).toEqual([]);
   });
 });

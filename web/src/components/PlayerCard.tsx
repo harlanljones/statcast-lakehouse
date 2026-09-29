@@ -2,11 +2,11 @@ import { For, Show, type JSX } from "solid-js";
 import { pitchColor, type PitchDatum } from "../lib/deck-layers";
 import { mlbLinks, pitchResult, playerLabel, summarizePitcher } from "../lib/player-card";
 import { storylinesForPitcher, type PitcherStoryline } from "../lib/storylines";
-import { THEME } from "./ui";
+import { CloseButton, THEME } from "./ui";
 
 export interface PlayerCardProps {
   pitch: PitchDatum;
-  /** Every pitch in the loaded group, for the pitcher summary. */
+  /** The pitches currently visible (after filters), for the pitcher summary. */
   pitches: readonly PitchDatum[];
   synthetic: boolean;
   storylines?: readonly PitcherStoryline[];
@@ -44,14 +44,9 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
     <aside
       role="complementary"
       aria-label="Pitch and player card"
+      class="ui-panel viz-dock-bottom"
       style={{
-        position: "absolute",
-        right: "12px",
-        bottom: "12px",
-        width: "272px",
-        "max-height": "calc(100% - 24px)",
-        "overflow-y": "auto",
-        "z-index": "12",
+        "--panel-w": "272px",
         background: THEME.panel,
         border: `1px solid ${THEME.border}`,
         "border-radius": "8px",
@@ -65,19 +60,17 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
       <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center", "margin-bottom": "8px" }}>
         <span
           style={{
-            "font-size": "10px",
+            "font-size": "11px",
             "letter-spacing": "0.08em",
             padding: "2px 6px",
             "border-radius": "3px",
-            border: `1px solid ${props.synthetic ? THEME.gold : "#4ade80"}`,
-            color: props.synthetic ? THEME.gold : "#4ade80",
+            border: `1px solid ${props.synthetic ? THEME.gold : THEME.good}`,
+            color: props.synthetic ? THEME.gold : THEME.good,
           }}
         >
           {props.synthetic ? "SYNTHETIC DATA" : "REAL DATA"}
         </span>
-        <button class="ui-ctl ui-ghost" onClick={props.onClose} aria-label="Close player card" style={{ padding: "0 6px" }}>
-          ✕
-        </button>
+        <CloseButton label="Close player card" onClick={props.onClose} />
       </div>
 
       <h3 style={{ margin: "0 0 2px", "font-size": "14px" }}>
@@ -120,7 +113,7 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
           aria-label="Pitcher storylines"
           style={{ "border-top": `1px solid ${THEME.border}`, padding: "8px 0", "margin-bottom": "2px" }}
         >
-          <div style={{ color: THEME.gold, "font-size": "10px", "letter-spacing": "0.04em", "margin-bottom": "4px" }}>
+          <div style={{ color: THEME.gold, "font-size": "11px", "letter-spacing": "0.04em", "margin-bottom": "4px" }}>
             PITCHER STORYLINE
           </div>
           <For each={stories()}>
@@ -134,7 +127,7 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
                 >
                   {story.title} ↗
                 </a>
-                <div style={{ ...muted, "font-size": "10px" }}>Event: {story.eventDate}</div>
+                <div style={{ ...muted, "font-size": "11px" }}>Event: {story.eventDate}</div>
                 <div style={{ ...muted, "margin-top": "1px" }}>{story.summary}</div>
               </article>
             )}

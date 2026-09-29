@@ -189,7 +189,7 @@ statcast-lakehouse/
     └── src/
         ├── App.tsx
         ├── lib/           # arrow-loader.ts, kinematics.ts, deck-layers.ts
-        └── components/    # Visualizer.tsx, ControlPanel.tsx
+        └── components/    # Visualizer.tsx, LensPanel.tsx
 ```
 
 ---

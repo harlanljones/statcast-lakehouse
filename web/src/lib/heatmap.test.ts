@@ -81,4 +81,25 @@ describe("Strike Zone Spatial Density & Heatmaps (Sprint 12)", () => {
     expect(cellB).toBeDefined();
     expect(cellB!.value).toBeCloseTo(100.0); // 100% whiff rate
   });
+
+  it("colors whiff-rate cells with fewer than 3 swings as no data (density stop 0)", () => {
+    const swing = (whiff: number) => dummyPitch({ plateX: 0.0, plateZ: 2.5, isSwing: 1, isWhiff: whiff });
+    const at = (cells: ReturnType<typeof computeStrikeZoneHeatmap>) =>
+      cells.find((c) => c.xMin <= 0.0 && c.xMax > 0.0 && c.zMin <= 2.5 && c.zMax > 2.5)!;
+
+    const one = at(computeStrikeZoneHeatmap([swing(1)], "whiff_rate"));
+    expect(one.value).toBeCloseTo(100.0); // the raw rate is still reported
+    expect(one.color).toEqual(DENSITY_COLOR_STOPS[0].color);
+
+    const two = at(computeStrikeZoneHeatmap([swing(1), swing(1)], "whiff_rate"));
+    expect(two.color).toEqual(DENSITY_COLOR_STOPS[0].color);
+
+    const three = at(computeStrikeZoneHeatmap([swing(1), swing(1), swing(1)], "whiff_rate"));
+    expect(three.color).toEqual(WHIFF_COLOR_STOPS[WHIFF_COLOR_STOPS.length - 1].color);
+    expect(three.color).not.toEqual(DENSITY_COLOR_STOPS[0].color);
+
+    // Density mode is unaffected by the swing floor.
+    const dens = at(computeStrikeZoneHeatmap([swing(1)], "density"));
+    expect(dens.color).toEqual(DENSITY_COLOR_STOPS[DENSITY_COLOR_STOPS.length - 1].color);
+  });
 });

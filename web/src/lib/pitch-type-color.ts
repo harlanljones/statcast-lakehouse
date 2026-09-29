@@ -24,8 +24,9 @@ function hash32(s: string): number {
  */
 export const PITCH_COLORS: Readonly<Record<string, [number, number, number]>> = Object.freeze({
   FF: [230, 57, 70], // 4-seam fastball — red
-  FT: [241, 133, 44], // two-seam — orange
-  SI: [184, 115, 51], // sinker — rust
+  FA: [255, 120, 90], // generic fastball — warm coral
+  FT: [255, 140, 0], // two-seam — bright orange
+  SI: [190, 110, 40], // sinker — brown-orange, darker than FT
   FC: [255, 196, 0], // cutter — gold
   SL: [67, 170, 139], // slider — teal
   ST: [38, 132, 255], // sweeper — blue
@@ -40,6 +41,31 @@ export const PITCH_COLORS: Readonly<Record<string, [number, number, number]>> = 
   EP: [155, 205, 155], // eephus — pale green
   SC: [188, 140, 255], // screwball — light violet
 });
+
+/** Full pitch names for chip titles / accessible names. */
+export const PITCH_NAMES: Readonly<Record<string, string>> = Object.freeze({
+  FF: "Four-seam fastball",
+  SI: "Sinker",
+  FC: "Cutter",
+  SL: "Slider",
+  ST: "Sweeper",
+  CU: "Curveball",
+  KC: "Knuckle curve",
+  CS: "Slow curve",
+  CH: "Changeup",
+  FS: "Splitter",
+  FA: "Fastball",
+  FT: "Two-seam fastball",
+  KN: "Knuckleball",
+  EP: "Eephus",
+  SC: "Screwball",
+  FO: "Forkball",
+});
+
+/** Pitch name for a code (case-insensitive), or undefined for unknown codes. */
+export function pitchName(code: string): string | undefined {
+  return PITCH_NAMES[code?.toUpperCase() ?? ""];
+}
 
 export const FALLBACK_COLOR: [number, number, number] = [160, 160, 160];
 
@@ -69,7 +95,7 @@ export function pitchTypeColor(pitchType: string): [number, number, number] {
   return PITCH_COLORS[key] ?? deterministicFallbackColor(key);
 }
 
-/** Alias kept for deck-layers/ControlPanel call sites (trajectory colors). */
+/** Alias kept for the deck-layers call sites (trajectory colors). */
 export function pitchColor(pitchType: string): [number, number, number] {
   return pitchTypeColor(pitchType);
 }

@@ -1,5 +1,5 @@
 /**
- * Data-status helpers for the ControlPanel: distinct pitch-type derivation,
+ * Data-status helpers for the story caption (data-status line, whiff badge) and pitch-type chips: distinct pitch-type derivation,
  * game_date extraction from the loaded Arrow table, and status formatting.
  * All pure functions — no Solid, no deck.gl, no DOM.
  */

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { COORDINATE_SYSTEM } from "@deck.gl/core";
 import { DataFilterExtension } from "@deck.gl/extensions";
 import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import {
@@ -17,6 +18,9 @@ import {
   filterRange,
   isInsideStrikeZone,
   moundCircleSegments,
+  passesFilters,
+  pickedLayers,
+  type FilterOpts,
   pitchColor,
   pitcherRubberSegments,
   strikeZoneSegments,
@@ -558,7 +562,7 @@ describe("buildLayers", () => {
 
     expect(markerLayer).toBeDefined();
     expect(markerLayer).toBeInstanceOf(ScatterplotLayer);
-    expect(markerLayer.props.coordinateSystem).toBe("cartesian");
+    expect(markerLayer.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
     expect(markerLayer.props.getRadius).toBe(0.1);
     expect(markerLayer.props.radiusUnits).toBe("meters");
     expect(markerLayer.props.stroked).toBe(true);
@@ -626,7 +630,7 @@ describe("buildLayers", () => {
       };
     };
     expect(ghostLayer).toBeDefined();
-    expect(ghostLayer.props.coordinateSystem).toBe("cartesian");
+    expect(ghostLayer.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
     expect(ghostLayer.props.getColor).toEqual([200, 220, 240, 80]);
     expect(ghostLayer.props.getPath(testPitch)).toBe(testPitch.ghostPath);
     expect(ghostLayer.props.extensions[0]).toBeInstanceOf(DataFilterExtension);
@@ -660,7 +664,7 @@ describe("buildLayers", () => {
       };
     };
     expect(pickedGhost).toBeDefined();
-    expect(pickedGhost.props.coordinateSystem).toBe("cartesian");
+    expect(pickedGhost.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
     expect(pickedGhost.props.getColor).toEqual([220, 240, 255, 230]);
     expect(pickedGhost.props.getPath()).toHaveLength(180);
 
@@ -678,7 +682,7 @@ describe("buildLayers", () => {
       };
     };
     expect(pickedRelease).toBeDefined();
-    expect(pickedRelease.props.coordinateSystem).toBe("cartesian");
+    expect(pickedRelease.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
     expect(pickedRelease.props.getPosition()).toEqual([-1.5, 55, 5.8]);
     expect(pickedRelease.props.getFillColor).toEqual([255, 215, 0, 240]);
   });
@@ -705,7 +709,7 @@ describe("buildLayers", () => {
       };
     };
     expect(releaseLayer).toBeDefined();
-    expect(releaseLayer.props.coordinateSystem).toBe("cartesian");
+    expect(releaseLayer.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
     expect(releaseLayer.props.getRadius).toBe(0.12);
     expect(releaseLayer.props.getPosition(testPitch)).toEqual([-1.6, 54.5, 5.9]);
     expect(releaseLayer.props.extensions[0]).toBeInstanceOf(DataFilterExtension);
@@ -727,7 +731,7 @@ describe("buildLayers", () => {
       };
     };
     expect(plateLayer).toBeDefined();
-    expect(plateLayer.props.coordinateSystem).toBe("cartesian");
+    expect(plateLayer.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
     expect(plateLayer.props.getRadius).toBe(0.06);
     expect(plateLayer.props.getPosition(testPitch)).toEqual([0.35, STRIKE_ZONE.y, 2.75]);
     expect(plateLayer.props.extensions[0]).toBeInstanceOf(DataFilterExtension);
@@ -760,12 +764,12 @@ describe("buildLayers", () => {
       };
     };
     expect(pickedCrossing).toBeDefined();
-    expect(pickedCrossing.props.coordinateSystem).toBe("cartesian");
+    expect(pickedCrossing.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
     expect(pickedCrossing.props.getPosition()).toEqual([-0.2, STRIKE_ZONE.y, 2.1]);
     expect(pickedCrossing.props.getFillColor).toEqual([255, 215, 0, 240]);
 
     expect(pickedZone).toBeDefined();
-    expect(pickedZone.props.coordinateSystem).toBe("cartesian");
+    expect(pickedZone.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
     expect(pickedZone.props.getColor).toEqual([0, 220, 255]);
     expect(pickedZone.props.data).toHaveLength(1);
     expect(pickedZone.props.data[0][0][2]).toBeCloseTo(1.6);
@@ -790,7 +794,7 @@ describe("buildLayers", () => {
       };
     };
     expect(tunnelLayer).toBeDefined();
-    expect(tunnelLayer.props.coordinateSystem).toBe("cartesian");
+    expect(tunnelLayer.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
     expect(tunnelLayer.props.getRadius).toBe(0.08);
     expect(tunnelLayer.props.getPosition(testPitch)).toEqual([0.25, 23.8, 3.1]);
     expect(tunnelLayer.props.extensions[0]).toBeInstanceOf(DataFilterExtension);
@@ -819,7 +823,7 @@ describe("buildLayers", () => {
       };
     };
     expect(pickedTunnel).toBeDefined();
-    expect(pickedTunnel.props.coordinateSystem).toBe("cartesian");
+    expect(pickedTunnel.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
     expect(pickedTunnel.props.getRadius).toBe(0.14);
     expect(pickedTunnel.props.getPosition()).toEqual([0.15, 23.8, 2.95]);
     expect(pickedTunnel.props.getFillColor).toEqual([255, 215, 0, 240]);
@@ -855,8 +859,8 @@ describe("buildLayers", () => {
 
     expect(envelopeLayer).toBeDefined();
     expect(pathsLayer).toBeDefined();
-    expect(envelopeLayer!.props.coordinateSystem).toBe("cartesian");
-    expect(pathsLayer!.props.coordinateSystem).toBe("cartesian");
+    expect(envelopeLayer!.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
+    expect(pathsLayer!.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
   });
 
   it("builds simulated batted trajectory and landing spot layers when contact sim is enabled", () => {
@@ -889,8 +893,8 @@ describe("buildLayers", () => {
 
     expect(battedLayer).toBeDefined();
     expect(landingLayer).toBeDefined();
-    expect(battedLayer!.props.coordinateSystem).toBe("cartesian");
-    expect(landingLayer!.props.coordinateSystem).toBe("cartesian");
+    expect(battedLayer!.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
+    expect(landingLayer!.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
   });
 
   it("builds release dispersion ellipsoid layer when showDispersion is true", () => {
@@ -918,7 +922,7 @@ describe("buildLayers", () => {
 
     const ellipsoidLayer = layers.find((l) => l.id === "release-dispersion-ellipsoid");
     expect(ellipsoidLayer).toBeDefined();
-    expect(ellipsoidLayer!.props.coordinateSystem).toBe("cartesian");
+    expect(ellipsoidLayer!.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
   });
 
   it("builds strike zone heatmap PolygonLayer when showHeatmap is true", () => {
@@ -945,7 +949,7 @@ describe("buildLayers", () => {
 
     const heatmapLayer = layers.find((l) => l.id === "strike-zone-heatmap");
     expect(heatmapLayer).toBeDefined();
-    expect(heatmapLayer!.props.coordinateSystem).toBe("cartesian");
+    expect(heatmapLayer!.props.coordinateSystem).toBe(COORDINATE_SYSTEM.CARTESIAN);
   });
 
   describe("rendering on any screen", () => {
@@ -1022,5 +1026,114 @@ describe("buildLayers", () => {
       const heatLayer = everything[heat] as unknown as { props: { parameters: Record<string, unknown> } };
       expect(heatLayer.props.parameters.depthWriteEnabled).toBe(false);
     });
+  });
+});
+
+describe("passesFilters (CPU mirror of the GPU filter)", () => {
+  // szTop/szBot differ from the rulebook zone [1.5, 3.5]: a short batter (zone 1.2-2.6)
+  // and a tall one (zone 2.0-4.0), so the same plateZ flips in/out of zone.
+  const fixture: PitchDatum[] = [
+    pitch({ releaseSpeed: 95, plateX: 0.1, plateZ: 3.0, pitchType: "FF", isSwing: 1, isWhiff: 0, szTop: 2.6, szBot: 1.2 }), // out (3.0 > 2.6)
+    pitch({ releaseSpeed: 88, plateX: -0.4, plateZ: 1.3, pitchType: "SL", isSwing: 1, isWhiff: 1, szTop: 2.6, szBot: 1.2 }), // in (1.3 >= 1.2), rulebook says out
+    pitch({ releaseSpeed: 80, plateX: 0.0, plateZ: 3.8, pitchType: "CH", isSwing: 0, isWhiff: 0, szTop: 4.0, szBot: 2.0 }), // in, rulebook says out
+    pitch({ releaseSpeed: 70, plateX: 0.9, plateZ: 2.5, pitchType: "CU", isSwing: 0, isWhiff: 0 }), // rulebook: out (|x| > 0.83)
+    pitch({ releaseSpeed: 92, plateX: 0.2, plateZ: 2.0, pitchType: "FF", isSwing: 0, isWhiff: 0 }), // rulebook: in
+    pitch({ releaseSpeed: 91, plateX: undefined as unknown as number, pfxX: -0.3, plateZ: 2.2, pitchType: "FF", isSwing: 1, isWhiff: 0 }), // plateX falls back to pfxX
+  ];
+  const cases: FilterOpts[] = [
+    { speedRange: [40, 105] },
+    { speedRange: [85, 105] },
+    { speedRange: [40, 105], zoneFilter: "in_zone" },
+    { speedRange: [40, 105], zoneFilter: "out_of_zone" },
+    { speedRange: [40, 105], outcomeFilter: "swings" },
+    { speedRange: [40, 105], outcomeFilter: "whiffs" },
+    { speedRange: [40, 105], selectedTypes: new Set(["FF", "SL"]) },
+    { speedRange: [60, 105], plateXRange: [-0.5, 0.5], plateZRange: [1.0, 3.5], zoneFilter: "in_zone", selectedTypes: new Set(["FF", "SL", "CH"]) },
+    { speedRange: [40, 105], plateXRange: [-0.35, 0.15] },
+  ];
+
+  it("equals the sum of the GPU masks inside the GPU ranges, for every filter combination", () => {
+    for (const opts of cases) {
+      const layer = buildLayers({ pitches: fixture, ...opts })[0] as unknown as {
+        props: {
+          getFilterValue: (d: PitchDatum) => [number, number, number, number];
+          filterRange: [number, number][];
+        };
+      };
+      const { getFilterValue, filterRange: fr } = layer.props;
+      // Emulate DataFilterExtension: a datum draws when every channel lies inside its range.
+      const gpuCount = fixture.filter((d) => {
+        const v = getFilterValue(d);
+        return v.every((x, i) => x >= fr[i][0] && x <= fr[i][1]);
+      }).length;
+      const cpuCount = fixture.filter((d) => passesFilters(d, opts)).length;
+      expect(cpuCount, JSON.stringify({ ...opts, selectedTypes: [...(opts.selectedTypes ?? [])] })).toBe(gpuCount);
+    }
+  });
+
+  it("uses the batter-specific zone (szTop/szBot) instead of the rulebook zone", () => {
+    const opts: FilterOpts = { speedRange: [40, 105], zoneFilter: "in_zone" };
+    expect(passesFilters(fixture[1], opts)).toBe(true); // rulebook zone would reject plateZ 1.3
+    expect(passesFilters(fixture[0], opts)).toBe(false); // rulebook zone would accept plateZ 3.0
+    expect(passesFilters(fixture[2], opts)).toBe(true);
+    expect(fixture.filter((d) => passesFilters(d, opts)).map((d) => d.pitchType)).toEqual(["SL", "CH", "FF", "FF"]);
+  });
+
+  it("falls back from plateX to pfxX like the GPU value", () => {
+    expect(passesFilters(fixture[5], { speedRange: [40, 105], plateXRange: [-0.35, -0.25] })).toBe(true);
+  });
+});
+
+describe("buildLayers reference stability (flight playback)", () => {
+  const pitches = [pitch({ pitchType: "FF" }), pitch({ pitchType: "SL", releaseSpeed: 85 })];
+  const base = { pitches, speedRange: [60, 105] as [number, number], showGhostBreak: true, showPlateCrossings: true, showReleasePoints: true, showTunneling: true };
+
+  it("keeps accessors and filter props identical across frames; only the trips layer moves", () => {
+    const a = buildLayers({ ...base, flightProgress: 0.25, isPlaying: true });
+    const b = buildLayers({ ...base, flightProgress: 0.75, isPlaying: true });
+    expect(a.map((l) => l.id)).toEqual(b.map((l) => l.id));
+    const props = (l: unknown) => (l as { props: Record<string, unknown> }).props;
+    for (let i = 0; i < a.length; i++) {
+      const pa = props(a[i]);
+      const pb = props(b[i]);
+      if (a[i].id === "pitch-trajectories") {
+        expect(pa.currentTime).toBe(0.25);
+        expect(pb.currentTime).toBe(0.75);
+        expect(pa.trailLength).toBe(1);
+      }
+      for (const key of Object.keys(pa)) {
+        if (key === "currentTime") continue;
+        // Accessors, data and the memoized filter props keep their identity; literals compare by value.
+        if (typeof pa[key] === "function" || key === "data" || key === "filterRange" || key === "updateTriggers" || key === "getFilterValue") {
+          expect(pa[key], `${a[i].id}.${key}`).toBe(pb[key]);
+        } else {
+          expect(pa[key], `${a[i].id}.${key}`).toEqual(pb[key]);
+        }
+      }
+    }
+    // No per-frame ball-marker layer while playing.
+    expect(a.some((l) => l.id === "baseball-markers")).toBe(false);
+  });
+
+  it("draws the ball marker only when paused, and a plain PathLayer without flightProgress", () => {
+    const paused = buildLayers({ ...base, flightProgress: 0.5, isPlaying: false });
+    expect(paused.some((l) => l.id === "baseball-markers")).toBe(true);
+    expect(paused[paused.findIndex((l) => l.id === "pitch-trajectories")].constructor.name).toBe("TripsLayer");
+    const full = buildLayers(base);
+    expect(full.find((l) => l.id === "pitch-trajectories")!.constructor.name).toBe("PathLayer");
+  });
+
+  it("uses one filter extension singleton", () => {
+    expect(dataFilterExtension()).toBe(dataFilterExtension());
+  });
+});
+
+describe("pickedLayers", () => {
+  it("builds the highlight layers separately from the base bundle", () => {
+    const p = pitch({ szTop: 3.4, szBot: 1.6 });
+    expect(pickedLayers(null)).toEqual([]);
+    const ids = pickedLayers(p).map((l) => l.id);
+    expect(ids).toEqual(["picked-pitch-highlight", "picked-plate-crossing", "picked-batter-strike-zone"]);
+    expect(buildLayers({ pitches: [p], speedRange: [60, 105] }).some((l) => l.id.startsWith("picked-"))).toBe(false);
   });
 });

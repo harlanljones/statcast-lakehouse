@@ -1,12 +1,13 @@
-import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { Show, Suspense, createEffect, createMemo, createSignal, lazy, onCleanup, onMount, untrack } from "solid-js";
 import { Deck, OrbitView } from "@deck.gl/core";
-import type { OrbitViewState, PickingInfo } from "@deck.gl/core";
+import type { Layer, OrbitViewState, PickingInfo } from "@deck.gl/core";
 import type { PitchTable } from "../lib/arrow-loader";
 import {
   INITIAL_VIEW,
-  ORBIT_TARGET,
   buildLayers,
   effectiveViewState,
+  pickedLayers,
+  type BuildLayersOpts,
   type PitchDatum,
   type ZoneFilter,
   type OutcomeFilter,
@@ -21,17 +22,23 @@ import {
   withLimits,
   type DragMode,
 } from "../lib/camera";
-import BreakChart from "./BreakChart";
+import { keyboardCameraStep, stepPitch } from "../lib/keyboard";
 import PlayerCard from "./PlayerCard";
-import PairComparisonPanel from "./PairComparisonPanel";
-import FatiguePanel from "./FatiguePanel";
+import { THEME } from "./ui";
 import type { ArsenalCentroid } from "../lib/arsenal";
 import type { FatigueBucket, ReleaseDispersion } from "../lib/dispersion";
 import type { HeatmapCell } from "../lib/heatmap";
 import type { PitcherStoryline } from "../lib/storylines";
 
+// Analysis panels are lazy chunks: they only load when their layer is switched on.
+const BreakChart = lazy(() => import("./BreakChart"));
+const PairComparisonPanel = lazy(() => import("./PairComparisonPanel"));
+const FatiguePanel = lazy(() => import("./FatiguePanel"));
+
 export interface VisualizerProps {
   data: PitchTable | null;
+  /** The pitches passing the current filters (the CPU mirror of the GPU filter); feeds the 2D panels and keyboard stepping. */
+  visiblePitches?: readonly PitchDatum[];
   filter: [number, number];
   plateXRange?: [number, number];
   plateZRange?: [number, number];
@@ -45,7 +52,13 @@ export interface VisualizerProps {
   resetKey?: number;
   /** Generated pitches have made-up players, so the card never links out for them. */
   synthetic?: boolean;
+  /** Pitch pinned to the player card (click or arrow keys); owned by App so panels can follow it. */
+  pinned?: PitchDatum | null;
+  onPin?: (pitch: PitchDatum | null) => void;
   flightProgress?: number;
+  isPlaying?: boolean;
+  /** Called at most ~10 times a second while a flight plays, so the slider can follow. */
+  onFlightProgress?: (v: number) => void;
   showTunneling?: boolean;
   showGhostBreak?: boolean;
   showReleasePoints?: boolean;
@@ -64,6 +77,8 @@ export interface VisualizerProps {
   releaseDispersion?: ReleaseDispersion | null;
   showFatigue?: boolean;
   fatigueBuckets?: FatigueBucket[];
+  fatiguePitcherLabel?: string;
+  fatiguePitcherCount?: number;
   onToggleFatigue?: (v: boolean) => void;
   showHeatmap?: boolean;
   heatmapCells?: HeatmapCell[] | null;
@@ -71,51 +86,61 @@ export interface VisualizerProps {
   storylineDate?: string;
 }
 
+/** Wall-clock length of one flight replay. */
+const FLIGHT_SECONDS = 1.2;
+/** How often the playing progress is published back to Solid (ms). */
+const PROGRESS_PUBLISH_MS = 100;
+
 /**
  * Deck.gl canvas container. OrbitView in Cartesian space (z-up, feet).
  * The data, filter, and camera viewState props are reactive; slider drags
  * and camera snaps rebind GPU filter uniforms / the view state only — no
  * CPU-side data filtering ever happens (TDD §5.3).
  *
- * Hover/click picking is deck.gl GPU picking on the trajectory layer; the
- * picked object is pure tooltip state and never touches filter uniforms.
+ * Effects are split so each interaction touches as little as possible:
+ *  - base layers rebuild when data, filters or layer toggles change;
+ *  - the picked-highlight layers rebuild on hover/pin only;
+ *  - while a flight plays, a rAF loop rebuilds the base layer list, in which
+ *    only the TripsLayer's currentTime differs (everything else is
+ *    reference-identical, see buildLayers).
  */
 export default function Visualizer(props: VisualizerProps) {
   let container!: HTMLDivElement;
+  let tipEl: HTMLDivElement | undefined;
   let deck: Deck<OrbitView> | null = null;
   const [picked, setPicked] = createSignal<PitchDatum | null>(null);
-  // Click pins a pitch to the player card; hover stays tooltip-only.
-  const [pinned, setPinned] = createSignal<PitchDatum | null>(null);
-  // Cursor-anchored tooltip position (canvas-relative px, already clamped).
-  const [tipPos, setTipPos] = createSignal({ x: 0, y: 0 });
+  // Raw pointer position of the hover (canvas-relative px); the tooltip clamps itself once measured.
+  const [tipRaw, setTipRaw] = createSignal({ x: 0, y: 0 });
   // World y (ft from plate) of the hovered point on the path, from 3D picking.
   const [cursorY, setCursorY] = createSignal<number | null>(null);
-  // Estimated rendered card size for clamping (matches the styled card below).
-  const CARD_W = 180;
-  const CARD_H = 270;
+  const pinned = () => props.pinned ?? null;
+  const visible = () => props.visiblePitches ?? props.data?.pitches ?? [];
+  const descId = "viz-desc";
 
-  const handlePick = (info: PickingInfo<PitchDatum>) => {
+  // ---- Hover: ignore while dragging, coalesce to one update per frame ----
+  let dragging = false;
+  let hoverFrame: number | null = null;
+  let pendingHover: PickingInfo<PitchDatum> | null = null;
+
+  const flushHover = () => {
+    hoverFrame = null;
+    const info = pendingHover;
+    pendingHover = null;
+    if (!info || dragging) return;
     const obj = info.object ?? null;
-    // Identity guard: deck.gl fires onHover per pixel; only notify Solid
-    // when the picked datum actually changed, so repeated hover events on
-    // the same path never rebuild the layer (zero-JS interaction path).
-    if (obj !== picked()) {
-      setPicked(obj);
-    }
+    // Identity guard: only notify Solid when the picked datum actually changed.
+    if (obj !== picked()) setPicked(obj);
     if (obj) {
       const coord = info.coordinate;
       setCursorY(coord && coord.length >= 3 ? coord[1] : null);
-      setTipPos(
-        clampTooltipPos(
-          info.x ?? 0,
-          info.y ?? 0,
-          CARD_W,
-          CARD_H,
-          container.clientWidth,
-          container.clientHeight,
-        ),
-      );
+      setTipRaw({ x: info.x ?? 0, y: info.y ?? 0 });
     }
+  };
+
+  const handleHover = (info: PickingInfo<PitchDatum>) => {
+    if (dragging) return;
+    pendingHover = info;
+    if (hoverFrame === null) hoverFrame = requestAnimationFrame(flushHover);
   };
 
   // Expose the live camera as data attributes: handy for debugging and lets
@@ -140,6 +165,12 @@ export default function Visualizer(props: VisualizerProps) {
     publishCamera(vs);
   };
 
+  // ---- Layer state shared by the effects below ----
+  let baseOpts: BuildLayersOpts | null = null;
+  let baseLayers: Layer[] = [];
+  let pickedList: Layer[] = [];
+  const pushLayers = () => deck?.setProps({ layers: [...baseLayers, ...pickedList] });
+
   onMount(() => {
     fit = fitCanvas(container.clientWidth, container.clientHeight);
     view = withLimits(effectiveViewState(props.viewState, props.showHeatmap) ?? INITIAL_VIEW);
@@ -163,7 +194,7 @@ export default function Visualizer(props: VisualizerProps) {
       onClick: (info: PickingInfo) => {
         const o = info.object as Partial<PitchDatum> | null | undefined;
         const isPitch = !!o && typeof o.releaseSpeed === "number" && typeof o.pitchType === "string";
-        setPinned(isPitch ? (o as PitchDatum) : null);
+        props.onPin?.(isPitch ? (o as PitchDatum) : null);
       },
       // Controlled camera: deck.gl only reports what the user did; we apply it
       // (clamped so the field cannot be panned or zoomed out of reach).
@@ -173,106 +204,115 @@ export default function Visualizer(props: VisualizerProps) {
       layers: [],
     });
 
-    // Debounce hover picking pass to eliminate pointermove micro-stalls
-    // during continuous mouse movement or camera orbiting (gl.readPixels GPU flush).
-    let hoverTimer: ReturnType<typeof setTimeout> | null = null;
-    // deck.gl's picking pass is a private API: only patch it when present, so a
-    // deck.gl upgrade that renames it degrades to un-debounced hover instead of
-    // failing the whole mount.
-    const rawPick = (deck as any)._pickAndCallback;
-    if (typeof rawPick === "function") {
-      const origPick = rawPick.bind(deck);
-
-      (deck as any)._pickAndCallback = function () {
-        const req = (this as any)._pickRequest;
-        if (!req || !req.event) return;
-
-        // Pointer left canvas — clear hover immediately
-        if (req.event.type === "pointerleave" || req.x === -1) {
-          if (hoverTimer) {
-            clearTimeout(hoverTimer);
-            hoverTimer = null;
-          }
-          origPick();
-          return;
-        }
-
-        // Drag / orbit active — never pick during camera navigation
-        if (req.event.leftButton || req.event.rightButton) {
-          if (hoverTimer) {
-            clearTimeout(hoverTimer);
-            hoverTimer = null;
-          }
-          req.event = null;
-          return;
-        }
-
-        const savedX = req.x;
-        const savedY = req.y;
-        const savedRadius = req.radius;
-        const savedCanvasId = req.canvasId;
-        const savedEvent = req.event;
-        req.event = null;
-
-        if (hoverTimer) clearTimeout(hoverTimer);
-        hoverTimer = setTimeout(() => {
-          hoverTimer = null;
-          const currentReq = (this as any)._pickRequest;
-          if (currentReq) {
-            currentReq.x = savedX;
-            currentReq.y = savedY;
-            currentReq.radius = savedRadius;
-            currentReq.canvasId = savedCanvasId;
-            currentReq.event = savedEvent;
-            origPick();
-            (deck as any)?.redraw();
-          }
-        }, 75);
-      };
-    }
+    // Track pointer drags so hover picking never runs during camera navigation.
+    const down = () => { dragging = true; };
+    const up = () => { dragging = false; };
+    container.addEventListener("pointerdown", down);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
 
     onCleanup(() => {
-      if (hoverTimer) clearTimeout(hoverTimer);
+      container.removeEventListener("pointerdown", down);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      if (hoverFrame !== null) cancelAnimationFrame(hoverFrame);
       deck?.finalize();
     });
   });
 
-  // Tracks props.data, props.filter, props.plateXRange, props.plateZRange,
-  // props.zoneFilter, props.outcomeFilter, props.selectedTypes, and picked():
-  // a slider drag or filter toggle only rebinds DataFilterExtension uniforms
-  // — zero JavaScript array traversal on the interaction path — and a pick
-  // only re-evaluates the per-datum getWidth accessor via updateTriggers.
+  // Base layers. Tracks data, filters and layer toggles: a slider drag or
+  // filter toggle only rebinds DataFilterExtension uniforms (memoized filter
+  // props, no array traversal). Hover/pin and playback frames are NOT tracked
+  // here (flightProgress is read untracked while playing).
   createEffect(() => {
     if (!deck) return;
     const d = props.data;
-    deck.setProps({
-      layers: d
-        ? buildLayers({
-            pitches: d.pitches,
-            speedRange: props.filter,
-            plateXRange: props.plateXRange,
-            plateZRange: props.plateZRange,
-            zoneFilter: props.zoneFilter,
-            outcomeFilter: props.outcomeFilter,
-            selectedTypes: props.selectedTypes ?? null,
-            picked: picked() ?? pinned(),
-            onHover: handlePick,
-            flightProgress: props.flightProgress,
-            showTunneling: props.showTunneling,
-            showGhostBreak: props.showGhostBreak,
-            showReleasePoints: props.showReleasePoints,
-            showPlateCrossings: props.showPlateCrossings,
-            pairedTypes: props.pairedTypes,
-            arsenalCentroids: props.arsenalCentroids,
-            showContactSim: props.showContactSim,
-            batSpeed: props.batSpeed,
-            attackAngleDeg: props.attackAngleDeg,
-            showDispersion: props.showDispersion,
-            releaseDispersion: props.releaseDispersion,
-            showHeatmap: props.showHeatmap,
-            heatmapCells: props.heatmapCells,
-          })
-        : [],
+    const playing = !!props.isPlaying;
+    const flightProgress = playing ? untrack(() => props.flightProgress) : props.flightProgress;
+    baseOpts = d
+      ? {
+          pitches: d.pitches,
+          speedRange: props.filter,
+          plateXRange: props.plateXRange,
+          plateZRange: props.plateZRange,
+          zoneFilter: props.zoneFilter,
+          outcomeFilter: props.outcomeFilter,
+          selectedTypes: props.selectedTypes ?? null,
+          onHover: handleHover,
+          flightProgress,
+          isPlaying: playing,
+          showTunneling: props.showTunneling,
+          showGhostBreak: props.showGhostBreak,
+          showReleasePoints: props.showReleasePoints,
+          showPlateCrossings: props.showPlateCrossings,
+          pairedTypes: props.pairedTypes,
+          arsenalCentroids: props.arsenalCentroids,
+          showDispersion: props.showDispersion,
+          releaseDispersion: props.releaseDispersion,
+          showHeatmap: props.showHeatmap,
+          heatmapCells: props.heatmapCells,
+        }
+      : null;
+    baseLayers = baseOpts ? buildLayers(baseOpts) : [];
+    pushLayers();
+  });
+
+  // Picked-highlight layers: a hover or pin swaps only these few layers.
+  createEffect(() => {
+    const pk = picked() ?? pinned();
+    pickedList = props.data
+      ? pickedLayers(pk, {
+          showContactSim: props.showContactSim,
+          batSpeed: props.batSpeed,
+          attackAngleDeg: props.attackAngleDeg,
+        })
+      : [];
+    pushLayers();
+  });
+
+  // Flight playback: one rAF loop while playing. Each frame rebuilds the base
+  // list with a new flightProgress; only the TripsLayer's currentTime uniform
+  // differs, so deck.gl re-uploads nothing. Progress is published to Solid at
+  // ~10 Hz so the slider follows without re-running the layer effects.
+  createEffect(() => {
+    if (!props.isPlaying) return;
+    let progress = untrack(() => props.flightProgress) ?? 1;
+    // The last value written to App's signal: anything else in props.flightProgress
+    // is an external seek (the slider) that we adopt instead of overwriting.
+    let lastPublished = progress;
+    let last = performance.now();
+    let lastPublishTime = last;
+    let id = 0;
+    const publish = () => {
+      lastPublished = progress;
+      props.onFlightProgress?.(progress);
+    };
+    const tick = (now: number) => {
+      const external = props.flightProgress;
+      if (external !== undefined && external !== lastPublished) {
+        progress = external;
+        lastPublished = external;
+      }
+      progress += (now - last) / 1000 / FLIGHT_SECONDS;
+      last = now;
+      if (progress >= 1) progress = 0;
+      if (baseOpts && deck) {
+        baseLayers = buildLayers({ ...baseOpts, flightProgress: progress, isPlaying: true });
+        pushLayers();
+      }
+      if (now - lastPublishTime >= PROGRESS_PUBLISH_MS) {
+        lastPublishTime = now;
+        publish();
+      }
+      id = requestAnimationFrame(tick);
+    };
+    id = requestAnimationFrame(tick);
+    onCleanup(() => {
+      cancelAnimationFrame(id);
+      // Land the paused ball exactly where the animation stopped, unless
+      // something else (a scenario switch, a slider seek) already moved it.
+      const external = props.flightProgress;
+      if (external !== undefined && external === lastPublished) publish();
     });
   });
 
@@ -290,42 +330,109 @@ export default function Visualizer(props: VisualizerProps) {
     deck?.setProps({ controller: controllerOptions(mode) });
   });
 
-  // A new group of pitches invalidates the pinned one.
-  createEffect(() => {
-    void props.data;
-    setPinned(null);
-  });
-
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPinned(null);
+      if (e.key === "Escape") props.onPin?.(null);
     };
     window.addEventListener("keydown", onKey);
     onCleanup(() => window.removeEventListener("keydown", onKey));
   });
 
-  const tooltip = () => pitchTooltip(picked(), props.batSpeed, props.attackAngleDeg, props.showContactSim);
+  // Keyboard on the focused canvas: arrows step the pinned pitch through the
+  // visible set; Up/Down zoom, Shift+Up/Down orbit (through the clamped applyView).
+  const onCanvasKey = (e: KeyboardEvent) => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      const next = stepPitch(visible(), pinned(), e.key === "ArrowRight" ? 1 : -1);
+      if (next) props.onPin?.(next);
+      return;
+    }
+    const step = keyboardCameraStep(view, e.key, e.shiftKey);
+    if (step) {
+      e.preventDefault();
+      applyView(clampViewState(step));
+    }
+  };
+
+  const tooltip = createMemo(() => pitchTooltip(picked(), props.batSpeed, props.attackAngleDeg, props.showContactSim));
+
+  // A new group of pitches invalidates the hovered one (App clears the pinned one).
+  createEffect(() => {
+    void props.data;
+    setPicked(null);
+  });
+
+  // Measure the tooltip element itself (no fixed card size) and clamp it inside the canvas.
+  createEffect(() => {
+    tooltip();
+    const raw = tipRaw();
+    if (!tipEl) return;
+    const pos = clampTooltipPos(raw.x, raw.y, tipEl.offsetWidth, tipEl.offsetHeight, container.clientWidth, container.clientHeight);
+    tipEl.style.left = `${pos.x}px`;
+    tipEl.style.top = `${pos.y}px`;
+  });
+
+  const shownText = () => `${visible().length} of ${props.data?.pitches.length ?? 0} pitches shown; use left and right arrow keys to step through pitches`;
 
   return (
-    <div class="app-viz" style={{ position: "relative", flex: "1", width: "100%", overflow: "hidden" }}>
+    <div class="app-viz">
       <div
         ref={container}
-        style={{ width: "100%", height: "100%", overflow: "hidden" }}
-        aria-label={`orbit-target:${ORBIT_TARGET.join(",")}`}
+        class="viz-canvas"
+        role="group"
+        tabindex="0"
+        aria-label="3D pitch trajectories"
+        aria-describedby={descId}
+        onKeyDown={onCanvasKey}
       />
-      <Show when={pinned()}>
-        {(p) => (
-          <PlayerCard
-            pitch={p()}
-            pitches={props.data?.pitches ?? []}
-            synthetic={props.synthetic ?? true}
-            storylines={props.storylines}
-            storylineDate={props.storylineDate}
-            onClose={() => setPinned(null)}
-          />
-        )}
-      </Show>
+      <span id={descId} class="sr-only">{shownText()}</span>
+
+      <div class="viz-dock-left">
+        <Suspense>
+          <Show when={props.showPairComparison && props.arsenalCentroids}>
+            <PairComparisonPanel
+              availableTypes={props.availableTypes ?? []}
+              pairedTypes={props.pairedTypes ?? null}
+              onSelectPairedTypes={(pair) => props.onSelectPairedTypes?.(pair)}
+              centroids={props.arsenalCentroids!}
+              onClose={() => props.onTogglePairComparison?.(false)}
+            />
+          </Show>
+          <Show when={props.showFatigue && props.fatigueBuckets}>
+            <FatiguePanel
+              buckets={props.fatigueBuckets!}
+              dispersion={props.releaseDispersion}
+              pitcherLabel={props.fatiguePitcherLabel}
+              pitcherCount={props.fatiguePitcherCount}
+              onClose={() => props.onToggleFatigue?.(false)}
+            />
+          </Show>
+        </Suspense>
+      </div>
+
+      <div class="viz-dock-right">
+        <Suspense>
+          <Show when={props.showBreakChart && props.data?.pitches}>
+            <BreakChart pitches={visible() as PitchDatum[]} picked={picked() ?? pinned()} onPick={(p) => setPicked(p)} />
+          </Show>
+        </Suspense>
+        <Show when={pinned()}>
+          {(p) => (
+            <PlayerCard
+              pitch={p()}
+              pitches={visible()}
+              synthetic={props.synthetic ?? true}
+              storylines={props.storylines}
+              storylineDate={props.storylineDate}
+              onClose={() => props.onPin?.(null)}
+            />
+          )}
+        </Show>
+      </div>
+
       <div
+        class="viz-hint"
         aria-hidden="true"
         style={{
           position: "absolute",
@@ -341,107 +448,72 @@ export default function Visualizer(props: VisualizerProps) {
           ? "Scroll: zoom · Drag: pan · Shift+drag: rotate"
           : "Scroll: zoom · Drag: rotate · Shift+drag: pan"}
       </div>
-      <Show when={props.showBreakChart && props.data?.pitches}>
-        <BreakChart
-          pitches={props.data!.pitches}
-          picked={picked()}
-          onPick={(p) => setPicked(p)}
-        />
-      </Show>
-      <Show when={props.showPairComparison && props.arsenalCentroids}>
-        <PairComparisonPanel
-          availableTypes={props.availableTypes ?? []}
-          pairedTypes={props.pairedTypes ?? null}
-          onSelectPairedTypes={(pair) => props.onSelectPairedTypes?.(pair)}
-          centroids={props.arsenalCentroids!}
-          onClose={() => props.onTogglePairComparison?.(false)}
-        />
-      </Show>
-      <Show when={props.showFatigue && props.fatigueBuckets}>
-        <FatiguePanel
-          buckets={props.fatigueBuckets!}
-          dispersion={props.releaseDispersion}
-          onClose={() => props.onToggleFatigue?.(false)}
-        />
-      </Show>
-      {/* aria-live status: announces the hovered pitch for screen readers.
-          Visually hidden via inline styles (no global CSS in this app). */}
-      <span
-        role="status"
-        aria-live="polite"
-        style={{
-          position: "absolute",
-          width: "1px",
-          height: "1px",
-          padding: "0",
-          margin: "-1px",
-          overflow: "hidden",
-          clip: "rect(0, 0, 0, 0)",
-          "white-space": "nowrap",
-          border: "0",
-        }}
-      >
-        {picked() ? pitchTooltipSummary(picked()!, props.batSpeed, props.attackAngleDeg, props.showContactSim) : ""}
+      {/* Announces the pinned pitch (not every hover). */}
+      <span class="sr-only" aria-live="polite">
+        {pinned() ? pitchTooltipSummary(pinned()!, props.batSpeed, props.attackAngleDeg, props.showContactSim) : ""}
       </span>
       {/* keyed: capture the tooltip once, so a hover that ends cannot re-read null in the inner effects */}
       <Show when={tooltip()} keyed>
         {(t) => (
-        <div
-          role="presentation"
-          style={{
-            position: "absolute",
-            top: `${tipPos().y}px`,
-            left: `${tipPos().x}px`,
-            width: "160px",
-            "pointer-events": "none",
-            background: "rgba(15, 15, 20, 0.88)",
-            color: "#eee",
-            padding: "6px 10px",
-            "border-radius": "6px",
-            "font-size": "12px",
-            "font-family": "monospace",
-            "white-space": "pre",
-            "box-shadow": "0 4px 12px rgba(0,0,0,0.5)",
-          }}
-        >
-          <div>
-            <span
-              style={{
-                display: "inline-block",
-                width: "10px",
-                height: "10px",
-                "border-radius": "2px",
-                "margin-right": "6px",
-                background: `rgb(${t.color.join(",")})`,
-              }}
-            />
-            {t.pitchType}
-          </div>
-          <div>{t.speed}</div>
-          {t.spin && <div style={{ color: "#a0e0a0" }}>{t.spin}</div>}
-          <div>{t.location}</div>
-          {t.break && <div style={{ color: "#ffd700" }}>{t.break}</div>}
-          {t.tunnel && <div style={{ color: "#ffd700" }}>{t.tunnel}</div>}
-          {t.release && <div style={{ color: "#80d0ff" }}>{t.release}</div>}
-          {t.extension && <div style={{ color: "#80d0ff" }}>{t.extension}</div>}
-          {t.zoneBounds && <div style={{ color: "#a0e0ff" }}>{t.zoneBounds}</div>}
-          <div>{t.zone}</div>
-          {t.outcome && <div>{t.outcome}</div>}
-          <Show when={cursorFlight(picked(), cursorY())}>
-            {(c) => (
-              <div style={{ color: "#c8c8ff" }}>
-                {c().distance}
-                {"\n"}
-                {c().remaining}
+          <div
+            ref={(el) => { tipEl = el; }}
+            role="presentation"
+            style={{
+              position: "absolute",
+              top: `${tipRaw().y}px`,
+              left: `${tipRaw().x}px`,
+              width: "max-content",
+              "max-width": "280px",
+              "pointer-events": "none",
+              "z-index": "15",
+              background: "rgba(15, 15, 20, 0.92)",
+              color: "#eee",
+              padding: "6px 10px",
+              "border-radius": "6px",
+              "font-size": "12px",
+              "font-family": "monospace",
+              "white-space": "pre",
+              "box-shadow": "0 4px 12px rgba(0,0,0,0.5)",
+            }}
+          >
+            <div>
+              <span
+                style={{
+                  display: "inline-block",
+                  width: "10px",
+                  height: "10px",
+                  "border-radius": "2px",
+                  "margin-right": "6px",
+                  background: `rgb(${t.color.join(",")})`,
+                }}
+              />
+              {t.pitchType}
+            </div>
+            <div>{t.speed}</div>
+            {t.spin && <div style={{ color: "#a0e0a0" }}>{t.spin}</div>}
+            <div>{t.location}</div>
+            {t.break && <div style={{ color: THEME.gold }}>{t.break}</div>}
+            {t.tunnel && <div style={{ color: THEME.gold }}>{t.tunnel}</div>}
+            {t.release && <div style={{ color: "#80d0ff" }}>{t.release}</div>}
+            {t.extension && <div style={{ color: "#80d0ff" }}>{t.extension}</div>}
+            {t.zoneBounds && <div style={{ color: "#a0e0ff" }}>{t.zoneBounds}</div>}
+            <div>{t.zone}</div>
+            {t.outcome && <div>{t.outcome}</div>}
+            <Show when={cursorFlight(picked(), cursorY())}>
+              {(c) => (
+                <div style={{ color: "#c8c8ff" }}>
+                  {c().distance}
+                  {"\n"}
+                  {c().remaining}
+                </div>
+              )}
+            </Show>
+            {t.simulatedContact && (
+              <div style={{ color: "#ff99ff", "margin-top": "3px", "border-top": `1px solid ${THEME.border}`, "padding-top": "2px" }}>
+                {t.simulatedContact}
               </div>
             )}
-          </Show>
-          {t.simulatedContact && (
-            <div style={{ color: "#ff99ff", "margin-top": "3px", "border-top": "1px solid #444", "padding-top": "2px" }}>
-              {t.simulatedContact}
-            </div>
-          )}
-        </div>
+          </div>
         )}
       </Show>
     </div>

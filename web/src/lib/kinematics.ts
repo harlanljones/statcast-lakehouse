@@ -136,10 +136,53 @@ export function breakVectorSegment(p: PitchKinematics): [[number, number, number
 }
 
 /**
- * Extension in feet from the pitching rubber (60.5 ft) to release point.
+ * Move the Statcast release parameters from the y = 50 ft measurement plane to
+ * the actual release point.
+ *
+ * Statcast reports x0/y0/z0 (and the velocities/accelerations) at y = 50 ft,
+ * not at the pitcher's hand. Given the pitcher's extension (ft in front of the
+ * rubber) the hand is at yRel = 60.5 - extension, so we run the constant-
+ * acceleration model backwards to the time t <= 0 (closest to zero) at which
+ * y(t) = yRel and re-express the nine parameters there. y0 is set to yRel
+ * exactly; the remaining time to the plate grows by |t|.
+ *
+ * Returns p unchanged when extension is missing, non-finite, outside (0, 12)
+ * ft, or when no real root exists. Mirrors ingestion/worker.py
+ * extrapolate_to_release exactly.
  */
-export function releaseExtension(y0: number): number {
-  return PITCHING_RUBBER_Y_FT - y0;
+export function extrapolateToRelease(
+  p: PitchKinematics,
+  extensionFt: number | null | undefined,
+): PitchKinematics {
+  if (extensionFt == null || !Number.isFinite(extensionFt) || extensionFt <= 0 || extensionFt >= 12) return p;
+  const yRel = PITCHING_RUBBER_Y_FT - extensionFt;
+  const a = 0.5 * p.ay;
+  const b = p.vy0;
+  const c = p.y0 - yRel;
+  let roots: number[];
+  if (Math.abs(a) < 1e-12) {
+    if (b === 0) return p;
+    roots = [-c / b];
+  } else {
+    const disc = b * b - 4 * a * c;
+    if (disc < 0) return p;
+    const sq = Math.sqrt(disc);
+    roots = [(-b - sq) / (2 * a), (-b + sq) / (2 * a)];
+  }
+  const past = roots.filter((r) => r <= 0);
+  if (past.length === 0) return p;
+  const t = Math.max(...past);
+  return {
+    x0: p.x0 + p.vx0 * t + 0.5 * p.ax * t * t,
+    y0: yRel,
+    z0: p.z0 + p.vz0 * t + 0.5 * p.az * t * t,
+    vx0: p.vx0 + p.ax * t,
+    vy0: p.vy0 + p.ay * t,
+    vz0: p.vz0 + p.az * t,
+    ax: p.ax,
+    ay: p.ay,
+    az: p.az,
+  };
 }
 
 /**

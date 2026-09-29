@@ -1,7 +1,7 @@
 import { render } from "solid-js/web";
-import { batch, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { batch, createEffect, createMemo, createSignal, onMount, Show } from "solid-js";
+import "./app.css";
 import Visualizer from "./components/Visualizer";
-import ControlPanel from "./components/ControlPanel";
 import {
   fetchDatePartitions,
   fetchPitches,
@@ -9,23 +9,30 @@ import {
   type PitchTable,
 } from "./lib/arrow-loader";
 import { fetchPitcherStorylines, type PitcherStoryline } from "./lib/storylines";
-import { extractGameDate, distinctPitchTypes, computeWhiffRate } from "./lib/data-status";
+import { extractGameDate, distinctPitchTypes, computeWhiffRate, formatDataStatus } from "./lib/data-status";
 import {
   CAMERA_VIEWS,
   type CameraViewName,
   type ZoneFilter,
   type OutcomeFilter,
-  isInsideStrikeZone,
+  type PitchDatum,
+  passesFilters,
 } from "./lib/deck-layers";
 import { computeArsenalCentroids } from "./lib/arsenal";
-import { computeReleaseDispersion, computeFatigueBuckets } from "./lib/dispersion";
+import {
+  computeReleaseDispersion,
+  computeFatigueBuckets,
+  distinctPitcherCount,
+  fatiguePitcher,
+} from "./lib/dispersion";
 import { computeStrikeZoneHeatmap, type HeatmapMode } from "./lib/heatmap";
 
 import ScenarioRail from "./components/ScenarioRail";
 import StoryCaption from "./components/StoryCaption";
-import { SCENE_ACCENT } from "./components/ui";
+import { SCENE_ACCENT } from "./lib/theme";
 import LensPanel from "./components/LensPanel";
 import {
+  ALL_LENSES,
   DEFAULT_SCENARIO_ID,
   LIVE_PRESET,
   SCENARIOS,
@@ -38,14 +45,15 @@ import {
   type LayerKey,
   type ScenarioPreset,
 } from "./lib/scenarios";
-import { applyPresetTo } from "./lib/scenario-state";
+import { applyPresetFiltersTo, applyPresetTo } from "./lib/scenario-state";
+import { nextPlayState, prefersReducedMotion } from "./lib/playback";
 import type { DragMode } from "./lib/camera";
-import { isSyntheticSource, type DataSource } from "./lib/player-card";
+import { isSyntheticSource, playerLabel, type DataSource } from "./lib/player-card";
 export default function App() {
   const [pitchData, setPitchData] = createSignal<PitchTable | null>(null);
   const [speedRange, setSpeedRange] = createSignal<[number, number]>([70, 105]);
-  const [plateXRange, setPlateXRange] = createSignal<[number, number]>([-2.5, 2.5]);
-  const [plateZRange, setPlateZRange] = createSignal<[number, number]>([0, 5]);
+  const [plateXRange, setPlateXRange] = createSignal<[number, number]>([-3, 3]);
+  const [plateZRange, setPlateZRange] = createSignal<[number, number]>([-1, 6]);
   const [zoneFilter, setZoneFilter] = createSignal<ZoneFilter>("all");
   const [outcomeFilter, setOutcomeFilter] = createSignal<OutcomeFilter>("all");
   const [view, setView] = createSignal<CameraViewName>("Catcher");
@@ -85,65 +93,66 @@ export default function App() {
   const [heatmapMode, setHeatmapMode] = createSignal<HeatmapMode>("density");
   const [activeScenarioId, setActiveScenarioId] = createSignal<ScenarioId | null>(null);
   const [showAllControls, setShowAllControls] = createSignal<boolean>(false);
+  // Pitch pinned to the player card (click or arrow keys); the fatigue panel follows its pitcher.
+  const [pinned, setPinned] = createSignal<PitchDatum | null>(null);
   const activeScenario = createMemo(() => {
     const id = activeScenarioId();
     return id ? scenarioById(id) ?? null : null;
   });
 
-  // Display-only derived values (badge + chips). These run once per signal
-  // change, never per frame; the layer data itself is never filtered in JS.
+  // The pitches the GPU filter lets through, mirrored on the CPU with the same
+  // predicate (passesFilters) for counts and the 2D analysis panels. Memoized on
+  // state change, not per frame; the 3D layers always receive the full array and
+  // filter on the GPU.
+  const visiblePitches = createMemo<PitchDatum[]>(() => {
+    const all = pitchData()?.pitches ?? [];
+    const opts = {
+      speedRange: speedRange(),
+      plateXRange: plateXRange(),
+      plateZRange: plateZRange(),
+      zoneFilter: zoneFilter(),
+      outcomeFilter: outcomeFilter(),
+      selectedTypes: selectedTypes(),
+    };
+    return all.filter((p) => passesFilters(p, opts));
+  });
+  const activeCount = () => visiblePitches().length;
+
+  // Display-only derived values (badge + chips). The type chips list every
+  // loaded type (so a deselected one can be switched back on); the analysis
+  // panels follow the filters.
   const availableTypes = createMemo(() => distinctPitchTypes(pitchData()?.pitches ?? []));
   const gameDate = createMemo(() => {
     const d = pitchData();
     return d ? extractGameDate(d.table) : null;
   });
-  const whiffRate = createMemo(() => {
-    const pitches = pitchData()?.pitches ?? [];
-    return computeWhiffRate(pitches);
-  });
+  const whiffRate = createMemo(() => computeWhiffRate(visiblePitches()));
   const arsenalCentroids = createMemo(() => {
     if (!showPairComparison() && !pairedTypes()) return null;
-    const pitches = pitchData()?.pitches ?? [];
-    return computeArsenalCentroids(pitches);
+    return computeArsenalCentroids(visiblePitches());
   });
   const releaseDispersion = createMemo(() => {
     if (!showDispersion()) return null;
-    const pitches = pitchData()?.pitches ?? [];
-    return computeReleaseDispersion(pitches, 1.5);
+    return computeReleaseDispersion(visiblePitches(), 1.5);
+  });
+  // Fatigue is per pitcher: the pinned pitch's pitcher, else the one who threw most.
+  const fatigueInfo = createMemo(() => {
+    const vis = visiblePitches();
+    const id = fatiguePitcher(vis, pinned()?.pitcherId);
+    const sample = id == null ? undefined : vis.find((p) => p.pitcherId === id);
+    return {
+      id,
+      label: id == null ? undefined : playerLabel("Pitcher", id, isSyntheticSource(dataSource()), sample?.pitcherName),
+      count: distinctPitcherCount(vis),
+    };
   });
   const fatigueBuckets = createMemo(() => {
     if (!showFatigue()) return [];
-    const pitches = pitchData()?.pitches ?? [];
-    return computeFatigueBuckets(pitches, 25);
+    return computeFatigueBuckets(visiblePitches(), 25, fatigueInfo().id);
   });
   const heatmapCells = createMemo(() => {
     if (!showHeatmap()) return null;
-    const pitches = pitchData()?.pitches ?? [];
-    return computeStrikeZoneHeatmap(pitches, heatmapMode());
-  });
-
-  const activeCount = createMemo(() => {
-    const pitches = pitchData()?.pitches ?? [];
-    const sel = selectedTypes();
-    const [speedLo, speedHi] = speedRange();
-    const [xLo, xHi] = plateXRange();
-    const [zLo, zHi] = plateZRange();
-    const zf = zoneFilter();
-    const of = outcomeFilter();
-
-    return pitches.filter((p) => {
-      if (p.releaseSpeed < speedLo || p.releaseSpeed > speedHi) return false;
-      const x = p.plateX ?? p.pfxX ?? 0;
-      const z = p.plateZ ?? p.pfxZ ?? 0;
-      if (x < xLo || x > xHi) return false;
-      if (z < zLo || z > zHi) return false;
-      if (sel.size > 0 && !sel.has(p.pitchType)) return false;
-      if (zf === "in_zone" && !isInsideStrikeZone(x, z)) return false;
-      if (zf === "out_of_zone" && isInsideStrikeZone(x, z)) return false;
-      if (of === "swings" && !p.isSwing) return false;
-      if (of === "whiffs" && !p.isWhiff) return false;
-      return true;
-    }).length;
+    return computeStrikeZoneHeatmap(visiblePitches(), heatmapMode());
   });
 
   const toggleType = (code: string) => {
@@ -293,59 +302,63 @@ export default function App() {
 
 
   const togglePlay = () => {
-    setIsPlaying((prev) => !prev);
+    const next = nextPlayState(isPlaying(), prefersReducedMotion());
+    batch(() => {
+      setIsPlaying(next.playing);
+      if (next.progress !== undefined) setFlightProgress(next.progress);
+    });
   };
 
+  // Reset filters: re-apply the active scenario's preset filters only (view and layers stay).
+  const resetFilters = () =>
+    applyPresetFiltersTo((activeScenario()?.preset ?? LIVE_PRESET), {
+      setSpeedRange,
+      setPlateXRange,
+      setPlateZRange,
+      setZoneFilter,
+      setOutcomeFilter,
+      setSelectedTypes,
+    });
+
   onMount(() => {
-    // Date partitions only feed the Live data drawer; failure is non-fatal.
+    // Date partitions only feed the Live data card; failure is non-fatal.
     if (!STATIC_SCENARIOS) fetchDatePartitions().then(setDatePartitions).catch(() => {});
     selectScenario(parseScenarioParam(location.search) ?? DEFAULT_SCENARIO_ID);
   });
 
+  // A new group of pitches invalidates the pinned one.
   createEffect(() => {
-    if (!isPlaying()) return;
-
-    let lastTime = performance.now();
-    let animId: number;
-
-    const tick = (now: number) => {
-      const dt = (now - lastTime) / 1000;
-      lastTime = now;
-      setFlightProgress((prev) => {
-        const next = prev + dt / 1.2;
-        return next >= 1.0 ? 0.0 : next;
-      });
-      animId = requestAnimationFrame(tick);
-    };
-
-    animId = requestAnimationFrame(tick);
-    onCleanup(() => {
-      cancelAnimationFrame(animId);
-    });
+    void pitchData();
+    setPinned(null);
   });
 
+  const layerState = (): Record<LayerKey, boolean> => ({
+    tunneling: showTunneling(),
+    ghostBreak: showGhostBreak(),
+    releasePoints: showReleasePoints(),
+    plateCrossings: showPlateCrossings(),
+    breakChart: showBreakChart(),
+    pairComparison: showPairComparison(),
+    contactSim: showContactSim(),
+    dispersion: showDispersion(),
+    fatigue: showFatigue(),
+    heatmap: showHeatmap(),
+  });
+  // A scenario shows its own lenses; "All controls" (and Live data) show every lens plus the layer toggles.
+  const controlsOpen = () => showAllControls() || activeScenario() !== null;
+  const lensIds = () => (showAllControls() || !activeScenario() ? ALL_LENSES : activeScenario()!.lens);
+
   return (
-    <div class="app-shell" style={{ width: "100vw", height: "100vh", display: "flex", "flex-direction": "column", overflow: "hidden", "--accent": SCENE_ACCENT[activeScenarioId() ?? ""] ?? "#60a5fa" }}>
-      <header
-        style={{
-          position: "relative",
-          "z-index": "20",
-          background: "rgba(10, 15, 30, 0.95)",
-          "border-bottom": "1px solid rgba(255, 255, 255, 0.12)",
-          padding: "8px 16px",
-          display: "flex",
-          "align-items": "center",
-          "justify-content": "space-between",
-        }}
-      >
+    <div class="app-shell" style={{ "--accent": SCENE_ACCENT[activeScenarioId() ?? ""] ?? "#60a5fa" }}>
+      <header class="app-header">
         <div style={{ display: "flex", "align-items": "baseline", gap: "12px" }}>
-          <strong style={{ "font-size": "15px" }}>Statcast Lakehouse</strong>
-          <span class="app-subtitle" style={{ "font-size": "12px", color: "#94a3b8" }}>GPU-filtered 3D pitch exploration</span>
+          <h1 class="app-title">Statcast Lakehouse</h1>
+          <span class="app-subtitle">GPU-filtered 3D pitch exploration</span>
           <Show when={isLoading()}>
-            <span role="status" style={{ color: "#60a5fa", "font-size": "12px" }}>Loading…</span>
+            <span role="status" style={{ color: "var(--accent)", "font-size": "12px" }}>Loading…</span>
           </Show>
           <Show when={errorMessage()}>
-            <span role="alert" style={{ color: "#f87171", "font-size": "12px" }}>{errorMessage()}</span>
+            <span role="alert" style={{ color: "var(--bad)", "font-size": "12px" }}>{errorMessage()}</span>
           </Show>
         </div>
         <button class="ui-ctl ui-ghost" aria-pressed={showAllControls()} onClick={() => setShowAllControls((v) => !v)}>
@@ -353,7 +366,7 @@ export default function App() {
         </button>
       </header>
 
-      <div class="app-body" style={{ flex: "1", display: "flex", "min-height": "0" }}>
+      <div class="app-body">
         <ScenarioRail
           scenarios={SCENARIOS}
           activeId={activeScenarioId()}
@@ -361,15 +374,24 @@ export default function App() {
           liveActive={activeScenarioId() === null}
           onLive={selectLive}
           showLive={!STATIC_SCENARIOS}
+          datePartitions={datePartitions()}
+          selectedDate={selectedDate()}
+          onSelectDate={handleSelectDate}
+          onLoadSample={handleLoadSample}
+          loading={isLoading()}
         />
-        <main style={{ flex: "1", display: "flex", "flex-direction": "column", "min-width": "0" }}>
+        <main class="app-main">
           <StoryCaption
             scenario={activeScenario()}
             activeCount={activeCount()}
             totalCount={pitchData()?.pitches.length ?? 0}
+            whiffRate={whiffRate()}
+            dataStatus={formatDataStatus(pitchData()?.pitches.length ?? 0, gameDate())}
+            onResetFilters={resetFilters}
           />
           <Visualizer
             data={pitchData()}
+            visiblePitches={visiblePitches()}
             filter={speedRange()}
             plateXRange={plateXRange()}
             plateZRange={plateZRange()}
@@ -380,7 +402,11 @@ export default function App() {
             dragMode={dragMode()}
             resetKey={resetKey()}
             synthetic={isSyntheticSource(dataSource())}
+            pinned={pinned()}
+            onPin={setPinned}
             flightProgress={isPlaying() || flightProgress() < 1.0 ? flightProgress() : undefined}
+            isPlaying={isPlaying()}
+            onFlightProgress={setFlightProgress}
             showTunneling={showTunneling()}
             showGhostBreak={showGhostBreak()}
             showReleasePoints={showReleasePoints()}
@@ -399,111 +425,52 @@ export default function App() {
             releaseDispersion={releaseDispersion()}
             showFatigue={showFatigue()}
             fatigueBuckets={fatigueBuckets()}
+            fatiguePitcherLabel={fatigueInfo().label}
+            fatiguePitcherCount={fatigueInfo().count}
             onToggleFatigue={setShowFatigue}
             showHeatmap={showHeatmap()}
             heatmapCells={heatmapCells()}
             storylines={storylines()}
             storylineDate={selectedDate() || undefined}
           />
-          <Show when={activeScenario()}>
-            {(s) => (
-              <LensPanel
-                lens={s().lens}
-                view={view()}
-                onView={selectView}
-                dragMode={dragMode()}
-                onDragMode={setDragMode}
-                onResetView={resetView}
-                isPlaying={isPlaying()}
-                onTogglePlay={togglePlay}
-                flightProgress={flightProgress()}
-                onFlightProgress={setFlightProgress}
-                availableTypes={availableTypes()}
-                selectedTypes={selectedTypes()}
-                onToggleType={toggleType}
-                speed={speedRange()}
-                onSpeed={setSpeedRange}
-                plateX={plateXRange()}
-                onPlateX={setPlateXRange}
-                plateZ={plateZRange()}
-                onPlateZ={setPlateZRange}
-                zoneFilter={zoneFilter()}
-                onZoneFilter={setZoneFilter}
-                outcomeFilter={outcomeFilter()}
-                onOutcomeFilter={setOutcomeFilter}
-                heatmapMode={heatmapMode()}
-                onHeatmapMode={setHeatmapMode}
-                batSpeed={batSpeed()}
-                onBatSpeed={setBatSpeed}
-                attackAngleDeg={attackAngleDeg()}
-                onAttackAngleDeg={setAttackAngleDeg}
-              />
-            )}
+          <Show when={controlsOpen()}>
+            <LensPanel
+              lens={lensIds()}
+              view={view()}
+              onView={selectView}
+              dragMode={dragMode()}
+              onDragMode={setDragMode}
+              onResetView={resetView}
+              isPlaying={isPlaying()}
+              onTogglePlay={togglePlay}
+              flightProgress={flightProgress()}
+              onFlightProgress={setFlightProgress}
+              availableTypes={availableTypes()}
+              selectedTypes={selectedTypes()}
+              onToggleType={toggleType}
+              speed={speedRange()}
+              onSpeed={setSpeedRange}
+              plateX={plateXRange()}
+              onPlateX={setPlateXRange}
+              plateZ={plateZRange()}
+              onPlateZ={setPlateZRange}
+              zoneFilter={zoneFilter()}
+              onZoneFilter={setZoneFilter}
+              outcomeFilter={outcomeFilter()}
+              onOutcomeFilter={setOutcomeFilter}
+              heatmapMode={heatmapMode()}
+              onHeatmapMode={setHeatmapMode}
+              batSpeed={batSpeed()}
+              onBatSpeed={setBatSpeed}
+              attackAngleDeg={attackAngleDeg()}
+              onAttackAngleDeg={setAttackAngleDeg}
+              showLayers={showAllControls()}
+              layers={layerState()}
+              onLayer={(key, on) => layerSetters[key](on)}
+            />
           </Show>
         </main>
       </div>
-
-      <Show when={showAllControls()}>
-        <div style={{ "max-height": "45vh", "overflow-y": "auto" }}>
-          <ControlPanel
-            speed={speedRange()}
-            onSpeed={setSpeedRange}
-            plateX={plateXRange()}
-            onPlateX={setPlateXRange}
-            plateZ={plateZRange()}
-            onPlateZ={setPlateZRange}
-            // Static build has no /pitches/sample: the drawer's load button reloads the active scenario.
-            onLoad={STATIC_SCENARIOS ? () => selectScenario(activeScenarioId() ?? DEFAULT_SCENARIO_ID) : handleLoadSample}
-            loading={isLoading()}
-            datePartitions={datePartitions()}
-            selectedDate={selectedDate()}
-            onSelectDate={handleSelectDate}
-            view={view()}
-            onView={selectView}
-            zoneFilter={zoneFilter()}
-            onZoneFilter={setZoneFilter}
-            outcomeFilter={outcomeFilter()}
-            onOutcomeFilter={setOutcomeFilter}
-            whiffRate={whiffRate()}
-            activeCount={activeCount()}
-            totalCount={pitchData()?.pitches.length ?? 0}
-            gameDate={gameDate()}
-            availableTypes={availableTypes()}
-            selectedTypes={selectedTypes()}
-            onToggleType={toggleType}
-            flightProgress={flightProgress()}
-            onFlightProgress={setFlightProgress}
-            isPlaying={isPlaying()}
-            onTogglePlay={togglePlay}
-            showTunneling={showTunneling()}
-            onToggleTunneling={setShowTunneling}
-            showGhostBreak={showGhostBreak()}
-            onToggleGhostBreak={setShowGhostBreak}
-            showReleasePoints={showReleasePoints()}
-            onToggleReleasePoints={setShowReleasePoints}
-            showPlateCrossings={showPlateCrossings()}
-            onTogglePlateCrossings={setShowPlateCrossings}
-            showBreakChart={showBreakChart()}
-            onToggleBreakChart={setShowBreakChart}
-            showPairComparison={showPairComparison()}
-            onTogglePairComparison={setShowPairComparison}
-            showContactSim={showContactSim()}
-            onToggleContactSim={setShowContactSim}
-            batSpeed={batSpeed()}
-            onBatSpeed={setBatSpeed}
-            attackAngleDeg={attackAngleDeg()}
-            onAttackAngleDeg={setAttackAngleDeg}
-            showDispersion={showDispersion()}
-            onToggleDispersion={setShowDispersion}
-            showFatigue={showFatigue()}
-            onToggleFatigue={setShowFatigue}
-            showHeatmap={showHeatmap()}
-            onToggleHeatmap={setShowHeatmap}
-            heatmapMode={heatmapMode()}
-            onHeatmapMode={setHeatmapMode}
-          />
-        </div>
-      </Show>
     </div>
   );
 }
