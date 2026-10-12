@@ -44,6 +44,7 @@ SCENARIO_ROWS = {
     "short-left-lines": 3576,
     "short-centre-fields": 3692,
     "deep-centre-fields": 3598,
+    "turf-fields": 3502,
 }
 
 

@@ -46,6 +46,7 @@ const SERVER_IDS = [
   "short-left-lines",
   "short-centre-fields",
   "deep-centre-fields",
+  "turf-fields",
 ];
 
 describe("real-game story catalog", () => {

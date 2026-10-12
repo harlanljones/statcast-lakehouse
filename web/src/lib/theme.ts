@@ -50,6 +50,7 @@ export const SCENE_ACCENT: Record<string, string> = {
   "short-left-lines": "#fca5a5",
   "short-centre-fields": "#a7f3d0",
   "deep-centre-fields": "#c4b5fd",
+  "turf-fields": "#fde68a",
   "hundred-pitch-starts": "#8b5cf6",
   "unclassified-pitches": "#d9f99d",
 };

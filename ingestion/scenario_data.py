@@ -162,6 +162,16 @@ DEEP_CENTRE_GAMES = (
     746469, 745818, 746382, 746949, 746950, 746466,
     746300, 746463, 746947, 746543, 746542, 746538,
 )
+# The artificial-turf parks (MLB venue endpoint, fieldInfo.turfType != Grass):
+# Tropicana Field, Rogers Centre, Chase Field, loanDepot park, Globe Life Field
+# and Mexico City's Estadio Alfredo Harp Helu, which is the one that is NOT
+# roofed and was the only turf venue with no regular-season game to take. Both
+# sources agree on the turf for all five used here. Twelve games, one per date,
+# every date unused.
+TURF_GAMES = (
+    744946, 746073, 744939, 746070, 744928, 744923,
+    745077, 745079, 746052, 746051, 747185, 744995,
+)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -187,6 +197,7 @@ GAME_IDS = (
     *SHORT_LEFT_LINES_GAMES,
     *SHORT_CENTRE_GAMES,
     *DEEP_CENTRE_GAMES,
+    *TURF_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -232,6 +243,7 @@ SWEEP_SCENARIOS = {
     "short-left-lines": SHORT_LEFT_LINES_GAMES,
     "short-centre-fields": SHORT_CENTRE_GAMES,
     "deep-centre-fields": DEEP_CENTRE_GAMES,
+    "turf-fields": TURF_GAMES,
 }
 
 

@@ -38,7 +38,8 @@ export type ScenarioId =
   | "under-a-roof"
   | "short-left-lines"
   | "short-centre-fields"
-  | "deep-centre-fields";
+  | "deep-centre-fields"
+  | "turf-fields";
 
 export type LayerKey =
   | "tunneling"
@@ -809,6 +810,29 @@ export const SCENARIOS: readonly Scenario[] = [
     preset: preset({
       view: "Batter",
       layers: { plateCrossings: true, spray: true },
+    }),
+  },
+  {
+    id: "turf-fields",
+    title: "Turf Fields",
+    dateLabel: "Apr 27 - Jul 6, 2024",
+    gameLabel: "Twelve games · 5 parks",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/744946/feed/live",
+    synthetic: false,
+    hook: "Twelve games on artificial turf - five of the six turf parks in MLB's venue data, the sixth being Mexico City's open-air stadium, which had no regular-season game to take.",
+    lookFor:
+      "3,502 tracked pitches, 1,714 swings and 398 whiffs across twelve games from April to July 2024 on "
+      + "artificial turf at five of the six turf parks in MLB's venue data — Tropicana Field, Rogers "
+      + "Centre, Chase Field, loanDepot park and Globe Life Field. 25 home runs were hit across the "
+      + "twelve and 633 pitches were put in play with measured contact data.",
+    tryThis:
+      "Switch the heatmap to Hard Hit % and see how the contact looks on turf, then compare it with a grass park in another slice.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Batter",
+      layers: { plateCrossings: true, heatmap: true },
+      heatmapMode: "hard_hit",
     }),
   },
 ];

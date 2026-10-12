@@ -56,6 +56,7 @@ SCENARIO_FILES = {
     "short-left-lines": "short-left-lines.arrow",
     "short-centre-fields": "short-centre-fields.arrow",
     "deep-centre-fields": "deep-centre-fields.arrow",
+    "turf-fields": "turf-fields.arrow",
 }
 
 
