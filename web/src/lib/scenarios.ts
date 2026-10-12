@@ -15,7 +15,8 @@ export type ScenarioId =
   | "cardinals-dodgers-opener"
   | "tigers-astros-june"
   | "yankees-athletics-2025"
-  | "twins-blue-jays-2026";
+  | "twins-blue-jays-2026"
+  | "season-sweep";
 
 export type LayerKey =
   | "tunneling"
@@ -320,6 +321,25 @@ export const SCENARIOS: readonly Scenario[] = [
       view: "Batter",
       layers: { plateCrossings: true, heatmap: true, fatigue: true },
       heatmapMode: "whiff_rate",
+    }),
+  },
+  {
+    id: "season-sweep",
+    title: "Six Games Across Three Seasons",
+    dateLabel: "Apr 15, 2024 – Sep 20, 2026",
+    gameLabel: "Six games · 2,040 pitches",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/778250/feed/live",
+    synthetic: false,
+    hook: "One game per period from the 2024, 2025 and 2026 seasons in a single slice.",
+    lookFor:
+      "Every tracked pitch from six games: 2,040 pitches, 52 pitchers, 99 batters, 14 pitch types and 959 swings (173 whiffs), from Yankee Stadium to PNC Park. One of the six is Cincinnati's 24–2 win in Baltimore on 2025-04-20.",
+    tryThis:
+      "Run the density heatmap over the whole sweep, then pick a single date partition in the Live data card to compare one game against the corpus.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Catcher",
+      layers: { plateCrossings: true, heatmap: true, dispersion: true },
     }),
   },
 ];

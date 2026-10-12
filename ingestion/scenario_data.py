@@ -16,7 +16,10 @@ import pyarrow as pa
 
 from ingestion.scenarios import DATA_DIR, SCENARIO_FILES, SLICE_SCHEMA
 
-GAME_IDS = (746011, 775300, 746679, 746165, 746381, 777972, 822829)
+# One game per period across the 2024, 2025 and 2026 seasons: the sweep slice
+# is the corpus-wide view (dates, teams, pitchers and pitch types at scale).
+SEASON_SWEEP_GAMES = (747053, 745720, 778250, 776740, 823384, 823570)
+GAME_IDS = (746011, 775300, 746679, 746165, 746381, 777972, 822829, *SEASON_SWEEP_GAMES)
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
 SNELL_GAME = 746679
@@ -35,6 +38,9 @@ WHOLE_GAME_SCENARIOS = {
     "yankees-athletics-2025": YANKEES_ATHLETICS_GAME,
     "twins-blue-jays-2026": TWINS_BLUE_JAYS_GAME,
 }
+
+# Slices that span several games (every tracked pitch of each).
+SWEEP_SCENARIOS = {"season-sweep": SEASON_SWEEP_GAMES}
 
 
 class UntrackedPitch(ValueError):
@@ -62,6 +68,8 @@ def _selected(scenario_id: str, game_id: int, play: dict) -> bool:
     result = play.get("result", {})
     if scenario_id in WHOLE_GAME_SCENARIOS:
         return game_id == WHOLE_GAME_SCENARIOS[scenario_id]
+    if scenario_id in SWEEP_SCENARIOS:
+        return game_id in SWEEP_SCENARIOS[scenario_id]
     if scenario_id == "ohtani-50-50":
         return game_id == OHTANI_GAME and batter == "Shohei Ohtani"
     if scenario_id == "ohtani-50th-home-run":

@@ -23,6 +23,7 @@ const SERVER_IDS = [
   "tigers-astros-june",
   "yankees-athletics-2025",
   "twins-blue-jays-2026",
+  "season-sweep",
 ];
 
 describe("real-game story catalog", () => {
@@ -36,7 +37,7 @@ describe("real-game story catalog", () => {
       expect(s.hook.length).toBeGreaterThan(0);
       expect(s.lookFor.length).toBeGreaterThan(0);
       expect(s.tryThis.length).toBeGreaterThan(0);
-      expect(s.dateLabel).toMatch(/^\w{3} \d{1,2}, \d{4}$/);
+      expect(s.dateLabel).toMatch(/\w{3} \d{1,2}, \d{4}/);
       expect(s.storyUrl).toMatch(/^https:\/\/www\.mlb\.com\//);
       expect(s.feedUrl).toMatch(/^https:\/\/statsapi\.mlb\.com\/api\/v1\.1\/game\//);
       expect(s.synthetic).toBe(false);

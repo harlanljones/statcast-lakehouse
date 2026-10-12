@@ -29,4 +29,5 @@ export const SCENE_ACCENT: Record<string, string> = {
   "tigers-astros-june": "#facc15",
   "yankees-athletics-2025": "#22d3ee",
   "twins-blue-jays-2026": "#f472b6",
+  "season-sweep": "#e879f9",
 };

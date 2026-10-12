@@ -17,18 +17,20 @@ EXPECTED_ROWS = {
     "tigers-astros-june": (746381, 357),
     "yankees-athletics-2025": (777972, 323),
     "twins-blue-jays-2026": (822829, 311),
+    "season-sweep": ((747053, 745720, 778250, 776740, 823384, 823570), 2040),
 }
 
 
 @pytest.mark.parametrize(("scenario_id", "identity"), EXPECTED_ROWS.items())
 def test_scenario_is_a_stable_schema_valid_slice_of_its_real_game(scenario_id, identity):
-    game_id, row_count = identity
+    game_ids, row_count = identity
+    expected_games = {game_ids} if isinstance(game_ids, int) else set(game_ids)
     table = scenarios.SCENARIOS[scenario_id]()
     assert table.num_rows == row_count
     assert table.schema.equals(scenarios.SLICE_SCHEMA)
     assert table.equals(scenarios.SCENARIOS[scenario_id]())
     rows = table.to_pylist()
-    assert {row["game_id"] for row in rows} == {game_id}
+    assert {row["game_id"] for row in rows} == expected_games
     assert len({row["pitch_id"] for row in rows}) == row_count
     assert all(len(row["pitch_id"]) == 36 for row in rows)
     assert all(not row["is_whiff"] or row["is_swing"] for row in rows)
