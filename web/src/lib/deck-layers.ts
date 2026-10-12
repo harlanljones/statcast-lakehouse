@@ -88,6 +88,13 @@ export interface PitchDatum {
    */
   pitchResult?: string;
   /**
+   * Outcome of the plate appearance this pitch belongs to ("Strikeout",
+   * "Single", "Home Run", ...), repeated on every pitch of that appearance —
+   * Savant's CSV does the same. It is NOT what this pitch did; that is
+   * pitchResult. Present verbatim, so it is shown as the feed spells it.
+   */
+  playEvent?: string;
+  /**
    * Observed batted-ball data (MLB's contact columns): measured exit velocity
    * (mph), launch angle (degrees), projected distance (feet) and batted-ball
    * class. Undefined unless the pitch was put in play.
@@ -339,7 +346,14 @@ export function diamondWireframeSegments(): WireSegment[] {
 type FilterRange4 = [[number, number], [number, number], [number, number], [number, number]];
 
 export type ZoneFilter = "all" | "in_zone" | "out_of_zone";
-export type OutcomeFilter = "all" | "swings" | "whiffs" | "balls" | "called_strikes";
+export type OutcomeFilter =
+  | "all"
+  | "swings"
+  | "whiffs"
+  | "balls"
+  | "called_strikes"
+  /** Every pitch of the plate appearances that ended in a home run. */
+  | "home_run_at_bats";
 
 /** The filter state shared by the GPU masks (buildLayers) and the CPU counts/panels (App). */
 /** The nine in-zone cells, numbered left to right with the top row first. */
@@ -505,6 +519,9 @@ function passesCriteria(d: PitchDatum, opts: CriteriaOpts): boolean {
   // called ball, and only the code tells a called strike from a ball.
   if (outcomeFilter === "balls" && d.pitchResult !== "ball" && d.pitchResult !== "ball_in_dirt") return false;
   if (outcomeFilter === "called_strikes" && d.pitchResult !== "called_strike") return false;
+  // At-bat level, not pitch level: this keeps every pitch of the appearances
+  // that ended in a home run, so the sequence that produced it stays together.
+  if (outcomeFilter === "home_run_at_bats" && d.playEvent !== "Home Run") return false;
   return true;
 }
 

@@ -1405,4 +1405,14 @@ describe("in-zone cells", () => {
     expect(passesFilters(datum({ pitchResult: "called_strike" }), balls)).toBe(false);
     expect(passesFilters(datum({}), { speedRange: [40, 105] })).toBe(true);
   });
+
+  it("keeps whole home-run at-bats, not just the pitch that left the yard", () => {
+    const hrs = { speedRange: [40, 105] as [number, number], outcomeFilter: "home_run_at_bats" as const };
+    // Every pitch of the appearance stays, including the takes before the swing.
+    expect(passesFilters(datum({ playEvent: "Home Run", pitchResult: "called_strike" }), hrs)).toBe(true);
+    expect(passesFilters(datum({ playEvent: "Home Run", pitchResult: "hit_into_play" }), hrs)).toBe(true);
+    expect(passesFilters(datum({ playEvent: "Strikeout" }), hrs)).toBe(false);
+    expect(passesFilters(datum({}), hrs)).toBe(false);
+    expect(passesFilters(datum({}), { speedRange: [40, 105] })).toBe(true);
+  });
 });

@@ -370,6 +370,10 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
         </Show>
         <div style={muted}>
           {pitchResult(props.pitch)} · plate ({props.pitch.plateX.toFixed(2)}, {props.pitch.plateZ.toFixed(2)}) ft
+          <Show when={props.pitch.playEvent}>
+            {/* The appearance's outcome, verbatim: "At-bat", never "Result". */}
+            <span style={muted}> · At-bat: {props.pitch.playEvent}</span>
+          </Show>
         </div>
         <Show when={sprayLine()}>
           <div style={muted}>{sprayLine()}</div>

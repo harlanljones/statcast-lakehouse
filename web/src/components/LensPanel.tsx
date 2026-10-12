@@ -285,6 +285,7 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
             { value: "whiffs", label: "Whiffs" },
             { value: "balls", label: "Balls" },
             { value: "called_strikes", label: "Called strikes" },
+            { value: "home_run_at_bats", label: "Home-run at-bats" },
           ]}
           onChange={props.onOutcomeFilter}
         />
