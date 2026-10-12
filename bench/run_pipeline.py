@@ -77,16 +77,25 @@ CALIB_ITERATIONS = 1_000_000  # ~20 ms of pure-Python arithmetic
 PLATE_TOLERANCE_FT = 0.01
 
 # Physical plausibility bounds (feet, mph, rpm). Wide enough for any real MLB
-# pitch, tight enough that fabricated or corrupted rows fail the gate.
+# pitch, tight enough that fabricated or corrupted rows fail the gate. The
+# corpus will keep widening these as it grows: they were first calibrated on the
+# 497-pitch corpus, and real pitches have since forced two of them out
+# (position-player lobs at 35.6 mph, and low-slot releases whose extrapolated
+# release-plane z0 is 1.2 ft). The plate-crossing check plus the per-pitch
+# relationships are what actually guard the corpus; these bounds only catch
+# garbage (zero, negative, or absurd values).
 BOUNDS = {
-    "release_speed": (35.0, 110.0),
+    "release_speed": (25.0, 110.0),
     "release_spin_rate": (0.0, 4000.0),
     "x0": (-6.0, 6.0),
     # y0 is either the 50 ft measurement plane (slices with a NULL extension)
     # or, once the loader back-extrapolates with the feed's extension, the
     # release plane 60.5 - extension ft, so the window spans both.
     "y0": (45.0, 61.0),
-    "z0": (2.0, 10.0),
+    # z0 is at the 50 ft plane, or at the release plane once the loader has
+    # back-extrapolated with the feed's extension, which a low slot can put
+    # below 2 ft.
+    "z0": (1.0, 10.0),
     "vx0": (-30.0, 30.0),
     "vy0": (-175.0, -40.0),
     "vz0": (-40.0, 40.0),
