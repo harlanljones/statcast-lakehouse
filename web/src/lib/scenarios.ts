@@ -16,7 +16,8 @@ export type ScenarioId =
   | "tigers-astros-june"
   | "yankees-athletics-2025"
   | "twins-blue-jays-2026"
-  | "season-sweep";
+  | "season-sweep"
+  | "strikeout-nights";
 
 export type LayerKey =
   | "tunneling"
@@ -340,6 +341,26 @@ export const SCENARIOS: readonly Scenario[] = [
     preset: preset({
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true, dispersion: true },
+    }),
+  },
+  {
+    id: "strikeout-nights",
+    title: "Strikeout Nights",
+    dateLabel: "Apr 5, 2024 – Jul 5, 2026",
+    gameLabel: "Six games · 132 strikeouts",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/745042/feed/live",
+    synthetic: false,
+    hook: "Six games where the two staffs combined for twenty or more strikeouts.",
+    lookFor:
+      "1,739 tracked pitches and 871 swings that produced 264 whiffs, one game per date from April 2024 to July 2026: 20 to 24 strikeouts a game, 132 in all. 278 of those pitches were put in play with measured contact data.",
+    tryThis:
+      "Set the heatmap to Whiff %, then switch it to Hard Hit % to see where the same staffs were squared up.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Catcher",
+      layers: { plateCrossings: true, heatmap: true },
+      heatmapMode: "whiff_rate",
     }),
   },
 ];

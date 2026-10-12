@@ -22,6 +22,7 @@ SCENARIO_ROWS = {
     "yankees-athletics-2025": 323,
     "twins-blue-jays-2026": 311,
     "season-sweep": 4063,
+    "strikeout-nights": 1739,
 }
 
 

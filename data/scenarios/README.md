@@ -7,10 +7,11 @@ network. To refresh them from the same public feeds, run
 
 The same files also back `GET /pitches/sample` and `python3 -m ingestion.worker
 --dry-run`: `ingestion.scenarios.real_pitches()` returns every pitch here once
-(the Ohtani slices repeat pitches from the full game), in game order. Ten
-slices across nineteen games and nineteen game dates (5,810 pitches), from the
-2024 regular season and World Series to the 2025 and 2026 seasons; the
-`season-sweep` slice carries one game per period across all three seasons.
+(the Ohtani slices repeat pitches from the full game), in game order. Eleven
+slices across twenty-five games and twenty-five game dates (7,549 pitches), from
+the 2024 regular season and World Series to the 2025 and 2026 seasons. The
+`season-sweep` slice carries one game per period across all three seasons, and
+`strikeout-nights` the six games with 20+ combined strikeouts (132 in all).
 
 | Scenario | Source game | Selected pitches | Story reference |
 |---|---|---:|---|
@@ -23,6 +24,7 @@ slices across nineteen games and nineteen game dates (5,810 pitches), from the
 | `tigers-astros-june` | Tigers at Astros, 2024-06-15, game 746381 | All 357 tracked pitches | [Tigers 13, Astros 5](https://www.mlb.com/gameday/tigers-vs-astros/2024/06/15/746381/final) |
 | `yankees-athletics-2025` | Yankees at Athletics, 2025-05-10, game 777972 | All 323 tracked pitches | [Athletics 11, Yankees 7](https://www.mlb.com/gameday/yankees-vs-athletics/2025/05/10/777972/final) |
 | `twins-blue-jays-2026` | Twins at Blue Jays, 2026-04-10, game 822829 | All 311 tracked pitches | [Blue Jays 10, Twins 4](https://www.mlb.com/gameday/twins-vs-blue-jays/2026/04/10/822829/final) |
+| `strikeout-nights` | Six games, one per date: Rays at Rockies 2024-04-05 (746576, 22 K), Rays at Orioles 2024-06-01 (747029, 20 K), Twins at Rays 2024-09-05 (745042, 24 K), Astros at Twins 2025-04-05 (778440, 23 K), Pirates at Reds 2025-09-25 (776190, 22 K), Twins at Yankees 2026-07-05 (823525, 21 K) | All 1,739 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `season-sweep` | Twelve games, one per period: Twins at Orioles 2024-04-15 (747053), Padres at Braves 2024-05-20 (747119), Rays at Yankees 2024-07-20 (745720), Rangers at Yankees 2024-08-10 (745712), Reds at Orioles 2025-04-20 (778250), Blue Jays at Phillies 2025-06-15 (777499), Brewers at Reds 2025-08-15 (776740), White Sox at Tigers 2025-09-05 (776452), Phillies at Pirates 2026-05-15 (823384), Padres at Rangers 2026-06-20 (822885), Red Sox at Marlins 2026-08-25 (823826), Phillies at Mets 2026-09-20 (823570) | All 4,063 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 
 ## Source and field mapping

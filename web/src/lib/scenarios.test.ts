@@ -24,6 +24,7 @@ const SERVER_IDS = [
   "yankees-athletics-2025",
   "twins-blue-jays-2026",
   "season-sweep",
+  "strikeout-nights",
 ];
 
 describe("real-game story catalog", () => {

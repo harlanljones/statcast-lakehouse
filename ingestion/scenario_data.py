@@ -22,7 +22,16 @@ SEASON_SWEEP_GAMES = (
     747053, 745720, 747119, 745712, 778250, 776740,
     777499, 776452, 823384, 822885, 823826, 823570,
 )
-GAME_IDS = (746011, 775300, 746679, 746165, 746381, 777972, 822829, *SEASON_SWEEP_GAMES)
+
+# Six games where the two staffs combined for 20+ strikeouts, one per date and
+# one per period across the 2024, 2025 and 2026 seasons: the whiff-heavy end of
+# the corpus (20-24 strikeouts, 33-48 whiffs each).
+STRIKEOUT_NIGHTS_GAMES = (746576, 747029, 745042, 778440, 776190, 823525)
+GAME_IDS = (
+    746011, 775300, 746679, 746165, 746381, 777972, 822829,
+    *SEASON_SWEEP_GAMES,
+    *STRIKEOUT_NIGHTS_GAMES,
+)
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
 SNELL_GAME = 746679
@@ -43,7 +52,10 @@ WHOLE_GAME_SCENARIOS = {
 }
 
 # Slices that span several games (every tracked pitch of each).
-SWEEP_SCENARIOS = {"season-sweep": SEASON_SWEEP_GAMES}
+SWEEP_SCENARIOS = {
+    "season-sweep": SEASON_SWEEP_GAMES,
+    "strikeout-nights": STRIKEOUT_NIGHTS_GAMES,
+}
 
 
 class UntrackedPitch(ValueError):

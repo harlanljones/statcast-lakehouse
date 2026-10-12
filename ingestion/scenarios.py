@@ -34,6 +34,7 @@ SCENARIO_FILES = {
     "yankees-athletics-2025": "yankees-athletics-2025.arrow",
     "twins-blue-jays-2026": "twins-blue-jays-2026.arrow",
     "season-sweep": "season-sweep.arrow",
+    "strikeout-nights": "strikeout-nights.arrow",
 }
 
 
