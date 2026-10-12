@@ -33,4 +33,5 @@ export const SCENE_ACCENT: Record<string, string> = {
   "strikeout-nights": "#38bdf8",
   "extra-innings": "#fbbf24",
   "power-nights": "#fb923c",
+  "walk-off-wins": "#4ade80",
 };

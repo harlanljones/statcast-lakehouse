@@ -25,6 +25,7 @@ SCENARIO_ROWS = {
     "strikeout-nights": 1739,
     "extra-innings": 2143,
     "power-nights": 1792,
+    "walk-off-wins": 2010,
 }
 
 

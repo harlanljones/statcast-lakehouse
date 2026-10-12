@@ -19,7 +19,8 @@ export type ScenarioId =
   | "season-sweep"
   | "strikeout-nights"
   | "extra-innings"
-  | "power-nights";
+  | "power-nights"
+  | "walk-off-wins";
 
 export type LayerKey =
   | "tunneling"
@@ -402,6 +403,25 @@ export const SCENARIOS: readonly Scenario[] = [
       view: "Batter",
       layers: { plateCrossings: true, heatmap: true },
       heatmapMode: "hard_hit",
+    }),
+  },
+  {
+    id: "walk-off-wins",
+    title: "Walk-Off Wins",
+    dateLabel: "Jul 13, 2024 – Jun 6, 2026",
+    gameLabel: "Six games · six walk-offs",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/746447/feed/live",
+    synthetic: false,
+    hook: "Six games decided by the final swing — every one of them in extra innings.",
+    lookFor:
+      "2,010 tracked pitches, 931 swings and 209 whiffs across six walk-off games from July 2024 to June 2026, all decided in the tenth inning or later: two home runs, two singles and two fielders' choices ended them, and four were one-run games. 352 pitches were put in play with measured contact data.",
+    tryThis:
+      "Scrub to the final pitch of a game and compare where the winning contact was made.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    preset: preset({
+      view: "Batter",
+      layers: { plateCrossings: true, ghostBreak: true },
     }),
   },
 ];
