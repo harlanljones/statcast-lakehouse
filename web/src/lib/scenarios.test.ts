@@ -43,6 +43,7 @@ const SERVER_IDS = [
   "hundred-pitch-starts",
   "unclassified-pitches",
   "under-a-roof",
+  "short-left-lines",
 ];
 
 describe("real-game story catalog", () => {

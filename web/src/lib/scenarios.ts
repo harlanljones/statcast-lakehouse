@@ -35,7 +35,8 @@ export type ScenarioId =
   | "blowouts"
   | "hundred-pitch-starts"
   | "unclassified-pitches"
-  | "under-a-roof";
+  | "under-a-roof"
+  | "short-left-lines";
 
 export type LayerKey =
   | "tunneling"
@@ -741,6 +742,25 @@ export const SCENARIOS: readonly Scenario[] = [
       view: "Batter",
       layers: { plateCrossings: true, heatmap: true, spray: true },
       heatmapMode: "hard_hit",
+    }),
+  },
+  {
+    id: "short-left-lines",
+    title: "Short Left Lines",
+    dateLabel: "May 3 - Jun 2, 2024",
+    gameLabel: "Twelve games · 5 parks",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/746961/feed/live",
+    synthetic: false,
+    hook: "Twelve games at five of the shortest left-field lines in MLB's venue data - 310 ft at Fenway Park to 325 at Progressive Field.",
+    lookFor:
+      "3,576 tracked pitches, 1,695 swings and 398 whiffs across twelve games in May and June 2024 at five of the shortest left-field lines in MLB's venue data, every dimension taken from the venue feed's own fieldInfo: Fenway Park 310 ft, Tropicana Field 315, Minute Maid Park 315 (now Daikin Park), Yankee Stadium 318 and Progressive Field 325. 29 home runs were hit across the twelve and 601 pitches were put in play with measured contact data.",
+    tryThis:
+      "Turn on the spray layer and compare where the home runs landed at Fenway Park's 310 ft line with Progressive Field's 325.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
+    preset: preset({
+      view: "Batter",
+      layers: { plateCrossings: true, spray: true },
     }),
   },
 ];

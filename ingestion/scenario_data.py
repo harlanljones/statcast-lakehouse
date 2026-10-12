@@ -133,6 +133,14 @@ BLOWOUT_GAMES = (
     778432, 778382, 778328, 778309,
     825105, 824938, 823477, 823476,
 )
+# The five shortest left-field lines among the venues that hosted regular-
+# season games (MLB venue endpoint, fieldInfo.leftLine): Fenway Park 310 ft,
+# Tropicana Field 315, Minute Maid / Daikin Park 315, Yankee Stadium 318,
+# Progressive Field 325. Twelve games, one per date, every date unused.
+SHORT_LEFT_LINES_GAMES = (
+    745101, 745750, 746639, 746961, 746383, 746638,
+    746640, 745748, 745094, 746962, 746959, 745747,
+)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -155,6 +163,7 @@ GAME_IDS = (
     *HUNDRED_PITCH_GAMES,
     *UNCLASSIFIED_GAMES,
     *ROOFED_GAMES,
+    *SHORT_LEFT_LINES_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -197,6 +206,7 @@ SWEEP_SCENARIOS = {
     "hundred-pitch-starts": HUNDRED_PITCH_GAMES,
     "unclassified-pitches": UNCLASSIFIED_GAMES,
     "under-a-roof": ROOFED_GAMES,
+    "short-left-lines": SHORT_LEFT_LINES_GAMES,
 }
 
 

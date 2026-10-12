@@ -53,6 +53,7 @@ SCENARIO_FILES = {
     "under-a-roof": "under-a-roof.arrow",
     "hundred-pitch-starts": "hundred-pitch-starts.arrow",
     "unclassified-pitches": "unclassified-pitches.arrow",
+    "short-left-lines": "short-left-lines.arrow",
 }
 
 
