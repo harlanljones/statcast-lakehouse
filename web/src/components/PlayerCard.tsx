@@ -1,6 +1,6 @@
 import { For, Show, type JSX } from "solid-js";
 import { pitchColor, type PitchDatum } from "../lib/deck-layers";
-import { mlbLinks, pitchResult, playerLabel, summarizePitcher } from "../lib/player-card";
+import { mlbLinks, pitchResult, playerLabel, summarizeBatter, summarizePitcher } from "../lib/player-card";
 import { storylinesForPitcher, type PitcherStoryline } from "../lib/storylines";
 import { CloseButton, THEME } from "./ui";
 
@@ -25,6 +25,7 @@ const muted: JSX.CSSProperties = { color: THEME.muted };
  */
 export default function PlayerCard(props: PlayerCardProps): JSX.Element {
   const summary = () => (props.pitch.pitcherId != null ? summarizePitcher(props.pitches, props.pitch.pitcherId) : null);
+  const atBat = () => (props.pitch.batterId != null ? summarizeBatter(props.pitches, props.pitch.batterId) : null);
   const links = () =>
     mlbLinks({
       synthetic: props.synthetic,
@@ -124,9 +125,34 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
         )}
       </Show>
 
-      <div style={{ ...muted, "margin-bottom": "8px" }}>
-        {playerLabel("Batter", props.pitch.batterId, props.synthetic, props.pitch.batterName)}
-      </div>
+      <Show
+        when={atBat()}
+        fallback={
+          <div style={{ ...muted, "margin-bottom": "8px" }}>
+            {playerLabel("Batter", props.pitch.batterId, props.synthetic, props.pitch.batterName)}
+          </div>
+        }
+      >
+        {(b) => (
+          <div aria-label="batter summary" style={{ "margin-bottom": "8px" }}>
+            <div>{playerLabel("Batter", props.pitch.batterId, props.synthetic, props.pitch.batterName)}</div>
+            <div style={muted}>
+              {b().count} seen ·{" "}
+              {b().swingRate == null ? "no swing data" : `${Math.round(b().swingRate! * 100)}% swings`} ·{" "}
+              {b().whiffRate == null ? "no swings" : `${Math.round(b().whiffRate! * 100)}% whiff`} ·{" "}
+              avg {b().avgSpeed.toFixed(1)} mph faced
+            </div>
+            <Show when={b().contact}>
+              {(c) => (
+                <div style={muted}>
+                  Contact · avg {c().avgExitVelocity.toFixed(1)} mph · hard-hit{" "}
+                  {Math.round(c().hardHitRate * 100)}% of {c().measured}
+                </div>
+              )}
+            </Show>
+          </div>
+        )}
+      </Show>
 
       <Show when={!props.synthetic && stories().length > 0}>
         <section

@@ -37,72 +37,111 @@ export interface ContactSummary {
   mix: { label: string; count: number; share: number }[];
 }
 
-export interface PitcherSummary {
-  pitcherId: number;
+/** The stats both player cards share: a pitcher's pitches, or a batter's seen. */
+export interface RoleStats {
   count: number;
+  /** Average release speed of those pitches (mph). */
   avgSpeed: number;
   swings: number;
-  /** Whiffs per swing; null when the pitcher drew no swings. */
+  /** Swings per pitch seen; null when the data has no swing flag at all. */
+  swingRate: number | null;
+  /** Whiffs per swing; null when none of those pitches drew a swing. */
   whiffRate: number | null;
   mix: { type: string; count: number; share: number }[];
-  /** Contact allowed; null when none of the pitcher's pitches was measured. */
+  /** Contact on those pitches; null when none was measured. */
   contact: ContactSummary | null;
 }
 
-export function summarizePitcher(pitches: readonly PitchDatum[], pitcherId: number): PitcherSummary | null {
-  let count = 0;
-  let speed = 0;
-  let swings = 0;
-  let whiffs = 0;
-  let measured = 0;
-  let exitVelocity = 0;
-  let hardHit = 0;
-  const byType = new Map<string, number>();
-  const byBattedBall = new Map<string, number>();
+export interface PitcherSummary extends RoleStats {
+  pitcherId: number;
+}
+
+/** What a batter saw in the loaded group, over the same accumulation. */
+export interface BatterSummary extends RoleStats {
+  batterId: number;
+}
+
+interface Tally {
+  count: number;
+  speed: number;
+  swings: number;
+  whiffs: number;
+  measured: number;
+  exitVelocity: number;
+  hardHit: number;
+  byType: Map<string, number>;
+  byBattedBall: Map<string, number>;
+}
+
+/** One pass over the corpus for whichever role the caller is summarising. */
+function tallyFor(pitches: readonly PitchDatum[], matches: (p: PitchDatum) => boolean): Tally | null {
+  const t: Tally = {
+    count: 0,
+    speed: 0,
+    swings: 0,
+    whiffs: 0,
+    measured: 0,
+    exitVelocity: 0,
+    hardHit: 0,
+    byType: new Map(),
+    byBattedBall: new Map(),
+  };
   for (const p of pitches) {
-    if (p.pitcherId !== pitcherId) continue;
-    count++;
-    speed += p.releaseSpeed;
+    if (!matches(p)) continue;
+    t.count++;
+    t.speed += p.releaseSpeed;
     if (p.isSwing) {
-      swings++;
-      if (p.isWhiff) whiffs++;
+      t.swings++;
+      if (p.isWhiff) t.whiffs++;
     }
-    byType.set(p.pitchType, (byType.get(p.pitchType) ?? 0) + 1);
+    t.byType.set(p.pitchType, (t.byType.get(p.pitchType) ?? 0) + 1);
     if (p.launchSpeed != null) {
-      measured++;
-      exitVelocity += p.launchSpeed;
-      if (p.launchSpeed >= HARD_HIT_MPH) hardHit++;
-      if (p.bbType) byBattedBall.set(p.bbType, (byBattedBall.get(p.bbType) ?? 0) + 1);
+      t.measured++;
+      t.exitVelocity += p.launchSpeed;
+      if (p.launchSpeed >= HARD_HIT_MPH) t.hardHit++;
+      if (p.bbType) t.byBattedBall.set(p.bbType, (t.byBattedBall.get(p.bbType) ?? 0) + 1);
     }
   }
-  if (count === 0) return null;
-  const mix = [...byType.entries()]
-    .map(([type, n]) => ({ type, count: n, share: n / count }))
-    .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type));
+  return t.count === 0 ? null : t;
+}
+
+function finish(t: Tally): RoleStats {
   const contact: ContactSummary | null =
-    measured === 0
+    t.measured === 0
       ? null
       : {
-          measured,
-          avgExitVelocity: exitVelocity / measured,
-          hardHitRate: hardHit / measured,
-          mix: [...byBattedBall.entries()]
+          measured: t.measured,
+          avgExitVelocity: t.exitVelocity / t.measured,
+          hardHitRate: t.hardHit / t.measured,
+          mix: [...t.byBattedBall.entries()]
             .map(([type, n]) => ({
               label: BATTED_BALL_LABELS[type] ?? type,
               count: n,
-              share: n / measured,
+              share: n / t.measured,
             }))
             .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
         };
   return {
-    pitcherId,
-    count,
-    avgSpeed: speed / count,
-    swings,
-    whiffRate: swings ? whiffs / swings : null,
-    mix,
+    count: t.count,
+    avgSpeed: t.speed / t.count,
+    swings: t.swings,
+    swingRate: t.swings ? t.swings / t.count : null,
+    whiffRate: t.swings ? t.whiffs / t.swings : null,
+    mix: [...t.byType.entries()]
+      .map(([type, n]) => ({ type, count: n, share: n / t.count }))
+      .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type)),
     contact,
   };
+}
+
+export function summarizePitcher(pitches: readonly PitchDatum[], pitcherId: number): PitcherSummary | null {
+  const t = tallyFor(pitches, (p) => p.pitcherId === pitcherId);
+  return t && { pitcherId, ...finish(t) };
+}
+
+export function summarizeBatter(pitches: readonly PitchDatum[], batterId: number): BatterSummary | null {
+  const t = tallyFor(pitches, (p) => p.batterId === batterId);
+  return t && { batterId, ...finish(t) };
 }
 
 export interface CardLink {

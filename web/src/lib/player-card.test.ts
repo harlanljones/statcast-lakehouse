@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { PitchDatum } from "./deck-layers";
-import { isSyntheticSource, mlbLinks, pitchResult, playerLabel, summarizePitcher } from "./player-card";
+import {
+  isSyntheticSource,
+  mlbLinks,
+  pitchResult,
+  playerLabel,
+  summarizeBatter,
+  summarizePitcher,
+} from "./player-card";
 
 const pitch = (over: Partial<PitchDatum>): PitchDatum => ({
   path: new Float32Array(0),
@@ -47,6 +54,43 @@ describe("summarizePitcher", () => {
 
   it("returns null for an unknown pitcher", () => {
     expect(summarizePitcher(pitches, 999)).toBeNull();
+  });
+
+  it("reports swings per pitch seen alongside whiffs per swing", () => {
+    const s = summarizePitcher(pitches, 1)!;
+    expect(s.swingRate).toBeCloseTo(2 / 3);
+  });
+
+  describe("summarizeBatter", () => {
+    const atBats = [
+      pitch({ pitcherId: 1, batterId: 10, pitchType: "FF", releaseSpeed: 96, isSwing: 1, isWhiff: 1 }),
+      pitch({ pitcherId: 1, batterId: 10, pitchType: "SL", releaseSpeed: 86, isSwing: 0, isWhiff: 0 }),
+      pitch({ pitcherId: 2, batterId: 11, pitchType: "CU", releaseSpeed: 78, isSwing: 1, isWhiff: 0 }),
+    ];
+
+    it("summarises what that batter saw, not what the pitcher threw", () => {
+      const b = summarizeBatter(atBats, 10)!;
+      expect(b.batterId).toBe(10);
+      expect(b.count).toBe(2);
+      expect(b.avgSpeed).toBeCloseTo((96 + 86) / 2);
+      expect(b.swings).toBe(1);
+      expect(b.swingRate).toBeCloseTo(0.5);
+      expect(b.whiffRate).toBe(1);
+      expect(b.mix.map((m) => m.type)).toEqual(["FF", "SL"]);
+      // the other batter's pitch must not leak in
+      expect(summarizeBatter(atBats, 11)!.count).toBe(1);
+      expect(summarizeBatter(atBats, 12)).toBeNull();
+    });
+
+    it("carries the contact that batter made", () => {
+      const b = summarizeBatter(
+        [pitch({ batterId: 10, launchSpeed: 99.0, bbType: "fly_ball" }), pitch({ batterId: 10, launchSpeed: 88.0, bbType: "ground_ball" })],
+        10,
+      )!;
+      expect(b.contact!.measured).toBe(2);
+      expect(b.contact!.hardHitRate).toBeCloseTo(0.5);
+      expect(b.contact!.mix.map((m) => m.label)).toEqual(["fly ball", "ground ball"]);
+    });
   });
 
   describe("contact allowed", () => {

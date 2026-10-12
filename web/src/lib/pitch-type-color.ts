@@ -40,6 +40,7 @@ export const PITCH_COLORS: Readonly<Record<string, [number, number, number]>> = 
   KN: [199, 199, 111], // knuckleball — olive
   EP: [155, 205, 155], // eephus — pale green
   SC: [188, 140, 255], // screwball — light violet
+  UN: [150, 158, 170], // unclassified — neutral slate, not a real pitch colour
 });
 
 /** Full pitch names for chip titles / accessible names. */
@@ -60,6 +61,7 @@ export const PITCH_NAMES: Readonly<Record<string, string>> = Object.freeze({
   EP: "Eephus",
   SC: "Screwball",
   FO: "Forkball",
+  UN: "Unclassified",
 });
 
 /** Pitch name for a code (case-insensitive), or undefined for unknown codes. */
