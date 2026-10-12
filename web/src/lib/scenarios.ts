@@ -21,7 +21,8 @@ export type ScenarioId =
   | "extra-innings"
   | "power-nights"
   | "walk-off-wins"
-  | "one-run-slugfests";
+  | "one-run-slugfests"
+  | "pitchers-duels";
 
 export type LayerKey =
   | "tunneling"
@@ -443,6 +444,25 @@ export const SCENARIOS: readonly Scenario[] = [
       view: "Pitcher",
       layers: { plateCrossings: true, heatmap: true },
       heatmapMode: "hard_hit",
+    }),
+  },
+  {
+    id: "pitchers-duels",
+    title: "Pitchers' Duels",
+    dateLabel: "Apr 21, 2024 – Aug 19, 2026",
+    gameLabel: "Six games · 8 runs",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/776669/feed/live",
+    synthetic: false,
+    hook: "Six games with three runs or fewer — four of them 1–0 finals.",
+    lookFor:
+      "1,532 tracked pitches, 760 swings and 167 whiffs across six low-scoring games from April 2024 to August 2026: four 1–0 finals and two 2–0, eight runs in all, none of them needing extra innings. 274 of the pitches were put in play with measured contact data.",
+    tryThis:
+      "Turn on release dispersion and compare how the two 2–0 games were pitched with the four 1–0s.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    preset: preset({
+      view: "Side",
+      layers: { dispersion: true, releasePoints: true, tunneling: true },
     }),
   },
 ];

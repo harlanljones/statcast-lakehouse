@@ -46,6 +46,11 @@ WALK_OFF_GAMES = (746447, 747072, 777415, 776347, 824516, 824669)
 # across the 2024, 2025 and 2026 seasons: 104 runs in all, the slugfest end of
 # the one-run games.
 ONE_RUN_SLUGFEST_GAMES = (745505, 746362, 746108, 778247, 777701, 823776)
+
+# Six games with three runs or fewer — four 1-0 finals and two 2-0 — one per date
+# across the 2024, 2025 and 2026 seasons: eight runs in all, the pitching end of
+# the corpus.
+PITCHERS_DUEL_GAMES = (745192, 746472, 776669, 825091, 823780, 824394)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -54,6 +59,7 @@ GAME_IDS = (
     *POWER_NIGHTS_GAMES,
     *WALK_OFF_GAMES,
     *ONE_RUN_SLUGFEST_GAMES,
+    *PITCHERS_DUEL_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -82,6 +88,7 @@ SWEEP_SCENARIOS = {
     "power-nights": POWER_NIGHTS_GAMES,
     "walk-off-wins": WALK_OFF_GAMES,
     "one-run-slugfests": ONE_RUN_SLUGFEST_GAMES,
+    "pitchers-duels": PITCHERS_DUEL_GAMES,
 }
 
 
