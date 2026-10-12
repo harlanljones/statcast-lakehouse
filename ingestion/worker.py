@@ -23,6 +23,7 @@ import math
 import os
 import sys
 from datetime import date, datetime, timedelta, timezone
+from itertools import repeat
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -100,13 +101,14 @@ def solve_flight_time(y0: float, vy0: float, ay: float, y_end: float = PLATE_Y_F
     # scanned without building and sorting a list: this runs several times per
     # pitch (path, ghost, break vector, commitment plane) on the export path.
     # Mirrors the same scan in web/src/lib/kinematics.ts flightTime.
+    two_a = 2.0 * a
     root = math.sqrt(disc)
-    t1 = (-b - root) / (2.0 * a)
-    t2 = (-b + root) / (2.0 * a)
+    t1 = (-b - root) / two_a
+    t2 = (-b + root) / two_a
     best = math.inf
-    if t1 > 0 and b + 2.0 * a * t1 < 0:
+    if t1 > 0 and b + two_a * t1 < 0:
         best = t1
-    if t2 > 0 and b + 2.0 * a * t2 < 0 and t2 < best:
+    if t2 > 0 and b + two_a * t2 < 0 and t2 < best:
         best = t2
     if best == math.inf:
         raise ValueError("pitch plane crossing is not in the future")
@@ -139,7 +141,15 @@ def trajectory(pitch: dict[str, float], n: int = 60) -> list[tuple[float, float,
     timestamp sequence, so both produce the same floats to the last bit; keep
     the two in step when touching either.
     """
-    t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
+    return _trajectory_points(
+        pitch, solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"]), n
+    )
+
+
+def _trajectory_points(
+    pitch: dict[str, float], t_end: float, n: int = 60
+) -> list[tuple[float, float, float]]:
+    """The 60-point loop of ``trajectory`` at an already-solved flight time."""
     x0 = pitch["x0"]
     vx0 = pitch["vx0"]
     half_ax = 0.5 * pitch["ax"]
@@ -153,7 +163,10 @@ def trajectory(pitch: dict[str, float], n: int = 60) -> list[tuple[float, float,
     points: list[tuple[float, float, float]] = []
     append = points.append
     t = 0.0
-    for _ in range(n):
+    # repeat(None, n), not range(n): this loop runs 60 times per pitch and the
+    # range iterator materializes an int object per step, which costs more than
+    # the arithmetic it guards.
+    for _ in repeat(None, n):
         append(
             (
                 x0 + t * (vx0 + half_ax * t),
@@ -165,16 +178,8 @@ def trajectory(pitch: dict[str, float], n: int = 60) -> list[tuple[float, float,
     return points
 
 
-def ghost_kinematics(pitch: dict[str, float]) -> dict[str, float]:
-    """Kinematic parameters without Magnus aerodynamic force (gravity + drag only).
-
-    Drag acts along -v, so it is the part of the measured non-gravity
-    acceleration along the mid-flight velocity (Nathan's decomposition); the
-    rest is Magnus. The ghost keeps gravity plus that drag in x and z, and
-    keeps the fitted ay so it reaches the plate at the same time. Validated
-    against pitchphys no-spin flights (test_pitchphys_crosscheck.py).
-    """
-    t_mid = 0.5 * solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
+def _ghost_kinematics_at(pitch: dict[str, float], t_mid: float) -> dict[str, float]:
+    """The ghost at a known mid-flight time (see ghost_kinematics)."""
     vx = pitch["vx0"] + pitch["ax"] * t_mid
     vy = pitch["vy0"] + pitch["ay"] * t_mid
     vz = pitch["vz0"] + pitch["az"] * t_mid
@@ -187,18 +192,38 @@ def ghost_kinematics(pitch: dict[str, float]) -> dict[str, float]:
     return ghost
 
 
+def ghost_kinematics(pitch: dict[str, float]) -> dict[str, float]:
+    """Kinematic parameters without Magnus aerodynamic force (gravity + drag only).
+
+    Drag acts along -v, so it is the part of the measured non-gravity
+    acceleration along the mid-flight velocity (Nathan's decomposition); the
+    rest is Magnus. The ghost keeps gravity plus that drag in x and z, and
+    keeps the fitted ay so it reaches the plate at the same time. Validated
+    against pitchphys no-spin flights (test_pitchphys_crosscheck.py).
+    """
+    return _ghost_kinematics_at(
+        pitch, 0.5 * solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
+    )
+
+
 def ghost_trajectory(
     pitch: dict[str, float], n: int = 60
 ) -> list[tuple[float, float, float]]:
-    """n points along the trajectory under pure gravity and drag."""
-    return trajectory(ghost_kinematics(pitch), n=n)
+    """n points along the trajectory under pure gravity and drag.
+
+    The ghost keeps y0/vy0/ay, so it crosses the plate at the same time as the
+    real pitch: one flight-time solve serves both the ghost's mid-flight state
+    and its path (``trajectory`` would solve for the same value again).
+    """
+    t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
+    return _trajectory_points(_ghost_kinematics_at(pitch, 0.5 * t_end), t_end, n)
 
 
 def compute_break_vector(pitch: dict[str, float]) -> dict[str, float]:
     """Aerodynamic break in inches at plate arrival (Nathan 2012 definition):
     actual minus the drag-corrected ghost, which share the same flight time."""
     t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
-    ghost = ghost_kinematics(pitch)
+    ghost = _ghost_kinematics_at(pitch, 0.5 * t_end)
     dx_ft = 0.5 * (pitch["ax"] - ghost["ax"]) * t_end * t_end
     dz_ft = 0.5 * (pitch["az"] - ghost["az"]) * t_end * t_end
     h_break = dx_ft * 12.0

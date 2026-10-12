@@ -41,8 +41,7 @@ export interface BreakVector {
  * rest is Magnus. Drag ay is preserved so flight time to home plate remains
  * identical. Mirrors ingestion/worker.py ghost_kinematics exactly.
  */
-export function ghostKinematics(p: PitchKinematics): PitchKinematics {
-  const tMid = 0.5 * flightTime(p);
+function ghostKinematicsAt(p: PitchKinematics, tMid: number): PitchKinematics {
   const vx = p.vx0 + p.ax * tMid;
   const vy = p.vy0 + p.ay * tMid;
   const vz = p.vz0 + p.az * tMid;
@@ -54,6 +53,11 @@ export function ghostKinematics(p: PitchKinematics): PitchKinematics {
     ay: p.ay,
     az: -GRAVITY_FT_S2 + (drag * vz) / speed,
   };
+}
+
+/** The ghost at a known mid-flight time (see ghostKinematics). */
+export function ghostKinematics(p: PitchKinematics): PitchKinematics {
+  return ghostKinematicsAt(p, 0.5 * flightTime(p));
 }
 
 /** Solve y(t) = y0 + vy0 t + 1/2 ay t^2 = yEnd for the larger root. */
@@ -155,7 +159,9 @@ export function ghostTrajectoryFlat(p: PitchKinematics, n = 60): Float32Array {
  */
 export function computeBreakVector(p: PitchKinematics): BreakVector {
   const tEnd = flightTime(p);
-  const ghost = ghostKinematics(p);
+  // The ghost keeps y0/vy0/ay, so it crosses the plate at the same time: one
+  // flight-time solve serves the ghost state and the break vector.
+  const ghost = ghostKinematicsAt(p, 0.5 * tEnd);
   const dxFt = 0.5 * (p.ax - ghost.ax) * tEnd * tEnd;
   const dzFt = 0.5 * (p.az - ghost.az) * tEnd * tEnd;
   const hBreakInches = dxFt * 12;
