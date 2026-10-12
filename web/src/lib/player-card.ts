@@ -6,6 +6,36 @@
  * have made-up pitchers, so every link is disabled for them with a reason.
  */
 import type { PitchDatum } from "./deck-layers";
+import { HARD_HIT_MPH } from "./heatmap";
+
+/** Statcast batted-ball codes as a card should read them. */
+const BATTED_BALL_LABELS: Record<string, string> = {
+  ground_ball: "ground ball",
+  fly_ball: "fly ball",
+  line_drive: "line drive",
+  popup: "popup",
+  bunt_grounder: "bunt grounder",
+  bunt_line_drive: "bunt line drive",
+  bunt_popup: "bunt popup",
+};
+
+/**
+ * The contact a pitcher allowed, over the pitches with a measured launch speed.
+ *
+ * Only measured batted balls count: `launchSpeed` is null for every pitch that
+ * was not put in play and for the in-play pitches Statcast did not measure, so
+ * the sample size is carried alongside the rates. Barrel rate is deliberately
+ * absent — Savant's barrel is a fitted two-dimensional lookup of exit velocity
+ * against launch angle, and a simplified rule would put a number on the card
+ * that does not mean what its name says.
+ */
+export interface ContactSummary {
+  measured: number;
+  avgExitVelocity: number;
+  /** Share of measured batted balls at HARD_HIT_MPH or above (Savant's line). */
+  hardHitRate: number;
+  mix: { label: string; count: number; share: number }[];
+}
 
 export interface PitcherSummary {
   pitcherId: number;
@@ -15,6 +45,8 @@ export interface PitcherSummary {
   /** Whiffs per swing; null when the pitcher drew no swings. */
   whiffRate: number | null;
   mix: { type: string; count: number; share: number }[];
+  /** Contact allowed; null when none of the pitcher's pitches was measured. */
+  contact: ContactSummary | null;
 }
 
 export function summarizePitcher(pitches: readonly PitchDatum[], pitcherId: number): PitcherSummary | null {
@@ -22,7 +54,11 @@ export function summarizePitcher(pitches: readonly PitchDatum[], pitcherId: numb
   let speed = 0;
   let swings = 0;
   let whiffs = 0;
+  let measured = 0;
+  let exitVelocity = 0;
+  let hardHit = 0;
   const byType = new Map<string, number>();
+  const byBattedBall = new Map<string, number>();
   for (const p of pitches) {
     if (p.pitcherId !== pitcherId) continue;
     count++;
@@ -32,12 +68,41 @@ export function summarizePitcher(pitches: readonly PitchDatum[], pitcherId: numb
       if (p.isWhiff) whiffs++;
     }
     byType.set(p.pitchType, (byType.get(p.pitchType) ?? 0) + 1);
+    if (p.launchSpeed != null) {
+      measured++;
+      exitVelocity += p.launchSpeed;
+      if (p.launchSpeed >= HARD_HIT_MPH) hardHit++;
+      if (p.bbType) byBattedBall.set(p.bbType, (byBattedBall.get(p.bbType) ?? 0) + 1);
+    }
   }
   if (count === 0) return null;
   const mix = [...byType.entries()]
     .map(([type, n]) => ({ type, count: n, share: n / count }))
     .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type));
-  return { pitcherId, count, avgSpeed: speed / count, swings, whiffRate: swings ? whiffs / swings : null, mix };
+  const contact: ContactSummary | null =
+    measured === 0
+      ? null
+      : {
+          measured,
+          avgExitVelocity: exitVelocity / measured,
+          hardHitRate: hardHit / measured,
+          mix: [...byBattedBall.entries()]
+            .map(([type, n]) => ({
+              label: BATTED_BALL_LABELS[type] ?? type,
+              count: n,
+              share: n / measured,
+            }))
+            .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+        };
+  return {
+    pitcherId,
+    count,
+    avgSpeed: speed / count,
+    swings,
+    whiffRate: swings ? whiffs / swings : null,
+    mix,
+    contact,
+  };
 }
 
 export interface CardLink {

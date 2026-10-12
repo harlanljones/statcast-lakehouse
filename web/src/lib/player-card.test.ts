@@ -48,6 +48,45 @@ describe("summarizePitcher", () => {
   it("returns null for an unknown pitcher", () => {
     expect(summarizePitcher(pitches, 999)).toBeNull();
   });
+
+  describe("contact allowed", () => {
+    const batted = [
+      pitch({ pitcherId: 7, launchSpeed: 104.2, bbType: "line_drive" }),
+      pitch({ pitcherId: 7, launchSpeed: 95.0, bbType: "fly_ball" }),
+      pitch({ pitcherId: 7, launchSpeed: 94.9, bbType: "ground_ball" }),
+      pitch({ pitcherId: 7, launchSpeed: 80.0, bbType: "ground_ball" }),
+      // in play but unmeasured, and measured without a batted-ball code
+      pitch({ pitcherId: 7, bbType: "popup" }),
+      pitch({ pitcherId: 7, launchSpeed: 88.0 }),
+      // another pitcher's hard contact must not leak in
+      pitch({ pitcherId: 8, launchSpeed: 112.0, bbType: "fly_ball" }),
+    ];
+
+    it("summarises only measured batted balls for that pitcher", () => {
+      const c = summarizePitcher(batted, 7)!.contact!;
+      expect(c.measured).toBe(5);
+      expect(c.avgExitVelocity).toBeCloseTo((104.2 + 95.0 + 94.9 + 80.0 + 88.0) / 5);
+    });
+
+    it("counts the hard-hit line exactly at HARD_HIT_MPH (95) and above", () => {
+      const c = summarizePitcher(batted, 7)!.contact!;
+      expect(c.hardHitRate).toBeCloseTo(2 / 5);
+    });
+
+    it("reports the batted-ball mix over measured balls, largest first", () => {
+      const c = summarizePitcher(batted, 7)!.contact!;
+      expect(c.mix.map((m) => m.label)).toEqual(["ground ball", "fly ball", "line drive"]);
+      expect(c.mix[0]).toMatchObject({ label: "ground ball", count: 2 });
+      // the unmeasured popup is not in the mix, so shares cover only measured balls
+      expect(c.mix.reduce((a, m) => a + m.share, 0)).toBeCloseTo(4 / 5);
+    });
+
+    it("is null when nothing the pitcher threw was measured", () => {
+      const s = summarizePitcher([pitch({ pitcherId: 9, isSwing: 1 })], 9)!;
+      expect(s.contact).toBeNull();
+      expect(s.count).toBe(1);
+    });
+  });
 });
 
 describe("mlbLinks", () => {

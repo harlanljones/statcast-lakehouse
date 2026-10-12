@@ -100,6 +100,26 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
                 )}
               </For>
             </div>
+            <Show when={s().contact}>
+              {(c) => (
+                <div aria-label="contact allowed" style={{ "margin-bottom": "10px" }}>
+                  <div style={muted}>
+                    Contact · avg {c().avgExitVelocity.toFixed(1)} mph · hard-hit{" "}
+                    {Math.round(c().hardHitRate * 100)}% of {c().measured}
+                  </div>
+                  <For each={c().mix}>
+                    {(m) => (
+                      <div style={{ display: "flex", gap: "6px", "margin-top": "2px" }}>
+                        <span style={{ flex: "1" }}>{m.label}</span>
+                        <span style={{ ...muted, "white-space": "nowrap" }}>
+                          {Math.round(m.share * 100)}% ({m.count})
+                        </span>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              )}
+            </Show>
           </>
         )}
       </Show>
