@@ -318,29 +318,52 @@ def tunneling_distance(p1: dict[str, float], p2: dict[str, float]) -> float:
 
 
 def compute_arsenal_centroids(pitches: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Compute mean kinematic centroids and break characteristics per pitch_type."""
-    by_type: dict[str, list[dict[str, Any]]] = {}
+    """Compute mean kinematic centroids and break characteristics per pitch_type.
+
+    One accumulation pass over the corpus, like ``computeArsenalCentroids`` in
+    web/src/lib/arsenal.ts: the twelve per-type sums used to be twelve separate
+    generator passes per pitch type, which cost more than the additions.
+    """
+    totals: dict[str, list[float]] = {}
     for p in pitches:
         pt = p.get("pitch_type", "")
-        if pt:
-            by_type.setdefault(pt, []).append(p)
+        if not pt:
+            continue
+        t = totals.get(pt)
+        if t is None:
+            t = [0.0] * 14
+            totals[pt] = t
+        t[0] += 1.0
+        t[1] += p.get("release_speed", 0.0)
+        t[2] += p.get("release_spin_rate", 0.0)
+        t[3] += p["x0"]
+        t[4] += p["y0"]
+        t[5] += p["z0"]
+        t[6] += p["vx0"]
+        t[7] += p["vy0"]
+        t[8] += p["vz0"]
+        t[9] += p["ax"]
+        t[10] += p["ay"]
+        t[11] += p["az"]
+        t[12] += p.get("plate_x", 0.0)
+        t[13] += p.get("plate_z", 0.0)
 
     centroids: dict[str, dict[str, Any]] = {}
-    for pt, pts in by_type.items():
-        n = len(pts)
-        mean_speed = sum(p.get("release_speed", 0.0) for p in pts) / n
-        mean_spin = sum(p.get("release_spin_rate", 0.0) for p in pts) / n
-        mean_x0 = sum(p["x0"] for p in pts) / n
-        mean_y0 = sum(p["y0"] for p in pts) / n
-        mean_z0 = sum(p["z0"] for p in pts) / n
-        mean_vx0 = sum(p["vx0"] for p in pts) / n
-        mean_vy0 = sum(p["vy0"] for p in pts) / n
-        mean_vz0 = sum(p["vz0"] for p in pts) / n
-        mean_ax = sum(p["ax"] for p in pts) / n
-        mean_ay = sum(p["ay"] for p in pts) / n
-        mean_az = sum(p["az"] for p in pts) / n
-        mean_px = sum(p.get("plate_x", 0.0) for p in pts) / n
-        mean_pz = sum(p.get("plate_z", 0.0) for p in pts) / n
+    for pt, t in totals.items():
+        n = int(t[0])
+        mean_speed = t[1] / n
+        mean_spin = t[2] / n
+        mean_x0 = t[3] / n
+        mean_y0 = t[4] / n
+        mean_z0 = t[5] / n
+        mean_vx0 = t[6] / n
+        mean_vy0 = t[7] / n
+        mean_vz0 = t[8] / n
+        mean_ax = t[9] / n
+        mean_ay = t[10] / n
+        mean_az = t[11] / n
+        mean_px = t[12] / n
+        mean_pz = t[13] / n
 
         k_mean = {
             "x0": mean_x0, "y0": mean_y0, "z0": mean_z0,
@@ -594,23 +617,45 @@ def compute_release_dispersion(
             "wireframe_segments": [],
         }
 
-    sum_x = sum(p["x0"] for p in pitches)
-    sum_y = sum(p["y0"] for p in pitches)
-    sum_z = sum(p["z0"] for p in pitches)
+    sum_x = 0.0
+    sum_y = 0.0
+    sum_z = 0.0
+    for p in pitches:
+        sum_x += p["x0"]
+        sum_y += p["y0"]
+        sum_z += p["z0"]
     mx = sum_x / n
     my = sum_y / n
     mz = sum_z / n
 
-    var_x = sum((p["x0"] - mx) ** 2 for p in pitches) / (n - 1)
-    var_y = sum((p["y0"] - my) ** 2 for p in pitches) / (n - 1)
-    var_z = sum((p["z0"] - mz) ** 2 for p in pitches) / (n - 1)
+    # One centred pass for all six second moments, like computeReleaseDispersion
+    # in web/src/lib/dispersion.ts (nine generator sums cost more than the work).
+    var_x = 0.0
+    var_y = 0.0
+    var_z = 0.0
+    cov_xy = 0.0
+    cov_xz = 0.0
+    cov_yz = 0.0
+    for p in pitches:
+        dx = p["x0"] - mx
+        dy = p["y0"] - my
+        dz = p["z0"] - mz
+        var_x += dx * dx
+        var_y += dy * dy
+        var_z += dz * dz
+        cov_xy += dx * dy
+        cov_xz += dx * dz
+        cov_yz += dy * dz
+    d = n - 1
+    var_x /= d
+    var_y /= d
+    var_z /= d
+    cov_xy /= d
+    cov_xz /= d
+    cov_yz /= d
     std_x = math.sqrt(var_x)
     std_y = math.sqrt(var_y)
     std_z = math.sqrt(var_z)
-
-    cov_xy = sum((p["x0"] - mx) * (p["y0"] - my) for p in pitches) / (n - 1)
-    cov_xz = sum((p["x0"] - mx) * (p["z0"] - mz) for p in pitches) / (n - 1)
-    cov_yz = sum((p["y0"] - my) * (p["z0"] - mz) for p in pitches) / (n - 1)
 
     radii = (k_sigma * std_x, k_sigma * std_y, k_sigma * std_z)
     volume = (4.0 / 3.0) * math.pi * radii[0] * radii[1] * radii[2]
@@ -651,13 +696,26 @@ def compute_fatigue_buckets(
         if count == 0:
             continue
 
-        avg_speed = sum(p["release_speed"] for p in chunk) / count
-        avg_z = sum(p["z0"] for p in chunk) / count
-        avg_x = sum(p["x0"] for p in chunk) / count
-        avg_ext = sum(PITCHING_RUBBER_Y_FT - p["y0"] for p in chunk) / count
-
-        swings = sum(p.get("is_swing", 0) for p in chunk)
-        whiffs = sum(p.get("is_whiff", 0) for p in chunk)
+        # One pass per bucket, like computeFatigueBuckets in
+        # web/src/lib/dispersion.ts: five generator sums per bucket cost more
+        # than the additions.
+        speed_sum = 0.0
+        z_sum = 0.0
+        x_sum = 0.0
+        ext_sum = 0.0
+        swings = 0
+        whiffs = 0
+        for p in chunk:
+            speed_sum += p["release_speed"]
+            z_sum += p["z0"]
+            x_sum += p["x0"]
+            ext_sum += PITCHING_RUBBER_Y_FT - p["y0"]
+            swings += p.get("is_swing", 0)
+            whiffs += p.get("is_whiff", 0)
+        avg_speed = speed_sum / count
+        avg_z = z_sum / count
+        avg_x = x_sum / count
+        avg_ext = ext_sum / count
         whiff_pct = (whiffs / swings * 100.0) if swings > 0 else 0.0
 
         if base_speed is None:
