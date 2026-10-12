@@ -49,6 +49,13 @@ export interface PitchDatum {
   isSwing?: number;
   isWhiff?: number;
   spinRate?: number;
+  /**
+   * MLB's spin-axis direction for the pitch, in degrees, exactly as the feed
+   * reports it. The angle is deliberately not interpreted anywhere: a first attempt
+   * to read it as "the induced break points the other way" held across a single
+   * game but NOT across eight (median gap -99.8 degrees, 35% within 10 of 180).
+   */
+  spinDirection?: number;
   /** Pitcher extension in ft (from the optional `extension` column); undefined when unknown. */
   extension?: number;
   szTop?: number;

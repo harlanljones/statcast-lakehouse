@@ -70,6 +70,7 @@ COLUMN_MAP = {
     "pitch_type": "pitch_type",
     "release_speed": "release_speed",
     "release_spin_rate": "release_spin_rate",
+    "spin_axis": "spin_direction",
     "api_release_pos_x": "x0",
     "release_pos_y": "y0",
     "api_release_pos_z": "z0",

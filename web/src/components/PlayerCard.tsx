@@ -370,6 +370,24 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
         </Show>
         <div style={muted}>
           {pitchResult(props.pitch)} · plate ({props.pitch.plateX.toFixed(2)}, {props.pitch.plateZ.toFixed(2)}) ft
+          <Show when={props.pitch.spinDirection != null}>
+            {/*
+              * The feed's spin-direction field, printed verbatim. The tooltip says only
+              * what is verified: the field's provenance and the fact that its relation
+              * to the break is NOT a simple one (measured, and it did not hold).
+              */}
+            <span
+              title={
+                "MLB's spinDirection for this pitch: the direction the spin axis points, in degrees, "
+                + "exactly as the feed reports it. Its relation to the break is not a fixed offset — "
+                + "measured across eight games, the gap's median is -99.8 degrees and only 35% of pitches "
+                + "fall within 10 of 180 — so the angle is shown and not interpreted."
+              }
+              style={muted}
+            >
+              {" · "}Spin axis {Math.round(props.pitch.spinDirection!)}°
+            </span>
+          </Show>
           <Show when={props.pitch.playEvent}>
             {/* The appearance's outcome, verbatim: "At-bat", never "Result". */}
             <span style={muted}> · At-bat: {props.pitch.playEvent}</span>

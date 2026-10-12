@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS `statcast_analytics.fct_pitches` (
   play_event STRING,
   release_speed FLOAT64,
   release_spin_rate FLOAT64,
+  spin_direction FLOAT64,
   x0 FLOAT64,
   y0 FLOAT64,
   z0 FLOAT64,

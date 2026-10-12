@@ -197,6 +197,7 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const isSwing = columnGetter(table, "is_swing");
   const isWhiff = columnGetter(table, "is_whiff");
   const spin = columnGetter(table, "release_spin_rate");
+  const spinDir = columnGetter(table, "spin_direction");
   const szTop = columnGetter(table, "sz_top");
   const szBot = columnGetter(table, "sz_bot");
   const extension = columnGetter(table, "extension");
@@ -274,6 +275,7 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
       path,
       releaseSpeed: speed[i],
       spinRate: spin ? finiteOrUndefined(spin(i)) : undefined,
+      spinDirection: spinDir ? finiteOrUndefined(spinDir(i)) : undefined,
       extension: ext,
       szTop: szTop ? finiteOrUndefined(szTop(i)) : undefined,
       szBot: szBot ? finiteOrUndefined(szBot(i)) : undefined,

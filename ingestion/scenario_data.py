@@ -315,6 +315,11 @@ def _to_row(
         "play_event": (play.get("result") or {}).get("event"),
         "release_speed": pitch.get("startSpeed"),
         "release_spin_rate": (pitch.get("breaks") or {}).get("spinRate"),
+        # MLB's spin-direction field (0-360 degrees), stored verbatim. Its relation to
+        # the induced break is NOT a fixed offset: a first attempt over one game looked
+        # like a clean 180 degrees, but over eight games and 2,382 pitches the median is
+        # -99.8 with a spread of +-175, so nothing here interprets the angle.
+        "spin_direction": (pitch.get("breaks") or {}).get("spinDirection"),
         "x0": coordinates["x0"],
         "y0": coordinates["y0"],
         "z0": coordinates["z0"],

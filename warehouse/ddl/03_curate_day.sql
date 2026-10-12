@@ -4,7 +4,7 @@ MERGE `statcast_analytics.fct_pitches` f
 USING (
   SELECT
     pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type, pitch_result, play_event,
-    release_speed, release_spin_rate,
+    release_speed, release_spin_rate, spin_direction,
     x0, y0, z0, vx0, vy0, vz0, ax, ay, az,
     plate_x, plate_z, zone, sz_top, sz_bot,
     stand, p_throws, balls, strikes, at_bat_number, pitch_number,
@@ -26,7 +26,7 @@ WHEN NOT MATCHED THEN
   -- existing tables, so live column order differs from 02_fct_pitches.sql.
   INSERT (
     pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type, pitch_result, play_event,
-    release_speed, release_spin_rate,
+    release_speed, release_spin_rate, spin_direction,
     x0, y0, z0, vx0, vy0, vz0, ax, ay, az,
     plate_x, plate_z, zone, sz_top, sz_bot,
     stand, p_throws, balls, strikes, at_bat_number, pitch_number,
@@ -34,7 +34,7 @@ WHEN NOT MATCHED THEN
   )
   VALUES (
     pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type, pitch_result, play_event,
-    release_speed, release_spin_rate,
+    release_speed, release_spin_rate, spin_direction,
     x0, y0, z0, vx0, vy0, vz0, ax, ay, az,
     plate_x, plate_z, zone, sz_top, sz_bot,
     stand, p_throws, balls, strikes, at_bat_number, pitch_number,

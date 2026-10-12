@@ -54,6 +54,11 @@ SCHEMA = pa.schema(
         ("play_event", pa.string()),
         ("release_speed", pa.float64()),
         ("release_spin_rate", pa.float64()),
+        # MLB pitchData.breaks.spinDirection: the direction the spin axis points, in
+        # degrees, stored verbatim. 100% present on tracked pitches. Deliberately NOT
+        # interpreted: its relation to the induced break is not a fixed offset (eight
+        # games, median -99.8 degrees, only 35% within 10 of 180).
+        ("spin_direction", pa.float64()),
         ("x0", pa.float64()),
         ("y0", pa.float64()),
         ("z0", pa.float64()),
