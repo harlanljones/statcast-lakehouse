@@ -185,17 +185,23 @@ def _trajectory_points(
     return points
 
 
-def _ghost_kinematics_at(pitch: dict[str, float], t_mid: float) -> dict[str, float]:
-    """The ghost at a known mid-flight time (see ghost_kinematics)."""
+def _ghost_accels(pitch: dict[str, float], t_mid: float) -> tuple[float, float, float]:
+    """The ghost's (ax, ay, az) at a known mid-flight time (see ghost_kinematics)."""
     vx = pitch["vx0"] + pitch["ax"] * t_mid
     vy = pitch["vy0"] + pitch["ay"] * t_mid
     vz = pitch["vz0"] + pitch["az"] * t_mid
     speed = math.sqrt(vx * vx + vy * vy + vz * vz)
     drag = (pitch["ax"] * vx + pitch["ay"] * vy + (pitch["az"] + GRAVITY_FT_S2) * vz) / speed
+    return drag * vx / speed, pitch["ay"], -GRAVITY_FT_S2 + drag * vz / speed
+
+
+def _ghost_kinematics_at(pitch: dict[str, float], t_mid: float) -> dict[str, float]:
+    """The ghost at a known mid-flight time (see ghost_kinematics)."""
+    ax, ay, az = _ghost_accels(pitch, t_mid)
     ghost = dict(pitch)
-    ghost["ax"] = drag * vx / speed
-    ghost["ay"] = pitch["ay"]
-    ghost["az"] = -GRAVITY_FT_S2 + drag * vz / speed
+    ghost["ax"] = ax
+    ghost["ay"] = ay
+    ghost["az"] = az
     return ghost
 
 
@@ -230,9 +236,11 @@ def compute_break_vector(pitch: dict[str, float]) -> dict[str, float]:
     """Aerodynamic break in inches at plate arrival (Nathan 2012 definition):
     actual minus the drag-corrected ghost, which share the same flight time."""
     t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
-    ghost = _ghost_kinematics_at(pitch, 0.5 * t_end)
-    dx_ft = 0.5 * (pitch["ax"] - ghost["ax"]) * t_end * t_end
-    dz_ft = 0.5 * (pitch["az"] - ghost["az"]) * t_end * t_end
+    # Only the ghost's x/z accelerations are needed here, so skip the dict copy
+    # that _ghost_kinematics_at makes for the trajectory path.
+    ghost_ax, _, ghost_az = _ghost_accels(pitch, 0.5 * t_end)
+    dx_ft = 0.5 * (pitch["ax"] - ghost_ax) * t_end * t_end
+    dz_ft = 0.5 * (pitch["az"] - ghost_az) * t_end * t_end
     h_break = dx_ft * 12.0
     v_break = dz_ft * 12.0
     return {

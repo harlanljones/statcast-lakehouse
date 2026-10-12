@@ -9,6 +9,7 @@ import {
   ghostTrajectoryFlat,
   computeBreakVector,
   breakVectorSegment,
+  extrapolateToReleaseInPlace,
   extrapolateToRelease,
   type PitchKinematics,
   COMMITMENT_PLANE_Y_FT,
@@ -165,6 +166,17 @@ describe("extrapolateToRelease", () => {
     expect(back[1]).toBeCloseTo(p.y0, 9);
     expect(back[2]).toBeCloseTo(p.z0, 9);
     expect(flightTime(r)).toBeCloseTo(flightTime(p) + Math.abs(T), 9);
+  });
+
+  it("extrapolateToReleaseInPlace mutates its argument to the same values", () => {
+    const copy = extrapolateToRelease(p, 6.5);
+    const inPlace = extrapolateToReleaseInPlace({ ...p }, 6.5);
+
+    expect(inPlace).toEqual(copy);
+    // And it leaves an unusable extension's input alone (same object back).
+    const untouched = { ...p };
+    expect(extrapolateToReleaseInPlace(untouched, null)).toBe(untouched);
+    expect(untouched).toEqual(p);
   });
 
   it("returns the input unchanged without a usable extension", () => {

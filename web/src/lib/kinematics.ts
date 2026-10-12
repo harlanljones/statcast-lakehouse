@@ -199,35 +199,68 @@ export function extrapolateToRelease(
   p: PitchKinematics,
   extensionFt: number | null | undefined,
 ): PitchKinematics {
-  if (extensionFt == null || !Number.isFinite(extensionFt) || extensionFt <= 0 || extensionFt >= 12) return p;
+  const t = releasePlaneTime(p, extensionFt);
+  if (t === null) return p;
+  const out: PitchKinematics = { ...p };
+  applyReleasePlane(out, t, extensionFt as number);
+  return out;
+}
+
+/**
+ * Same back-extrapolation, applied to `p` in place and returned. For callers
+ * that built the kinematics object for this row anyway (the loader), so the
+ * throwaway copy is not allocated and discarded on every pitch. Like the
+ * copying version, `p` comes back untouched when the extension is unusable.
+ */
+export function extrapolateToReleaseInPlace(
+  p: PitchKinematics,
+  extensionFt: number | null | undefined,
+): PitchKinematics {
+  const t = releasePlaneTime(p, extensionFt);
+  if (t === null) return p;
+  applyReleasePlane(p, t, extensionFt as number);
+  return p;
+}
+
+/**
+ * Time t <= 0 (closest to zero) at which the constant-acceleration fit crosses
+ * the release plane y = 60.5 - extension, or null when the extension is
+ * missing, non-finite, outside (0, 12) ft, or no such root exists.
+ */
+function releasePlaneTime(
+  p: PitchKinematics,
+  extensionFt: number | null | undefined,
+): number | null {
+  if (extensionFt == null || !Number.isFinite(extensionFt) || extensionFt <= 0 || extensionFt >= 12) return null;
   const yRel = PITCHING_RUBBER_Y_FT - extensionFt;
   const a = 0.5 * p.ay;
   const b = p.vy0;
   const c = p.y0 - yRel;
-  let roots: number[];
   if (Math.abs(a) < 1e-12) {
-    if (b === 0) return p;
-    roots = [-c / b];
-  } else {
-    const disc = b * b - 4 * a * c;
-    if (disc < 0) return p;
-    const sq = Math.sqrt(disc);
-    roots = [(-b - sq) / (2 * a), (-b + sq) / (2 * a)];
+    if (b === 0) return null;
+    const t = -c / b;
+    return t <= 0 ? t : null;
   }
-  const past = roots.filter((r) => r <= 0);
-  if (past.length === 0) return p;
-  const t = Math.max(...past);
-  return {
-    x0: p.x0 + p.vx0 * t + 0.5 * p.ax * t * t,
-    y0: yRel,
-    z0: p.z0 + p.vz0 * t + 0.5 * p.az * t * t,
-    vx0: p.vx0 + p.ax * t,
-    vy0: p.vy0 + p.ay * t,
-    vz0: p.vz0 + p.az * t,
-    ax: p.ax,
-    ay: p.ay,
-    az: p.az,
-  };
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  const sq = Math.sqrt(disc);
+  const r1 = (-b - sq) / (2 * a);
+  const r2 = (-b + sq) / (2 * a);
+  let best: number | null = null;
+  if (r1 <= 0) best = r1;
+  if (r2 <= 0 && (best === null || r2 > best)) best = r2;
+  return best;
+}
+
+/** Move the nine parameters of `p` back to the release plane at time `t`. */
+function applyReleasePlane(p: PitchKinematics, t: number, extensionFt: number): void {
+  // Each field is written only after every read of it has happened.
+  p.x0 = p.x0 + p.vx0 * t + 0.5 * p.ax * t * t;
+  p.y0 = PITCHING_RUBBER_Y_FT - extensionFt;
+  p.z0 = p.z0 + p.vz0 * t + 0.5 * p.az * t * t;
+  p.vx0 = p.vx0 + p.ax * t;
+  p.vy0 = p.vy0 + p.ay * t;
+  p.vz0 = p.vz0 + p.az * t;
 }
 
 /**

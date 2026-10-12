@@ -4,7 +4,7 @@ import { decompress as zstdDecompress } from "fzstd";
 import {
   trajectoryFlat,
   computeBreakVector,
-  extrapolateToRelease,
+  extrapolateToReleaseInPlace,
   commitmentPosition,
   type PitchKinematics,
 } from "./kinematics";
@@ -202,7 +202,8 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
       vx0: vx0[i], vy0: vy0[i], vz0: vz0[i],
       ax: ax[i], ay: ay[i], az: az[i],
     };
-    const k = extrapolateToRelease(measured, ext);
+    // In place: `measured` was built for this row and nothing else holds it.
+    const k = extrapolateToReleaseInPlace(measured, ext);
     let path: Float32Array;
     try {
       path = trajectoryFlat(k);
