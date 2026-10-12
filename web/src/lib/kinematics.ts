@@ -82,41 +82,59 @@ export function flightTime(p: PitchKinematics, yEnd = PLATE_Y): number {
   return best;
 }
 
-/** Position at time t (seconds since release). */
+/**
+ * Position at time t (seconds since release).
+ *
+ * Horner form of the same closed form (x0 + vx0*t + 0.5*ax*t*t): two
+ * multiplies per coordinate instead of three, evaluated in the same order as
+ * `trajectory`/`trajectoryFlat` and as `position_at` in ingestion/worker.py.
+ */
 export function positionAt(p: PitchKinematics, t: number): [number, number, number] {
   return [
-    p.x0 + p.vx0 * t + 0.5 * p.ax * t * t,
-    p.y0 + p.vy0 * t + 0.5 * p.ay * t * t,
-    p.z0 + p.vz0 * t + 0.5 * p.az * t * t,
+    p.x0 + t * (p.vx0 + 0.5 * p.ax * t),
+    p.y0 + t * (p.vy0 + 0.5 * p.ay * t),
+    p.z0 + t * (p.vz0 + 0.5 * p.az * t),
   ];
 }
 
-/** n-point path from release to the plate plane (n=60 matches Statcast). */
+/**
+ * n-point path from release to the plate plane (n=60 matches Statcast).
+ * Timestamps accumulate from tEnd/(n-1), the sequence `trajectoryFlat` and the
+ * mirrored Python `trajectory` also accumulate.
+ */
 export function trajectory(p: PitchKinematics, n = 60): Array<[number, number, number]> {
   const tEnd = flightTime(p);
+  const dt = tEnd / (n - 1);
   const path: Array<[number, number, number]> = new Array(n);
-  for (let i = 0; i < n; i++) path[i] = positionAt(p, (tEnd * i) / (n - 1));
+  let t = 0;
+  for (let i = 0; i < n; i++) {
+    path[i] = positionAt(p, t);
+    t += dt;
+  }
   return path;
 }
 
 /** Path as a flat Float32Array [x0,y0,z0, x1,y1,z1, ...] for zero-copy GPU upload. */
 export function trajectoryFlat(p: PitchKinematics, n = 60): Float32Array {
-  // Same closed form and same expression order as positionAt (with the
-  // 0.5 * a factors hoisted out of the loop), written straight into the typed
+  // Same closed form and same expression order as positionAt (Horner form,
+  // 0.5 * a hoisted, timestamps accumulated), written straight into the typed
   // array: the GPU path needs the flat buffer, never the tuple list, and the
   // intermediate array of 60 points is the loader's biggest per-pitch
-  // allocation.
+  // allocation. ingestion/worker.py trajectory accumulates the same sequence,
+  // so both solvers produce the same floats to the last bit.
   const tEnd = flightTime(p);
   const { x0, y0, z0, vx0, vy0, vz0 } = p;
   const halfAx = 0.5 * p.ax;
   const halfAy = 0.5 * p.ay;
   const halfAz = 0.5 * p.az;
+  const dt = tEnd / (n - 1);
   const flat = new Float32Array(n * 3);
+  let t = 0;
   for (let i = 0, j = 0; i < n; i++, j += 3) {
-    const t = (tEnd * i) / (n - 1);
-    flat[j] = x0 + vx0 * t + halfAx * t * t;
-    flat[j + 1] = y0 + vy0 * t + halfAy * t * t;
-    flat[j + 2] = z0 + vz0 * t + halfAz * t * t;
+    flat[j] = x0 + t * (vx0 + halfAx * t);
+    flat[j + 1] = y0 + t * (vy0 + halfAy * t);
+    flat[j + 2] = z0 + t * (vz0 + halfAz * t);
+    t += dt;
   }
   return flat;
 }

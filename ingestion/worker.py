@@ -114,23 +114,30 @@ def solve_flight_time(y0: float, vy0: float, ay: float, y_end: float = PLATE_Y_F
 
 
 def position_at(pitch: dict[str, float], t: float) -> tuple[float, float, float]:
-    """Constant-acceleration (9-parameter) position at time t, in feet."""
+    """Constant-acceleration (9-parameter) position at time t, in feet.
+
+    Horner form of the same closed form (x0 + vx0*t + 0.5*ax*t*t): two
+    multiplies per coordinate instead of three, evaluated in the same order as
+    ``trajectory`` and as ``positionAt`` in web/src/lib/kinematics.ts.
+    """
     return (
-        pitch["x0"] + pitch["vx0"] * t + 0.5 * pitch["ax"] * t * t,
-        pitch["y0"] + pitch["vy0"] * t + 0.5 * pitch["ay"] * t * t,
-        pitch["z0"] + pitch["vz0"] * t + 0.5 * pitch["az"] * t * t,
+        pitch["x0"] + t * (pitch["vx0"] + 0.5 * pitch["ax"] * t),
+        pitch["y0"] + t * (pitch["vy0"] + 0.5 * pitch["ay"] * t),
+        pitch["z0"] + t * (pitch["vz0"] + 0.5 * pitch["az"] * t),
     )
 
 
 def trajectory(pitch: dict[str, float], n: int = 60) -> list[tuple[float, float, float]]:
     """n points from release to the plate plane (Statcast's 60-point path).
 
-    The closed form of ``position_at`` is inlined over the loop, bit for bit
-    (same expression order, with the ``0.5 * a`` factors hoisted out of the
-    loop), because this is the hot path of every trajectory export: 60 points
-    per pitch, where the per-point dict lookups and tuple allocation cost more
-    than the arithmetic. Batch exports and the mirrored TypeScript solver must
-    keep agreeing to the last float, so do not re-associate these expressions.
+    Same closed form and expression order as ``position_at`` (Horner form),
+    inlined over the loop with the per-point timestamps accumulated from
+    ``t_end / (n - 1)``. This is the hot path of every trajectory export: 60
+    points per pitch, where the per-point dict lookups, the tuple allocation
+    and the two extra multiplies per coordinate cost more than the physics.
+    The mirrored TypeScript solver (``trajectoryFlat``) accumulates the same
+    timestamp sequence, so both produce the same floats to the last bit; keep
+    the two in step when touching either.
     """
     t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
     x0 = pitch["x0"]
@@ -142,17 +149,19 @@ def trajectory(pitch: dict[str, float], n: int = 60) -> list[tuple[float, float,
     z0 = pitch["z0"]
     vz0 = pitch["vz0"]
     half_az = 0.5 * pitch["az"]
+    dt = t_end / (n - 1)
     points: list[tuple[float, float, float]] = []
     append = points.append
-    for i in range(n):
-        t = t_end * i / (n - 1)
+    t = 0.0
+    for _ in range(n):
         append(
             (
-                x0 + vx0 * t + half_ax * t * t,
-                y0 + vy0 * t + half_ay * t * t,
-                z0 + vz0 * t + half_az * t * t,
+                x0 + t * (vx0 + half_ax * t),
+                y0 + t * (vy0 + half_ay * t),
+                z0 + t * (vz0 + half_az * t),
             )
         )
+        t += dt
     return points
 
 
