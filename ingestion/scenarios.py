@@ -41,6 +41,7 @@ SCENARIO_FILES = {
     "one-run-slugfests": "one-run-slugfests.arrow",
     "pitchers-duels": "pitchers-duels.arrow",
     "multi-homer-nights": "multi-homer-nights.arrow",
+    "grand-slams": "grand-slams.arrow",
 }
 
 

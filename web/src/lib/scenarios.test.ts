@@ -31,6 +31,7 @@ const SERVER_IDS = [
   "one-run-slugfests",
   "pitchers-duels",
   "multi-homer-nights",
+  "grand-slams",
 ];
 
 describe("real-game story catalog", () => {

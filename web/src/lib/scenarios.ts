@@ -23,7 +23,8 @@ export type ScenarioId =
   | "walk-off-wins"
   | "one-run-slugfests"
   | "pitchers-duels"
-  | "multi-homer-nights";
+  | "multi-homer-nights"
+  | "grand-slams";
 
 export type LayerKey =
   | "tunneling"
@@ -479,6 +480,26 @@ export const SCENARIOS: readonly Scenario[] = [
       "1,731 tracked pitches, 860 swings and 191 whiffs across six games from April 2024 to May 2026 in which at least one hitter homered twice, including two nine-home-run games and two three-homer performances. 331 of the pitches were put in play with measured contact data, 79 of them at 100 mph or harder.",
     tryThis:
       "Set the heatmap to Hard Hit % and compare where the Athletics' 18-run game was pitched with the Rockies' 6–0 shutout.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Catcher",
+      layers: { plateCrossings: true, heatmap: true },
+      heatmapMode: "hard_hit",
+    }),
+  },
+  {
+    id: "grand-slams",
+    title: "Grand Slams",
+    dateLabel: "May 12, 2024 – Aug 23, 2026",
+    gameLabel: "Six games · seven grand slams",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/823099/feed/live",
+    synthetic: false,
+    hook: "Six games with a grand slam — including a 19–2 rout that had two.",
+    lookFor:
+      "1,906 tracked pitches, 893 swings and 163 whiffs across six games from May 2024 to August 2026 that produced seven grand slams, two of them in the Cubs' 19–2 win in Seattle. 353 of the pitches were put in play with measured contact data, 83 of them at 100 mph or harder.",
+    tryThis:
+      "Scrub to the grand-slam pitch in each game and compare where it was left over the plate.",
     lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
     preset: preset({
       view: "Catcher",

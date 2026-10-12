@@ -7,17 +7,18 @@ network. To refresh them from the same public feeds, run
 
 The same files also back `GET /pitches/sample` and `python3 -m ingestion.worker
 --dry-run`: `ingestion.scenarios.real_pitches()` returns every pitch here once
-(the Ohtani slices repeat pitches from the full game), in game order. Seventeen
-slices across sixty-one games and sixty-one game dates (18,722 pitches), from the
-2024 regular season and World Series to the 2025 and 2026 seasons. The
+(the Ohtani slices repeat pitches from the full game), in game order. Eighteen
+slices across sixty-seven games and sixty-seven game dates (20,628 pitches), from
+the 2024 regular season and World Series to the 2025 and 2026 seasons. The
 `season-sweep` slice carries one game per period across all three seasons,
 `strikeout-nights` the six games with 20+ combined strikeouts (132 in all),
 `extra-innings` the six games that ran past nine innings (65 innings in all),
 `power-nights` the six games with 4+ combined home runs (32 in all),
 `walk-off-wins` the six games decided by the final swing, `one-run-slugfests` the
 six one-run games with 104 runs in all, `pitchers-duels` the six games with three
-runs or fewer (eight in all), and `multi-homer-nights` the six games with a
-multi-homer hitter (34 home runs in all).
+runs or fewer (eight in all), `multi-homer-nights` the six games with a
+multi-homer hitter (34 home runs in all), and `grand-slams` the six games with a
+grand slam (seven in all).
 
 | Scenario | Source game | Selected pitches | Story reference |
 |---|---|---:|---|
@@ -30,6 +31,7 @@ multi-homer hitter (34 home runs in all).
 | `tigers-astros-june` | Tigers at Astros, 2024-06-15, game 746381 | All 357 tracked pitches | [Tigers 13, Astros 5](https://www.mlb.com/gameday/tigers-vs-astros/2024/06/15/746381/final) |
 | `yankees-athletics-2025` | Yankees at Athletics, 2025-05-10, game 777972 | All 323 tracked pitches | [Athletics 11, Yankees 7](https://www.mlb.com/gameday/yankees-vs-athletics/2025/05/10/777972/final) |
 | `twins-blue-jays-2026` | Twins at Blue Jays, 2026-04-10, game 822829 | All 311 tracked pitches | [Blue Jays 10, Twins 4](https://www.mlb.com/gameday/twins-vs-blue-jays/2026/04/10/822829/final) |
+| `grand-slams` | Six games featuring a grand slam, one per date: Yankees at Rays 2024-05-12 (745092, Jose Siri), Guardians at Blue Jays 2024-06-16 (744926, Daulton Varsho), Padres at Nationals 2025-07-20 (777077, Xander Bogaerts), Giants at Athletics 2026-05-17 (825006, Harrison Bader), Cubs at Pirates 2026-07-26 (823354, Ryan O'Hearn), Cubs at Mariners 2026-08-23 (823099, Ian Happ and Pedro Ramirez — two in one game) | All 1,906 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `multi-homer-nights` | Six games in which a hitter homered at least twice, one per date: Giants at Rays 2024-04-14 (745113, René Pinto 2), Athletics at Phillies 2024-07-14 (745551, Lawrence Butler 3, Brent Rooker 2, Seth Brown 2), Giants at Yankees 2025-04-13 (778339, Jung Hoo Lee 2), Mariners at Cubs 2025-06-22 (777403, three hitters with 2 each), Marlins at Orioles 2025-07-13 (777129, Kyle Stowers 3), Rockies at Phillies 2026-05-10 (823463, Kyle Schwarber 2) | All 1,731 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `pitchers-duels` | Six games with three runs or fewer, one per date: Brewers at Cardinals 2024-04-21 (745192, 2-0), Marlins at Tigers 2024-05-15 (746472, 2-0), White Sox at Braves 2025-08-20 (776669, 0-1), Pirates at Diamondbacks 2026-05-06 (825091, 1-0), Giants at Brewers 2026-06-03 (823780, 1-0), Giants at Guardians 2026-08-19 (824394, 1-0) | All 1,532 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `one-run-slugfests` | Six games decided by one run with both teams at 6+ runs, one per date: Cubs at Pirates 2024-05-11 (745505, 9-10), Dodgers at Astros 2024-07-27 (746362, 6-7), Rays at Dodgers 2024-08-24 (746108, 9-8 in 10), Nationals at Rockies 2025-04-19 (778247, 12-11), Athletics at Blue Jays 2025-05-31 (777701, 7-8), Phillies at Brewers 2026-06-13 (823776, 9-8) | All 1,965 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |

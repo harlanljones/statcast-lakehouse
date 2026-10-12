@@ -56,6 +56,10 @@ PITCHERS_DUEL_GAMES = (745192, 746472, 776669, 825091, 823780, 824394)
 # 2024, 2025 and 2026 seasons (34 home runs in all, including two nine-homer
 # games and two three-homer performances).
 MULTI_HOMER_GAMES = (745113, 745551, 778339, 777403, 777129, 823463)
+
+# Six games featuring a grand slam, one per date across the 2024, 2025 and 2026
+# seasons (one of them, the Cubs' 19-2 win in Seattle, had two).
+GRAND_SLAM_GAMES = (745092, 744926, 777077, 825006, 823354, 823099)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -66,6 +70,7 @@ GAME_IDS = (
     *ONE_RUN_SLUGFEST_GAMES,
     *PITCHERS_DUEL_GAMES,
     *MULTI_HOMER_GAMES,
+    *GRAND_SLAM_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -96,6 +101,7 @@ SWEEP_SCENARIOS = {
     "one-run-slugfests": ONE_RUN_SLUGFEST_GAMES,
     "pitchers-duels": PITCHERS_DUEL_GAMES,
     "multi-homer-nights": MULTI_HOMER_GAMES,
+    "grand-slams": GRAND_SLAM_GAMES,
 }
 
 

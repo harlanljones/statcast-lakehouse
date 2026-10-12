@@ -29,6 +29,7 @@ SCENARIO_ROWS = {
     "one-run-slugfests": 1965,
     "pitchers-duels": 1532,
     "multi-homer-nights": 1731,
+    "grand-slams": 1906,
 }
 
 
