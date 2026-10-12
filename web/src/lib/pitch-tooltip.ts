@@ -23,6 +23,12 @@ export interface PitchTooltipInfo {
   break?: string;
   /** Spin rate in RPM, e.g. "2350 rpm" */
   spin?: string;
+  /**
+   * MLB's spin-axis direction, e.g. "axis 141°". Shown verbatim and NOT
+   * interpreted: its relation to the break is not a fixed offset (measured across
+   * eight games, median -99.8 degrees, only 35% within 10 of 180).
+   */
+  spinAxis?: string;
   /** Release coordinates "Rel (+1.5, 5.8) ft", or "At 50 ft (+1.5, 5.8)" when extension is unknown. */
   release?: string;
   /** Extension from rubber, e.g. "Ext 6.2 ft"; omitted when unknown. */
@@ -78,6 +84,11 @@ export function pitchTooltip(
   let spin: string | undefined;
   if (d.spinRate != null && !isNaN(d.spinRate)) {
     spin = `${Math.round(d.spinRate)} rpm`;
+  }
+
+  let spinAxis: string | undefined;
+  if (d.spinDirection != null && !isNaN(d.spinDirection)) {
+    spinAxis = `axis ${Math.round(d.spinDirection)}°`;
   }
 
   let release: string | undefined;
@@ -141,6 +152,7 @@ export function pitchTooltip(
     outcome,
     break: breakStr,
     spin,
+    spinAxis,
     release,
     extension,
     zoneBounds,
@@ -209,6 +221,7 @@ export function pitchTooltipSummary(
   if (!info) return "";
   const parts = [`${info.pitchType}: ${info.speed}`];
   if (info.spin) parts.push(info.spin);
+  if (info.spinAxis) parts.push(info.spinAxis);
   parts.push(info.location, info.zone);
   if (info.zoneBounds) parts.push(info.zoneBounds);
   if (info.break) parts.push(info.break);

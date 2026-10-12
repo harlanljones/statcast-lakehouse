@@ -119,10 +119,11 @@ describe("pitchTooltip", () => {
     expect(info.break).toBe('IVB +16.5"  HB -14.2"');
   });
 
-  it("formats spin rate, release coordinates, and extension when available", () => {
+  it("formats spin rate and its axis, release coordinates, and extension when available", () => {
     const info = pitchTooltip(
       pitch({
         spinRate: 2380.4,
+        spinDirection: 141,
         extension: 6.2,
         kinematics: {
           x0: -1.75,
@@ -138,6 +139,9 @@ describe("pitchTooltip", () => {
       }),
     )!;
     expect(info.spin).toBe("2380 rpm");
+    // Shown verbatim: the relation to the break is not a fixed offset, so the
+    // angle is never interpreted into a movement claim.
+    expect(info.spinAxis).toBe("axis 141°");
     expect(info.release).toBe("Rel (-1.8, 5.8) ft");
     expect(info.extension).toBe("Ext 6.2 ft");
     expect(info.tunnel).toBe("Tunnel (-0.9, 4.2) ft");
@@ -187,12 +191,13 @@ describe("pitchTooltip", () => {
     ).toBe('FF: 94.5 mph, 0.1 ft, 2.3 ft, In Zone, IVB +17.2"  HB -8.5", Whiff');
   });
 
-  it("includes spin, release, extension, and tunnel in aria-live summary", () => {
+  it("includes spin and its axis, release, extension, and tunnel in aria-live summary", () => {
     expect(
       pitchTooltipSummary(
         pitch({
           releaseSpeed: 95.0,
           spinRate: 2450,
+          spinDirection: 141,
           plateX: 0.1,
           plateZ: 2.5,
           extension: 6.0,
@@ -211,7 +216,7 @@ describe("pitchTooltip", () => {
           isWhiff: 1,
         }),
       ),
-    ).toBe("FF: 95.0 mph, 2450 rpm, 0.1 ft, 2.5 ft, In Zone, Rel (+1.5, 6.0) ft, Ext 6.0 ft, Tunnel (+1.5, 6.0) ft, Sim: 111.0 mph (Solid Contact) • 247.4 ft, Whiff");
+    ).toBe("FF: 95.0 mph, 2450 rpm, axis 141°, 0.1 ft, 2.5 ft, In Zone, Rel (+1.5, 6.0) ft, Ext 6.0 ft, Tunnel (+1.5, 6.0) ft, Sim: 111.0 mph (Solid Contact) • 247.4 ft, Whiff");
   });
 
   it("formats batter-specific strike zone bounds when present", () => {

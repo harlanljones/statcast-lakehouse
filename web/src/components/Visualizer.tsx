@@ -538,7 +538,13 @@ export default function Visualizer(props: VisualizerProps) {
               {t.pitchType}
             </div>
             <div>{t.speed}</div>
-            {t.spin && <div style={{ color: "#a0e0a0" }}>{t.spin}</div>}
+            {(t.spin || t.spinAxis) && (
+              <div style={{ color: "#a0e0a0" }}>
+                {t.spin}
+                {t.spin && t.spinAxis ? " · " : ""}
+                {t.spinAxis}
+              </div>
+            )}
             <div>{t.location}</div>
             {t.break && <div style={{ color: THEME.gold }}>{t.break}</div>}
             {t.tunnel && <div style={{ color: THEME.gold }}>{t.tunnel}</div>}
