@@ -7,14 +7,15 @@ network. To refresh them from the same public feeds, run
 
 The same files also back `GET /pitches/sample` and `python3 -m ingestion.worker
 --dry-run`: `ingestion.scenarios.real_pitches()` returns every pitch here once
-(the Ohtani slices repeat pitches from the full game), in game order. Fourteen
-slices across forty-three games and forty-three game dates (13,494 pitches), from
+(the Ohtani slices repeat pitches from the full game), in game order. Fifteen
+slices across forty-nine games and forty-nine game dates (15,459 pitches), from
 the 2024 regular season and World Series to the 2025 and 2026 seasons. The
 `season-sweep` slice carries one game per period across all three seasons,
 `strikeout-nights` the six games with 20+ combined strikeouts (132 in all),
 `extra-innings` the six games that ran past nine innings (65 innings in all),
-`power-nights` the six games with 4+ combined home runs (32 in all), and
-`walk-off-wins` the six games decided by the final swing.
+`power-nights` the six games with 4+ combined home runs (32 in all),
+`walk-off-wins` the six games decided by the final swing, and
+`one-run-slugfests` the six one-run games with 104 runs in all.
 
 | Scenario | Source game | Selected pitches | Story reference |
 |---|---|---:|---|
@@ -27,6 +28,7 @@ the 2024 regular season and World Series to the 2025 and 2026 seasons. The
 | `tigers-astros-june` | Tigers at Astros, 2024-06-15, game 746381 | All 357 tracked pitches | [Tigers 13, Astros 5](https://www.mlb.com/gameday/tigers-vs-astros/2024/06/15/746381/final) |
 | `yankees-athletics-2025` | Yankees at Athletics, 2025-05-10, game 777972 | All 323 tracked pitches | [Athletics 11, Yankees 7](https://www.mlb.com/gameday/yankees-vs-athletics/2025/05/10/777972/final) |
 | `twins-blue-jays-2026` | Twins at Blue Jays, 2026-04-10, game 822829 | All 311 tracked pitches | [Blue Jays 10, Twins 4](https://www.mlb.com/gameday/twins-vs-blue-jays/2026/04/10/822829/final) |
+| `one-run-slugfests` | Six games decided by one run with both teams at 6+ runs, one per date: Cubs at Pirates 2024-05-11 (745505, 9-10), Dodgers at Astros 2024-07-27 (746362, 6-7), Rays at Dodgers 2024-08-24 (746108, 9-8 in 10), Nationals at Rockies 2025-04-19 (778247, 12-11), Athletics at Blue Jays 2025-05-31 (777701, 7-8), Phillies at Brewers 2026-06-13 (823776, 9-8) | All 1,965 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `walk-off-wins` | Six games decided by the final swing, one per date, all in extra innings: Dodgers at Tigers 2024-07-13 (746447, 10 inn, HR by Gio Urshela), Blue Jays at Braves 2024-09-08 (747072, 11, FC by Sean Murphy), Reds at Cardinals 2025-06-21 (777415, 11, single by Yohel Pozo), Tigers at Marlins 2025-09-13 (776347, 11, HR by Troy Johnston), Cardinals at Reds 2026-05-23 (824516, 11, FC by Blake Dunn), Giants at Cubs 2026-06-06 (824669, 10, single by Michael Busch) | All 2,010 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `power-nights` | Six games with 4+ combined home runs, one per date: Giants at Cardinals 2024-06-22 (745163, 4 HR), Reds at Marlins 2024-08-05 (746038, 5), Nationals at Orioles 2025-05-18 (777873, 8), Guardians at Athletics 2026-05-02 (825014, 5), Reds at Pirates 2026-06-27 (823364, 4), Cardinals at Cubs 2026-08-15 (824644, 6) | All 1,792 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `extra-innings` | Six games that went past nine innings, one per date: Mets at Rays 2024-05-05 (745103, 10 inn), Guardians at Yankees 2024-08-20 (745707, 12), Athletics at Mariners 2024-09-28 (745203, 10), Royals at Cardinals 2025-06-05 (777642, 10), Diamondbacks at Pirates 2025-07-25 (777014, 11), Orioles at Royals 2026-04-20 (824125, 12) | All 2,143 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |

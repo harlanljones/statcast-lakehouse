@@ -26,6 +26,7 @@ SCENARIO_ROWS = {
     "extra-innings": 2143,
     "power-nights": 1792,
     "walk-off-wins": 2010,
+    "one-run-slugfests": 1965,
 }
 
 

@@ -20,7 +20,8 @@ export type ScenarioId =
   | "strikeout-nights"
   | "extra-innings"
   | "power-nights"
-  | "walk-off-wins";
+  | "walk-off-wins"
+  | "one-run-slugfests";
 
 export type LayerKey =
   | "tunneling"
@@ -422,6 +423,26 @@ export const SCENARIOS: readonly Scenario[] = [
     preset: preset({
       view: "Batter",
       layers: { plateCrossings: true, ghostBreak: true },
+    }),
+  },
+  {
+    id: "one-run-slugfests",
+    title: "One-Run Slugfests",
+    dateLabel: "May 11, 2024 – Jun 13, 2026",
+    gameLabel: "Six games · 104 runs",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/778247/feed/live",
+    synthetic: false,
+    hook: "Six games decided by a single run with both teams scoring six or more.",
+    lookFor:
+      "1,965 tracked pitches, 910 swings and 221 whiffs across six high-scoring one-run games from May 2024 to June 2026 — 104 runs in all, an average of 17 a game, and 331 of the pitches were put in play with measured contact data.",
+    tryThis:
+      "Set the heatmap to Hard Hit % and compare where the 23-run game at Coors Field was pitched with the rest.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Pitcher",
+      layers: { plateCrossings: true, heatmap: true },
+      heatmapMode: "hard_hit",
     }),
   },
 ];

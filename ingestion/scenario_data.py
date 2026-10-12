@@ -41,6 +41,11 @@ POWER_NIGHTS_GAMES = (745163, 746038, 777873, 825014, 823364, 824644)
 # Six games decided by the final swing, one per date across the 2024, 2025 and
 # 2026 seasons — all six went to extra innings, and four were one-run games.
 WALK_OFF_GAMES = (746447, 747072, 777415, 776347, 824516, 824669)
+
+# Six games decided by one run with both teams scoring six or more, one per date
+# across the 2024, 2025 and 2026 seasons: 104 runs in all, the slugfest end of
+# the one-run games.
+ONE_RUN_SLUGFEST_GAMES = (745505, 746362, 746108, 778247, 777701, 823776)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -48,6 +53,7 @@ GAME_IDS = (
     *EXTRA_INNINGS_GAMES,
     *POWER_NIGHTS_GAMES,
     *WALK_OFF_GAMES,
+    *ONE_RUN_SLUGFEST_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -75,6 +81,7 @@ SWEEP_SCENARIOS = {
     "extra-innings": EXTRA_INNINGS_GAMES,
     "power-nights": POWER_NIGHTS_GAMES,
     "walk-off-wins": WALK_OFF_GAMES,
+    "one-run-slugfests": ONE_RUN_SLUGFEST_GAMES,
 }
 
 

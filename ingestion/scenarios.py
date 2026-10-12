@@ -38,6 +38,7 @@ SCENARIO_FILES = {
     "extra-innings": "extra-innings.arrow",
     "power-nights": "power-nights.arrow",
     "walk-off-wins": "walk-off-wins.arrow",
+    "one-run-slugfests": "one-run-slugfests.arrow",
 }
 
 

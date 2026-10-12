@@ -28,6 +28,7 @@ const SERVER_IDS = [
   "extra-innings",
   "power-nights",
   "walk-off-wins",
+  "one-run-slugfests",
 ];
 
 describe("real-game story catalog", () => {
