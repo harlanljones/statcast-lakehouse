@@ -142,6 +142,15 @@ SHORT_LEFT_LINES_GAMES = (
     745101, 745750, 746639, 746961, 746383, 746638,
     746640, 745748, 745094, 746962, 746959, 745747,
 )
+# The seven shortest centre fields among the venues that hosted regular-season
+# games (MLB venue endpoint, fieldInfo.center): Oracle Park 391 ft, Dodger
+# Stadium 395, Angel Stadium 396, Petco Park 396, PNC Park 399, Rate Field 400
+# and Wrigley Field 400 — a different park set from the short-left-line slice.
+# Twelve games, one per date, every date unused.
+SHORT_CENTRE_GAMES = (
+    746804, 746882, 746880, 745503, 745502, 745500,
+    745501, 746794, 745333, 746225, 745409, 746136,
+)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -165,6 +174,7 @@ GAME_IDS = (
     *UNCLASSIFIED_GAMES,
     *ROOFED_GAMES,
     *SHORT_LEFT_LINES_GAMES,
+    *SHORT_CENTRE_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -208,6 +218,7 @@ SWEEP_SCENARIOS = {
     "unclassified-pitches": UNCLASSIFIED_GAMES,
     "under-a-roof": ROOFED_GAMES,
     "short-left-lines": SHORT_LEFT_LINES_GAMES,
+    "short-centre-fields": SHORT_CENTRE_GAMES,
 }
 
 

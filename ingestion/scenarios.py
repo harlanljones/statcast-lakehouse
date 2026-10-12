@@ -54,6 +54,7 @@ SCENARIO_FILES = {
     "hundred-pitch-starts": "hundred-pitch-starts.arrow",
     "unclassified-pitches": "unclassified-pitches.arrow",
     "short-left-lines": "short-left-lines.arrow",
+    "short-centre-fields": "short-centre-fields.arrow",
 }
 
 

@@ -44,6 +44,7 @@ const SERVER_IDS = [
   "unclassified-pitches",
   "under-a-roof",
   "short-left-lines",
+  "short-centre-fields",
 ];
 
 describe("real-game story catalog", () => {

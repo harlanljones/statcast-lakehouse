@@ -42,6 +42,7 @@ SCENARIO_ROWS = {
     "hundred-pitch-starts": 3450,
     "unclassified-pitches": 3076,
     "short-left-lines": 3576,
+    "short-centre-fields": 3692,
 }
 
 

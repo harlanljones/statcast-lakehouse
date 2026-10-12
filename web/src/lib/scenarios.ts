@@ -36,7 +36,8 @@ export type ScenarioId =
   | "hundred-pitch-starts"
   | "unclassified-pitches"
   | "under-a-roof"
-  | "short-left-lines";
+  | "short-left-lines"
+  | "short-centre-fields";
 
 export type LayerKey =
   | "tunneling"
@@ -757,6 +758,28 @@ export const SCENARIOS: readonly Scenario[] = [
       "3,576 tracked pitches, 1,695 swings and 398 whiffs across twelve games in May and June 2024 at five of the shortest left-field lines in MLB's venue data, every dimension taken from the venue feed's own fieldInfo: Fenway Park 310 ft, Tropicana Field 315, Minute Maid Park 315 (now Daikin Park), Yankee Stadium 318 and Progressive Field 325. 29 home runs were hit across the twelve and 601 pitches were put in play with measured contact data.",
     tryThis:
       "Turn on the spray layer and compare where the home runs landed at Fenway Park's 310 ft line with Progressive Field's 325.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
+    preset: preset({
+      view: "Batter",
+      layers: { plateCrossings: true, spray: true },
+    }),
+  },
+  {
+    id: "short-centre-fields",
+    title: "Short Centre Fields",
+    dateLabel: "Apr 29 - Jun 13, 2024",
+    gameLabel: "Twelve games · 7 parks",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/745333/feed/live",
+    synthetic: false,
+    hook: "Twelve games at the seven shortest centre fields in MLB's venue data - 391 ft at Oracle Park to 400 at Wrigley Field and Rate Field.",
+    lookFor:
+      "3,692 tracked pitches, 1,752 swings and 420 whiffs across twelve games from April to June 2024 at "
+      + "the seven shortest centre fields in MLB's venue data: 391 ft at Oracle Park, 395 at Dodger Stadium, "
+      + "396 at Angel Stadium and Petco Park, 399 at PNC Park, and 400 at Rate Field and Wrigley Field. 24 "
+      + "home runs were hit across the twelve and 600 pitches were put in play with measured contact data.",
+    tryThis:
+      "Turn on the spray layer and compare where the batted balls landed: these seven parks hold the league's shallowest centre fields, from Oracle Park's 391 ft to Wrigley Field's 400.",
     lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Batter",
