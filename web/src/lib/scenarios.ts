@@ -25,7 +25,8 @@ export type ScenarioId =
   | "pitchers-duels"
   | "multi-homer-nights"
   | "grand-slams"
-  | "big-innings";
+  | "big-innings"
+  | "strikeout-starts";
 
 export type LayerKey =
   | "tunneling"
@@ -525,6 +526,26 @@ export const SCENARIOS: readonly Scenario[] = [
     preset: preset({
       view: "Pitcher",
       layers: { plateCrossings: true, heatmap: true },
+    }),
+  },
+  {
+    id: "strikeout-starts",
+    title: "Double-Digit Starts",
+    dateLabel: "Jul 7, 2024 – Sep 6, 2026",
+    gameLabel: "Six starts · 75 strikeouts",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/776317/feed/live",
+    synthetic: false,
+    hook: "Six starts where the pitcher struck out at least ten — twelve to fourteen each.",
+    lookFor:
+      "1,681 tracked pitches, 830 swings and 246 whiffs across six games from July 2024 to September 2026 in which the starting pitcher struck out ten or more: George Kirby's 14 for Seattle, Tarik Skubal's 13 for Detroit, and 12 each from Spencer Arrighetti, Garrett Crochet, Zack Wheeler and Payton Tolle. Three of the six were one-run games.",
+    tryThis:
+      "Set the heatmap to Whiff % and compare where these six starters put hitters away.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Catcher",
+      layers: { plateCrossings: true, heatmap: true },
+      heatmapMode: "whiff_rate",
     }),
   },
 ];

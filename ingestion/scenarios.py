@@ -43,6 +43,7 @@ SCENARIO_FILES = {
     "multi-homer-nights": "multi-homer-nights.arrow",
     "grand-slams": "grand-slams.arrow",
     "big-innings": "big-innings.arrow",
+    "strikeout-starts": "strikeout-starts.arrow",
 }
 
 

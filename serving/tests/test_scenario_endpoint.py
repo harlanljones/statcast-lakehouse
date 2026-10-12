@@ -31,6 +31,7 @@ SCENARIO_ROWS = {
     "multi-homer-nights": 1731,
     "grand-slams": 1906,
     "big-innings": 2012,
+    "strikeout-starts": 1681,
 }
 
 

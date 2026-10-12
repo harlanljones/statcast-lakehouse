@@ -65,6 +65,10 @@ GRAND_SLAM_GAMES = (745092, 744926, 777077, 825006, 823354, 823099)
 # 2024, 2025 and 2026 seasons: 43 runs in those six innings alone, including two
 # eight-run frames and a seven-run eighth that won a one-run game.
 BIG_INNING_GAMES = (746001, 747008, 746517, 776794, 776428, 822940)
+
+# Six games in which the starting pitcher struck out at least ten, one per date
+# across the 2024, 2025 and 2026 seasons: twelve to fourteen each, 75 in all.
+STRIKEOUT_START_GAMES = (746691, 746356, 777692, 777217, 776317, 824794)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -77,6 +81,7 @@ GAME_IDS = (
     *MULTI_HOMER_GAMES,
     *GRAND_SLAM_GAMES,
     *BIG_INNING_GAMES,
+    *STRIKEOUT_START_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -109,6 +114,7 @@ SWEEP_SCENARIOS = {
     "multi-homer-nights": MULTI_HOMER_GAMES,
     "grand-slams": GRAND_SLAM_GAMES,
     "big-innings": BIG_INNING_GAMES,
+    "strikeout-starts": STRIKEOUT_START_GAMES,
 }
 
 
