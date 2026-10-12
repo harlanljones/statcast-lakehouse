@@ -38,6 +38,7 @@ SCENARIO_ROWS = {
     "called-early": 1341,
     "combined-shutouts": 3152,
     "blowouts": 3680,
+    "under-a-roof": 3494,
     "hundred-pitch-starts": 3450,
     "unclassified-pitches": 3076,
 }

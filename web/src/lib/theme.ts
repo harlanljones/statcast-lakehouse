@@ -46,6 +46,7 @@ export const SCENE_ACCENT: Record<string, string> = {
   "called-early": "#94a3b8",
   "combined-shutouts": "#a3e635",
   "blowouts": "#67e8f9",
+  "under-a-roof": "#e9d5ff",
   "hundred-pitch-starts": "#8b5cf6",
   "unclassified-pitches": "#d9f99d",
 };

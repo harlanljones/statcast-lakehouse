@@ -34,7 +34,8 @@ export type ScenarioId =
   | "combined-shutouts"
   | "blowouts"
   | "hundred-pitch-starts"
-  | "unclassified-pitches";
+  | "unclassified-pitches"
+  | "under-a-roof";
 
 export type LayerKey =
   | "tunneling"
@@ -720,6 +721,26 @@ export const SCENARIOS: readonly Scenario[] = [
     preset: preset({
       view: "Pitcher",
       layers: { releasePoints: true, plateCrossings: true },
+    }),
+  },
+  {
+    id: "under-a-roof",
+    title: "Under a Roof",
+    dateLabel: "Apr 18, 2024 – Apr 18, 2026",
+    gameLabel: "Twelve games · 8 parks",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/745104/feed/live",
+    synthetic: false,
+    hook: "Twelve games played under a roof — covering every domed or retractable-roof park in the league.",
+    lookFor:
+      "3,494 tracked pitches, 1,659 swings and 386 whiffs across twelve games from April 2024 to April 2026 at all eight roofed parks in MLB's venue data: Tropicana Field's fixed dome plus seven retractable roofs, with 31 home runs in all. The mirror of the called-early slice — nothing here was rained on. 635 pitches were put in play with measured contact data.",
+    tryThis:
+      "Set the heatmap to Hard Hit % and compare the contact in a fixed dome with a retractable-roof park.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Batter",
+      layers: { plateCrossings: true, heatmap: true, spray: true },
+      heatmapMode: "hard_hit",
     }),
   },
 ];

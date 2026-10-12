@@ -117,6 +117,17 @@ HUNDRED_PITCH_GAMES = (
     824453, 824047, 823236, 823232,
 )
 
+# Twelve games played under a roof, one per date across the three seasons and
+# covering every roofed park in MLB's venue data: Tropicana Field's fixed dome
+# plus the seven retractable roofs (Rogers Centre, Chase Field, American Family
+# Field, T-Mobile Park, loanDepot park, Globe Life Field, Daikin Park). The
+# mirror of the called-early slice: nothing here was rained on.
+ROOFED_GAMES = (
+    744949, 745026, 745099, 745104,
+    778147, 778162, 778230, 778269, 778295,
+    823155, 823882, 823884,
+)
+
 BLOWOUT_GAMES = (
     746327, 746323, 745110, 745352,
     778432, 778382, 778328, 778309,
@@ -143,6 +154,7 @@ GAME_IDS = (
     *BLOWOUT_GAMES,
     *HUNDRED_PITCH_GAMES,
     *UNCLASSIFIED_GAMES,
+    *ROOFED_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -184,6 +196,7 @@ SWEEP_SCENARIOS = {
     "blowouts": BLOWOUT_GAMES,
     "hundred-pitch-starts": HUNDRED_PITCH_GAMES,
     "unclassified-pitches": UNCLASSIFIED_GAMES,
+    "under-a-roof": ROOFED_GAMES,
 }
 
 

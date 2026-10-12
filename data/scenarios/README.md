@@ -7,8 +7,8 @@ network. To refresh them from the same public feeds, run
 
 The same files also back `GET /pitches/sample` and `python3 -m ingestion.worker
 --dry-run`: `ingestion.scenarios.real_pitches()` returns every pitch here once
-(the Ohtani slices repeat pitches from the full game), in game order. Twenty-eight
-slices across one hundred and forty-nine games and game dates (44,879 pitches),
+(the Ohtani slices repeat pitches from the full game), in game order. Twenty-nine
+slices across one hundred and sixty-one games and game dates (48,373 pitches),
 from the 2024 regular season and World Series to the 2025 and 2026 seasons. The
 `season-sweep` slice carries one game per period across all three seasons,
 `strikeout-nights` the six games with 20+ combined strikeouts (132 in all),
@@ -29,8 +29,9 @@ before nine innings (five for rain, one for wet grounds), `combined-shutouts`
 twelve shutouts, none of them a complete game (five ended 1-0), `blowouts`
 twelve games decided by nine runs or more (179 runs in all),
 `hundred-pitch-starts` twelve games with a starter past 100 pitches
-(105-112 in all), and `unclassified-pitches` ten games holding a pitch Statcast
-could not classify — which completes the feed's seventeen pitch types.
+(105-112 in all), `unclassified-pitches` ten games holding a pitch Statcast
+could not classify — which completes the feed's seventeen pitch types — and
+`under-a-roof` twelve games at every roofed park in MLB's venue data.
 
 | Scenario | Source game | Selected pitches | Story reference |
 |---|---|---:|---|
@@ -44,6 +45,7 @@ could not classify — which completes the feed's seventeen pitch types.
 | `yankees-athletics-2025` | Yankees at Athletics, 2025-05-10, game 777972 | All 323 tracked pitches | [Athletics 11, Yankees 7](https://www.mlb.com/gameday/yankees-vs-athletics/2025/05/10/777972/final) |
 | `twins-blue-jays-2026` | Twins at Blue Jays, 2026-04-10, game 822829 | All 311 tracked pitches | [Blue Jays 10, Twins 4](https://www.mlb.com/gameday/twins-vs-blue-jays/2026/04/10/822829/final) |
 | `strikeout-starts` | Six games whose starting pitcher struck out 10+, one per date: Tigers at Reds 2024-07-07 (746691, Tarik Skubal 13), Rays at Astros 2024-08-04 (746356, Spencer Arrighetti 12), Red Sox at Braves 2025-06-01 (777692, Garrett Crochet 12), Reds at Phillies 2025-07-06 (777217, Zack Wheeler 12), Angels at Mariners 2025-09-14 (776317, George Kirby 14), Red Sox at Orioles 2026-09-06 (824794, Payton Tolle 12) | All 1,681 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
+| `under-a-roof` | Twelve games under a roof, one per date, covering all eight roofed parks from MLB's venue data: Dodgers at Blue Jays 2024-04-26 (744949, Rogers Centre), Mariners at Rangers 2024-04-23 (745026, Globe Life Field), Tigers at Rays 2024-04-24 (745099, Tropicana Field), Angels at Rays 2024-04-18 (745104, Tropicana Field), Braves at Diamondbacks 2025-04-27 (778147, Chase Field), Braves at Diamondbacks 2025-04-26 (778162, Chase Field), Reds at Marlins 2025-04-21 (778230, loanDepot park), Padres at Astros 2025-04-18 (778269, Daikin Park), Tigers at Brewers 2025-04-16 (778295, American Family Field), Astros at Mariners 2026-04-11 (823155, T-Mobile Park), Brewers at Marlins 2026-04-18 (823882, loanDepot park), Reds at Marlins 2026-04-09 (823884, loanDepot park) | All 3,494 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `unclassified-pitches` | Ten games each holding one pitch the feed could not classify (UN), one per date: Rockies at Rays 2025-03-28 (778560, Hunter Bigge 79.9), White Sox at Reds 2025-05-14 (777928, Davis Martin 82.4), Blue Jays at Cardinals 2025-06-09 (777581, José Berríos 63.5), Padres at Diamondbacks 2025-08-05 (776852, Yu Darvish 71.3), Pirates at Nationals 2025-09-12 (776351, Brad Lord 76.9), Pirates at Mets 2026-03-26 (823649, Yohan Ramírez 70.1), Angels at Yankees 2026-04-14 (823562, Ryan Zeferjahn 54.8), Tigers at Royals 2026-05-08 (824116, Keider Montero 51.9), Astros at Blue Jays 2026-06-23 (822799, Peter Lambert 55.9), Pirates at Nationals 2026-07-04 (822716, Zack Littell 73.8) | All 3,076 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `hundred-pitch-starts` | Twelve games with a 100+ pitch start, four per season and one per date: Rockies at Phillies 2024-04-16 (745593, Ranger Suarez 112 in a complete-game shutout), Padres at Brewers 2024-04-17 (746005, Michael King 109), White Sox at Phillies 2024-04-20 (745590, Zack Wheeler 106 and Michael Soroka 100), Blue Jays at Royals 2024-04-22 (746319, Brady Singer 107), Giants at Phillies 2025-04-17 (778279, Jordan Hicks 105), Yankees at Guardians 2025-04-22 (778218, Tanner Bibee 106), Phillies at Mets 2025-04-23 (778203, Zack Wheeler 107 in 10 innings), Pirates at Dodgers 2025-04-25 (778176, Paul Skenes 108), Orioles at Guardians 2026-04-16 (824453, Parker Messick 112), Padres at Angels 2026-04-19 (824047, Michael King 105), Dodgers at Giants 2026-04-21 (823236, Landen Roupp 106 and Yoshinobu Yamamoto 101), Marlins at Giants 2026-04-24 (823232, Sandy Alcantara 108) | All 3,450 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `blowouts` | Twelve games decided by 9+ runs, four per season and one per date: White Sox at Royals 2024-04-04 (746327, 1-10), Astros at Royals 2024-04-10 (746323, 2-11), Giants at Rays 2024-04-13 (745110, 11-2), Diamondbacks at Giants 2024-04-19 (745352, 17-1), Cardinals at Red Sox 2025-04-06 (778432, 7-18), Angels at Rays 2025-04-10 (778382, 11-1), Red Sox at Rays 2025-04-14 (778328, 1-16), Athletics at White Sox 2025-04-15 (778309, 12-3), Braves at Diamondbacks 2026-04-02 (825105, 17-2), Guardians at Braves 2026-04-12 (824938, 1-13), Cubs at Phillies 2026-04-15 (823477, 11-2), Braves at Phillies 2026-04-17 (823476, 9-0) | All 3,680 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
