@@ -106,11 +106,33 @@ function textOrUndefined(v: unknown): string | undefined {
   return name === "" ? undefined : name;
 }
 
+/**
+ * True for a canonical 36-char UUID (8-4-4-4-12 hex, case-insensitive).
+ *
+ * This runs once per pitch on the load path, where a RegExp with a repeated
+ * group measured ~160 ns/row — as much as the whole row loop's own overhead —
+ * so the shape is checked character by character instead.
+ */
+function isUuid(value: string): boolean {
+  if (value.length !== 36) return false;
+  for (let i = 0; i < 36; i++) {
+    const code = value.charCodeAt(i);
+    if (i === 8 || i === 13 || i === 18 || i === 23) {
+      if (code !== 45) return false; // '-'
+      continue;
+    }
+    const hex =
+      (code >= 48 && code <= 57) || (code >= 97 && code <= 102) || (code >= 65 && code <= 70);
+    if (!hex) return false;
+  }
+  return true;
+}
+
 function sourcePlayId(explicitPlayId: unknown, pitchId: unknown): string | undefined {
   const explicit = idString(explicitPlayId);
   if (explicit) return explicit;
   const id = idString(pitchId);
-  return id && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id) ? id : undefined;
+  return id && isUuid(id) ? id : undefined;
 }
 
 /** Row accessor over one Arrow column, or null when the column is absent. */
