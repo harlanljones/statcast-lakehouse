@@ -333,7 +333,7 @@ export const SCENARIOS: readonly Scenario[] = [
     synthetic: false,
     hook: "One game per period from the 2024, 2025 and 2026 seasons in a single slice.",
     lookFor:
-      "Every tracked pitch from twelve games: 4,063 pitches, 108 pitchers, 194 batters, 13 pitch types and 1,950 swings (415 whiffs), from Fenway Park to PNC Park. One of the twelve is Cincinnati's 24–2 win in Baltimore on 2025-04-20.",
+      "Every tracked pitch from twelve games: 4,063 pitches, 108 pitchers, 194 batters, 13 pitch types and 1,950 swings (415 whiffs), across ten ballparks from Camden Yards to Citi Field. One of the twelve is Cincinnati's 24–2 win in Baltimore on 2025-04-20.",
     tryThis:
       "Run the density heatmap over the whole sweep, then pick a single date partition in the Live data card to compare one game against the corpus.",
     lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
