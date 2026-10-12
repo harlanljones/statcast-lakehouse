@@ -2,10 +2,12 @@ import { For, Show, type JSX } from "solid-js";
 import {
   CAMERA_VIEWS,
   COUNT_BUCKETS,
+  ZONE_CELLS,
   pitchColor,
   type CameraViewName,
   type CountBucket,
   type OutcomeFilter,
+  type ZoneCell,
   type ZoneFilter,
 } from "../lib/deck-layers";
 import type { HeatmapMode } from "../lib/heatmap";
@@ -38,6 +40,9 @@ export interface LensPanelProps {
   /** Count cut: empty means every count shows, like the pitch-type chips. */
   countBuckets?: ReadonlySet<CountBucket>;
   onToggleCount?: (b: CountBucket) => void;
+  /** In-zone cell cut: empty means every cell shows. */
+  zoneCells?: ReadonlySet<ZoneCell>;
+  onToggleZoneCell?: (cell: ZoneCell) => void;
   onZoneFilter: (v: ZoneFilter) => void;
   outcomeFilter: OutcomeFilter;
   onOutcomeFilter: (v: OutcomeFilter) => void;
@@ -183,6 +188,33 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
           unit=" ft"
           onChange={(v) => props.onPlateX([props.plateX[0], Math.max(v, props.plateX[0])])}
         />
+      </Show>
+
+      <Show when={has("zone") && props.zoneCells && props.onToggleZoneCell}>
+        <div
+          role="group"
+          aria-label="in-zone cells"
+          style={{
+            display: "grid",
+            "grid-template-columns": "repeat(3, 1fr)",
+            gap: "3px",
+            width: "132px",
+          }}
+        >
+          <For each={ZONE_CELLS}>
+            {(cell) => (
+              <button
+                class="ui-ctl ui-chip"
+                aria-pressed={props.zoneCells!.size === 0 || props.zoneCells!.has(cell.cell)}
+                title={cell.title}
+                aria-label={`Zone cell ${cell.cell}: ${cell.title}`}
+                onClick={() => props.onToggleZoneCell!(cell.cell)}
+              >
+                {cell.cell}
+              </button>
+            )}
+          </For>
+        </div>
       </Show>
 
       <Show when={has("count") && props.countBuckets && props.onToggleCount}>

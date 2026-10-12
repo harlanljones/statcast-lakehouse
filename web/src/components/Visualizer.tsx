@@ -25,7 +25,7 @@ import {
 import { keyboardCameraStep, stepPitch } from "../lib/keyboard";
 import PlayerCard from "./PlayerCard";
 import type { CountRow } from "../lib/count-mix";
-import type { CountBucket, PlayerFilter } from "../lib/deck-layers";
+import type { CountBucket, PlayerFilter, ZoneCell } from "../lib/deck-layers";
 import { THEME } from "./ui";
 import type { ArsenalCentroid } from "../lib/arsenal";
 import type { FatigueBucket, ReleaseDispersion } from "../lib/dispersion";
@@ -53,6 +53,7 @@ export interface VisualizerProps {
   onPlayerFilter?: (f: PlayerFilter | null) => void;
   /** Count cut from the chip row: empty means every count shows. */
   countBuckets?: ReadonlySet<CountBucket>;
+  zoneCells?: ReadonlySet<ZoneCell>;
   viewState?: OrbitViewState | null;
   /** What a plain drag does; shift/right-drag does the other one. */
   dragMode?: DragMode;
@@ -252,6 +253,7 @@ export default function Visualizer(props: VisualizerProps) {
           selectedTypes: props.selectedTypes ?? null,
           playerFilter: props.playerFilter ?? null,
           countBuckets: props.countBuckets ?? null,
+          zoneCells: props.zoneCells ?? null,
           onHover: handleHover,
           flightProgress,
           isPlaying: playing,

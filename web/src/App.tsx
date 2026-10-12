@@ -53,7 +53,7 @@ import {
 } from "./lib/scenarios";
 import { applyPresetFiltersTo, applyPresetTo } from "./lib/scenario-state";
 import { countMix } from "./lib/count-mix";
-import type { CountBucket, PlayerFilter } from "./lib/deck-layers";
+import type { CountBucket, PlayerFilter, ZoneCell } from "./lib/deck-layers";
 import { nextPlayState, prefersReducedMotion } from "./lib/playback";
 import type { DragMode } from "./lib/camera";
 import { isSyntheticSource, playerLabel, type DataSource } from "./lib/player-card";
@@ -104,6 +104,8 @@ export default function App() {
   const [playerFilter, setPlayerFilter] = createSignal<PlayerFilter | null>(null);
   // Count cut: empty means every count is shown, mirroring the pitch-type chips.
   const [countBuckets, setCountBuckets] = createSignal<ReadonlySet<CountBucket>>(new Set());
+  // In-zone cell cut: empty means every cell (and every pitch outside the zone) shows.
+  const [zoneCells, setZoneCells] = createSignal<ReadonlySet<ZoneCell>>(new Set());
   const [heatmapMode, setHeatmapMode] = createSignal<HeatmapMode>("density");
   const [activeScenarioId, setActiveScenarioId] = createSignal<ScenarioId | null>(null);
   const [showAllControls, setShowAllControls] = createSignal<boolean>(false);
@@ -129,6 +131,7 @@ export default function App() {
       selectedTypes: selectedTypes(),
       playerFilter: playerFilter(),
       countBuckets: countBuckets(),
+      zoneCells: zoneCells(),
     };
     return all.filter((p) => passesFilters(p, opts));
   });
@@ -277,6 +280,7 @@ export default function App() {
       setSelectedTypes,
     setPlayerFilter,
     setCountBuckets,
+    setZoneCells,
       setLayer: (key, on) => layerSetters[key](on),
       setHeatmapMode,
       setBatSpeed,
@@ -350,6 +354,7 @@ export default function App() {
       setSelectedTypes,
           setPlayerFilter,
     setCountBuckets,
+          setZoneCells,
     });
 
   onMount(() => {
@@ -364,7 +369,15 @@ export default function App() {
     setPinned(null);
     setPlayerFilter(null);
     setCountBuckets(new Set<CountBucket>());
+    setZoneCells(new Set<ZoneCell>());
   });
+
+  const toggleZoneCell = (cell: ZoneCell) => {
+    const next = new Set<ZoneCell>(zoneCells());
+    if (next.has(cell)) next.delete(cell);
+    else next.add(cell);
+    setZoneCells(next);
+  };
 
   const toggleCount = (bucket: CountBucket) => {
     const next = new Set<CountBucket>(countBuckets());
@@ -444,6 +457,7 @@ export default function App() {
             playerFilter={playerFilter()}
             onPlayerFilter={setPlayerFilter}
             countBuckets={countBuckets()}
+            zoneCells={zoneCells()}
             viewState={CAMERA_VIEWS[view()]}
             dragMode={dragMode()}
             resetKey={resetKey()}
@@ -507,6 +521,8 @@ export default function App() {
               zoneFilter={zoneFilter()}
               countBuckets={countBuckets()}
               onToggleCount={toggleCount}
+              zoneCells={zoneCells()}
+              onToggleZoneCell={toggleZoneCell}
               onZoneFilter={setZoneFilter}
               outcomeFilter={outcomeFilter()}
               onOutcomeFilter={setOutcomeFilter}

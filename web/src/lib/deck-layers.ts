@@ -98,7 +98,9 @@ export const FILTER_SIZE = 4;
  */
 export const STRIKE_ZONE = {
   y: 1.417,
-  halfWidth: 0.83, // 17 inches / 2
+  // The plate's half-width (17 in / 2) plus the ball's radius, so a pitch whose
+  // edge clips the plate is inside — the same effective width the cells below cut.
+  halfWidth: 0.83,
   zMin: 1.5,
   zMax: 3.5,
 } as const;
@@ -325,6 +327,52 @@ export type ZoneFilter = "all" | "in_zone" | "out_of_zone";
 export type OutcomeFilter = "all" | "swings" | "whiffs";
 
 /** The filter state shared by the GPU masks (buildLayers) and the CPU counts/panels (App). */
+/** The nine in-zone cells, numbered left to right with the top row first. */
+export type ZoneCell = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
+/**
+ * Picker titles, in cell order. The columns are stated by x range rather than by
+ * "inside/outside", because the app labels no left/right for the horizontal axis
+ * anywhere else and inventing one here would be the only place it appears.
+ */
+export const ZONE_CELLS: readonly { cell: ZoneCell; row: number; col: number; title: string }[] = [
+  { cell: 1, row: 0, col: 0, title: "High, x −0.83 to −0.28" },
+  { cell: 2, row: 0, col: 1, title: "High, x −0.28 to 0.28" },
+  { cell: 3, row: 0, col: 2, title: "High, x 0.28 to 0.83" },
+  { cell: 4, row: 1, col: 0, title: "Middle, x −0.83 to −0.28" },
+  { cell: 5, row: 1, col: 1, title: "Middle, x −0.28 to 0.28" },
+  { cell: 6, row: 1, col: 2, title: "Middle, x 0.28 to 0.83" },
+  { cell: 7, row: 2, col: 0, title: "Low, x −0.83 to −0.28" },
+  { cell: 8, row: 2, col: 1, title: "Low, x −0.28 to 0.28" },
+  { cell: 9, row: 2, col: 2, title: "Low, x 0.28 to 0.83" },
+];
+
+/**
+ * Which in-zone cell the pitch crossed, or null when it is outside the zone or
+ * carries no plate location. The bounds are the ones `isInsideStrikeZone` uses —
+ * the plate plus the ball's radius wide, the batter's own sz_bot..sz_top tall —
+ * so a cell result and the "in zone" filter can never disagree. The zone's height
+ * is cut into equal thirds and its width likewise; a pitch exactly on an edge
+ * lands in the outer cell, matching the inclusive bounds above.
+ */
+export function zoneCell(
+  plateX?: number,
+  plateZ?: number,
+  szTop?: number,
+  szBot?: number,
+): ZoneCell | null {
+  if (plateX == null || plateZ == null) return null;
+  if (!isInsideStrikeZone(plateX, plateZ, szTop, szBot)) return null;
+  const top = szTop ?? STRIKE_ZONE.zMax;
+  const bot = szBot ?? STRIKE_ZONE.zMin;
+  if (!(top > bot)) return null;
+  const half = STRIKE_ZONE.halfWidth;
+  const col = Math.min(2, Math.max(0, Math.floor(((plateX + half) / (2 * half)) * 3)));
+  // z grows upward, so the top row is the highest third.
+  const row = Math.min(2, Math.max(0, Math.floor(((top - plateZ) / (top - bot)) * 3)));
+  return (row * 3 + col + 1) as ZoneCell;
+}
+
 /** Game state when the pitch was thrown, as a disjoint cut of the count. */
 export type CountBucket = "first" | "pitcher_ahead" | "hitter_ahead" | "even";
 
@@ -364,6 +412,8 @@ export interface FilterOpts {
   playerFilter?: PlayerFilter | null;
   /** Empty or absent means every count; otherwise only these buckets show. */
   countBuckets?: ReadonlySet<CountBucket> | null;
+  /** Empty or absent means every in-zone cell; pitches outside the zone are excluded by it. */
+  zoneCells?: ReadonlySet<ZoneCell> | null;
   plateXRange?: [number, number];
   plateZRange?: [number, number];
   zoneFilter?: ZoneFilter;
@@ -373,7 +423,7 @@ export interface FilterOpts {
 
 type CriteriaOpts = Pick<
   FilterOpts,
-  "zoneFilter" | "outcomeFilter" | "selectedTypes" | "playerFilter" | "countBuckets"
+  "zoneFilter" | "outcomeFilter" | "selectedTypes" | "playerFilter" | "countBuckets" | "zoneCells"
 >;
 
 /**
@@ -391,6 +441,11 @@ function passesCriteria(d: PitchDatum, opts: CriteriaOpts): boolean {
   if (playerFilter) {
     const id = playerFilter.role === "pitcher" ? d.pitcherId : d.batterId;
     if (id !== playerFilter.id) return false;
+  }
+  const zoneCells = opts.zoneCells;
+  if (zoneCells && zoneCells.size > 0) {
+    const cell = zoneCell(d.plateX ?? d.pfxX, d.plateZ ?? d.pfxZ, d.szTop, d.szBot);
+    if (cell === null || !zoneCells.has(cell)) return false;
   }
   const countBuckets = opts.countBuckets;
   if (countBuckets && countBuckets.size > 0) {
@@ -471,6 +526,7 @@ export interface BuildLayersOpts {
   showSpray?: boolean;
   playerFilter?: PlayerFilter | null;
   countBuckets?: ReadonlySet<CountBucket> | null;
+  zoneCells?: ReadonlySet<ZoneCell> | null;
   pairedTypes?: [string, string] | null;
   arsenalCentroids?: Map<string, ArsenalCentroid> | null;
   showContactSim?: boolean;
@@ -544,13 +600,15 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
   const selectedTypes = opts.selectedTypes ?? null;
   const playerFilter = opts.playerFilter ?? null;
   const countBuckets = opts.countBuckets ?? null;
+  const zoneCells = opts.zoneCells ?? null;
   const hasTypeFilter = Boolean(selectedTypes && selectedTypes.size > 0);
   const hasZoneFilter = zoneFilter === "in_zone" || zoneFilter === "out_of_zone";
   const hasOutcomeFilter = outcomeFilter === "swings" || outcomeFilter === "whiffs";
   const hasPlayerFilter = playerFilter !== null;
   const hasCountFilter = Boolean(countBuckets && countBuckets.size > 0);
+  const hasCellFilter = Boolean(zoneCells && zoneCells.size > 0);
   const typeRange: [number, number] =
-    hasTypeFilter || hasZoneFilter || hasOutcomeFilter || hasPlayerFilter || hasCountFilter
+    hasTypeFilter || hasZoneFilter || hasOutcomeFilter || hasPlayerFilter || hasCountFilter || hasCellFilter
       ? [0.5, 1.5]
       : OPEN_RANGE;
   const xRange = plateXRange ?? hBreakRange ?? OPEN_RANGE;
@@ -562,10 +620,18 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
     selectedTypes ? selectedTypes.size : 0,
     playerFilter ? `${playerFilter.role}:${playerFilter.id}` : "",
     countBuckets ? [...countBuckets].sort().join(",") : "",
+    zoneCells ? [...zoneCells].sort((a, b) => a - b).join(",") : "",
   ];
   if (lastFiltered && lastFiltered.key.every((v, i) => v === key[i])) return lastFiltered.props;
 
-  const criteria: CriteriaOpts = { zoneFilter, outcomeFilter, selectedTypes, playerFilter, countBuckets };
+  const criteria: CriteriaOpts = {
+    zoneFilter,
+    outcomeFilter,
+    selectedTypes,
+    playerFilter,
+    countBuckets,
+    zoneCells,
+  };
   const props: FilteredLayerProps = {
     getFilterValue: (d) => [
       d.releaseSpeed,

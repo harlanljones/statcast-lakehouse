@@ -10,6 +10,7 @@ import {
   FILTER_SIZE,
   countBucket,
   filteredLayerProps,
+  zoneCell,
   PITCH_COLORS,
   STRIKE_ZONE,
   battersBoxesSegments,
@@ -1276,5 +1277,76 @@ describe("the count cut", () => {
       pitches.map((d) => (p.getFilterValue as unknown as (x: PitchDatum) => number[])(d)[3]);
     expect(mask(ahead)).toEqual([1, 0]);
     expect(mask(behind)).toEqual([0, 1]);
+  });
+});
+
+describe("in-zone cells", () => {
+  const ZT = 3.5;
+  const ZB = 1.5;
+  const datum = (over: Partial<PitchDatum>): PitchDatum => ({
+    path: new Float32Array(3),
+    releaseSpeed: 92,
+    pfxX: 0,
+    pfxZ: 0,
+    plateX: 0,
+    plateZ: 2.5,
+    pitchType: "FF",
+    szTop: ZT,
+    szBot: ZB,
+    ...over,
+  });
+
+  it("numbers the nine cells left to right, top row first", () => {
+    // column centres at x = -0.553, 0, +0.553; row centres at z = 3.17, 2.5, 1.83
+    expect(zoneCell(-0.55, 3.1, ZT, ZB)).toBe(1);
+    expect(zoneCell(0, 3.1, ZT, ZB)).toBe(2);
+    expect(zoneCell(0.55, 3.1, ZT, ZB)).toBe(3);
+    expect(zoneCell(-0.55, 2.5, ZT, ZB)).toBe(4);
+    expect(zoneCell(0, 2.5, ZT, ZB)).toBe(5);
+    expect(zoneCell(0.55, 2.5, ZT, ZB)).toBe(6);
+    expect(zoneCell(-0.55, 1.9, ZT, ZB)).toBe(7);
+    expect(zoneCell(0, 1.9, ZT, ZB)).toBe(8);
+    expect(zoneCell(0.55, 1.9, ZT, ZB)).toBe(9);
+  });
+
+  it("puts a pitch exactly on the zone's edge in the outer cell", () => {
+    expect(zoneCell(STRIKE_ZONE.halfWidth, ZT, ZT, ZB)).toBe(3);
+    expect(zoneCell(-STRIKE_ZONE.halfWidth, ZB, ZT, ZB)).toBe(7);
+  });
+
+  it("is null outside the zone, without a plate location, or with a degenerate zone", () => {
+    expect(zoneCell(0.9, 2.5, ZT, ZB)).toBeNull();
+    expect(zoneCell(0, 3.6, ZT, ZB)).toBeNull();
+    expect(zoneCell(0, 1.4, ZT, ZB)).toBeNull();
+    expect(zoneCell(undefined, 2.5, ZT, ZB)).toBeNull();
+    expect(zoneCell(0, undefined, ZT, ZB)).toBeNull();
+    expect(zoneCell(0, 2.5, 2.5, 2.5)).toBeNull();
+  });
+
+  it("never disagrees with the in-zone filter", () => {
+    for (let x = -1.2; x <= 1.2; x += 0.13) {
+      for (let z = 1.0; z <= 4.0; z += 0.17) {
+        const cell = zoneCell(x, z, ZT, ZB);
+        expect(cell === null).toBe(!isInsideStrikeZone(x, z, ZT, ZB));
+      }
+    }
+  });
+
+  it("filters to the chosen cells and drops pitches outside the zone", () => {
+    const opts = { speedRange: [40, 105] as [number, number], zoneCells: new Set([5 as const]) };
+    expect(passesFilters(datum({ plateX: 0, plateZ: 2.5 }), opts)).toBe(true);
+    expect(passesFilters(datum({ plateX: 0.55, plateZ: 2.5 }), opts)).toBe(false);
+    expect(passesFilters(datum({ plateX: 0.9, plateZ: 2.5 }), opts)).toBe(false);
+    expect(passesFilters(datum({}), { speedRange: [40, 105] })).toBe(true);
+  });
+
+  it("re-derives the GPU filter values when the cell set changes", () => {
+    const pitches = [datum({ plateX: 0, plateZ: 2.5 }), datum({ plateX: 0.55, plateZ: 3.1 })];
+    const centre = filteredLayerProps({ pitches, speedRange: [40, 105], zoneCells: new Set([5]) });
+    const high = filteredLayerProps({ pitches, speedRange: [40, 105], zoneCells: new Set([3]) });
+    const mask = (p: ReturnType<typeof filteredLayerProps>) =>
+      pitches.map((d) => (p.getFilterValue as unknown as (x: PitchDatum) => number[])(d)[3]);
+    expect(mask(centre)).toEqual([1, 0]);
+    expect(mask(high)).toEqual([0, 1]);
   });
 });

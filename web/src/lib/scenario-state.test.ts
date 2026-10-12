@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyPresetFiltersTo, applyPresetTo, type PresetSetters } from "./scenario-state";
 import { LIVE_PRESET, SCENARIOS, scenarioById, type LayerKey, type ScenarioPreset } from "./scenarios";
-import type { CountBucket, PlayerFilter } from "./deck-layers";
+import type { CountBucket, PlayerFilter, ZoneCell } from "./deck-layers";
 
 const LAYER_KEYS: LayerKey[] = [
   "tunneling", "ghostBreak", "releasePoints", "plateCrossings", "spray", "breakChart",
@@ -20,6 +20,7 @@ function fakeApp() {
     selectedTypes: null as ReadonlySet<string> | null,
     playerFilter: null as PlayerFilter | null,
     countBuckets: new Set<CountBucket>() as ReadonlySet<CountBucket>,
+    zoneCells: new Set<ZoneCell>() as ReadonlySet<ZoneCell>,
     heatmapMode: "" as ScenarioPreset["heatmapMode"] | "",
     batSpeed: NaN,
     attackAngleDeg: NaN,
@@ -37,6 +38,7 @@ function fakeApp() {
     setSelectedTypes: (v) => { state.selectedTypes = v; },
     setPlayerFilter: (v) => { state.playerFilter = v; },
     setCountBuckets: (v) => { state.countBuckets = v; },
+    setZoneCells: (v) => { state.zoneCells = v; },
     setLayer: (k, on) => { state.layers[k] = on; state.layerWrites++; },
     setHeatmapMode: (v) => { state.heatmapMode = v; },
     setBatSpeed: (v) => { state.batSpeed = v; },
@@ -68,6 +70,14 @@ describe("applyPresetTo", () => {
       for (const k of LAYER_KEYS) expect(state.layers[k]).toBe(preset.layers[k]);
     },
   );
+
+  it("clears the in-zone cell cut when a preset or the reset lands", () => {
+    const app = fakeApp();
+    app.setters.setZoneCells(new Set([5] as ZoneCell[]));
+    expect([...app.state.zoneCells]).toEqual([5]);
+    applyPresetFiltersTo(LIVE_PRESET, app.setters);
+    expect(app.state.zoneCells.size).toBe(0);
+  });
 
   it("clears the count cut when a preset or the reset lands", () => {
     const app = fakeApp();
