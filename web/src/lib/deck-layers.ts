@@ -73,6 +73,14 @@ export interface PitchDatum {
   balls?: number;
   strikes?: number;
   /**
+   * MLB's own zone number for the pitch: 1-9 are the nine cells of the strike
+   * zone, 11-14 the four cells around it. Carried from the feed rather than
+   * derived — the league's cell edges are not published, and its 1-9 disagrees
+   * with a plain plate box on about 4% of pitches, which is why the outside
+   * cells cannot be reconstructed from plate_x/plate_z.
+   */
+  zone?: number;
+  /**
    * Observed batted-ball data (MLB's contact columns): measured exit velocity
    * (mph), launch angle (degrees), projected distance (feet) and batted-ball
    * class. Undefined unless the pitch was put in play.
@@ -348,6 +356,18 @@ export const ZONE_CELLS: readonly { cell: ZoneCell; row: number; col: number; ti
 ];
 
 /**
+ * MLB's own zone numbers, in the order the league reports them: the nine cells
+ * of the strike zone, then the four around it. The control shows the numbers
+ * themselves, because the app labels no left/right anywhere else and the
+ * league's cell geometry is deliberately not published — inventing a name for
+ * each cell would be the only place it appeared.
+ */
+export const LEAGUE_ZONES: readonly number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14];
+
+export const LEAGUE_ZONE_TITLE =
+  "MLB's own zone number for the pitch: 1-9 the nine cells of the strike zone, 11-14 the four cells around it";
+
+/**
  * Which in-zone cell the pitch crossed, or null when it is outside the zone or
  * carries no plate location. The bounds are the ones `isInsideStrikeZone` uses —
  * the plate plus the ball's radius wide, the batter's own sz_bot..sz_top tall —
@@ -418,6 +438,8 @@ export interface FilterOpts {
   countBuckets?: ReadonlySet<CountBucket> | null;
   /** Empty or absent means every in-zone cell; pitches outside the zone are excluded by it. */
   zoneCells?: ReadonlySet<ZoneCell> | null;
+  /** Empty or absent means every zone; selecting any restricts to the league's own numbers. */
+  leagueZones?: ReadonlySet<number> | null;
   plateXRange?: [number, number];
   plateZRange?: [number, number];
   zoneFilter?: ZoneFilter;
@@ -427,7 +449,7 @@ export interface FilterOpts {
 
 type CriteriaOpts = Pick<
   FilterOpts,
-  "zoneFilter" | "outcomeFilter" | "selectedTypes" | "playerFilter" | "countBuckets" | "zoneCells"
+  "zoneFilter" | "outcomeFilter" | "selectedTypes" | "playerFilter" | "countBuckets" | "zoneCells" | "leagueZones"
 >;
 
 /**
@@ -450,6 +472,10 @@ function passesCriteria(d: PitchDatum, opts: CriteriaOpts): boolean {
   if (zoneCells && zoneCells.size > 0) {
     const cell = zoneCell(d.plateX ?? d.pfxX, d.plateZ ?? d.pfxZ, d.szTop, d.szBot);
     if (cell === null || !zoneCells.has(cell)) return false;
+  }
+  const leagueZones = opts.leagueZones;
+  if (leagueZones && leagueZones.size > 0) {
+    if (d.zone == null || !leagueZones.has(d.zone)) return false;
   }
   const countBuckets = opts.countBuckets;
   if (countBuckets && countBuckets.size > 0) {
@@ -531,6 +557,7 @@ export interface BuildLayersOpts {
   playerFilter?: PlayerFilter | null;
   countBuckets?: ReadonlySet<CountBucket> | null;
   zoneCells?: ReadonlySet<ZoneCell> | null;
+  leagueZones?: ReadonlySet<number> | null;
   pairedTypes?: [string, string] | null;
   arsenalCentroids?: Map<string, ArsenalCentroid> | null;
   showContactSim?: boolean;
@@ -605,14 +632,17 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
   const playerFilter = opts.playerFilter ?? null;
   const countBuckets = opts.countBuckets ?? null;
   const zoneCells = opts.zoneCells ?? null;
+  const leagueZones = opts.leagueZones ?? null;
   const hasTypeFilter = Boolean(selectedTypes && selectedTypes.size > 0);
   const hasZoneFilter = zoneFilter === "in_zone" || zoneFilter === "out_of_zone";
   const hasOutcomeFilter = outcomeFilter === "swings" || outcomeFilter === "whiffs";
   const hasPlayerFilter = playerFilter !== null;
   const hasCountFilter = Boolean(countBuckets && countBuckets.size > 0);
   const hasCellFilter = Boolean(zoneCells && zoneCells.size > 0);
+  const hasLeagueFilter = Boolean(leagueZones && leagueZones.size > 0);
   const typeRange: [number, number] =
-    hasTypeFilter || hasZoneFilter || hasOutcomeFilter || hasPlayerFilter || hasCountFilter || hasCellFilter
+    hasTypeFilter || hasZoneFilter || hasOutcomeFilter || hasPlayerFilter || hasCountFilter || hasCellFilter ||
+    hasLeagueFilter
       ? [0.5, 1.5]
       : OPEN_RANGE;
   const xRange = plateXRange ?? hBreakRange ?? OPEN_RANGE;
@@ -625,6 +655,7 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
     playerFilter ? `${playerFilter.pitcher ?? ""}:${playerFilter.batter ?? ""}` : "",
     countBuckets ? [...countBuckets].sort().join(",") : "",
     zoneCells ? [...zoneCells].sort((a, b) => a - b).join(",") : "",
+    leagueZones ? [...leagueZones].sort((a, b) => a - b).join(",") : "",
   ];
   if (lastFiltered && lastFiltered.key.every((v, i) => v === key[i])) return lastFiltered.props;
 
@@ -635,6 +666,7 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
     playerFilter,
     countBuckets,
     zoneCells,
+    leagueZones,
   };
   const props: FilteredLayerProps = {
     getFilterValue: (d) => [

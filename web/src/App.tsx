@@ -114,6 +114,14 @@ export default function App() {
   const [countBuckets, setCountBuckets] = createSignal<ReadonlySet<CountBucket>>(new Set());
   // In-zone cell cut: empty means every cell (and every pitch outside the zone) shows.
   const [zoneCells, setZoneCells] = createSignal<ReadonlySet<ZoneCell>>(new Set());
+  /**
+   * MLB's own zone numbers (1-9 in the strike zone, 11-14 around it). A filter,
+   * not a view setting: a preset, "Reset filters" and a new group of pitches
+   * all clear it. Distinct from `zoneCells`, which cuts the nine cells the app
+   * derives from the plate box — the league's numbering disagrees with that box
+   * on about 4% of pitches, so the two are kept apart and labelled apart.
+   */
+  const [leagueZones, setLeagueZones] = createSignal<ReadonlySet<number>>(new Set());
   const [heatmapMode, setHeatmapMode] = createSignal<HeatmapMode>("density");
   const [activeScenarioId, setActiveScenarioId] = createSignal<ScenarioId | null>(null);
   const [showAllControls, setShowAllControls] = createSignal<boolean>(false);
@@ -140,6 +148,7 @@ export default function App() {
       playerFilter: playerFilter(),
       countBuckets: countBuckets(),
       zoneCells: zoneCells(),
+      leagueZones: leagueZones(),
     };
     return all.filter((p) => passesFilters(p, opts));
   });
@@ -296,6 +305,7 @@ export default function App() {
     setPlayerFilter,
     setCountBuckets,
     setZoneCells,
+    setLeagueZones,
       setLayer: (key, on) => layerSetters[key](on),
       setHeatmapMode,
       setBatSpeed,
@@ -370,6 +380,7 @@ export default function App() {
           setPlayerFilter,
     setCountBuckets,
           setZoneCells,
+    setLeagueZones,
     });
 
   onMount(() => {
@@ -387,6 +398,13 @@ export default function App() {
     setCountBuckets(new Set<CountBucket>());
     setZoneCells(new Set<ZoneCell>());
   });
+
+  const toggleLeagueZone = (zone: number) => {
+    const next = new Set(leagueZones());
+    if (next.has(zone)) next.delete(zone);
+    else next.add(zone);
+    setLeagueZones(next);
+  };
 
   const toggleZoneCell = (cell: ZoneCell) => {
     const next = new Set<ZoneCell>(zoneCells());
@@ -477,6 +495,7 @@ export default function App() {
             onBenchmark={setBenchmark}
             countBuckets={countBuckets()}
             zoneCells={zoneCells()}
+            leagueZones={leagueZones()}
             viewState={CAMERA_VIEWS[view()]}
             dragMode={dragMode()}
             resetKey={resetKey()}
@@ -543,6 +562,8 @@ export default function App() {
               countBuckets={countBuckets()}
               onToggleCount={toggleCount}
               zoneCells={zoneCells()}
+              leagueZones={leagueZones()}
+              onToggleLeagueZone={toggleLeagueZone}
               onToggleZoneCell={toggleZoneCell}
               onZoneFilter={setZoneFilter}
               outcomeFilter={outcomeFilter()}

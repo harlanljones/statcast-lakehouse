@@ -1368,4 +1368,27 @@ describe("in-zone cells", () => {
     expect(mask(centre)).toEqual([1, 0]);
     expect(mask(high)).toEqual([0, 1]);
   });
+
+  it("cuts on MLB's own zone numbers, the four outside cells included", () => {
+    const chase = { speedRange: [40, 105] as [number, number], leagueZones: new Set([14]) };
+    expect(passesFilters(datum({ zone: 14 }), chase)).toBe(true);
+    expect(passesFilters(datum({ zone: 13 }), chase)).toBe(false);
+    // A pitch the feed gave no zone cannot satisfy the cut; with nothing selected
+    // everything shows, whether or not it carries one.
+    expect(passesFilters(datum({}), chase)).toBe(false);
+    expect(passesFilters(datum({}), { speedRange: [40, 105] })).toBe(true);
+    const outside = { speedRange: [40, 105] as [number, number], leagueZones: new Set([11, 12, 13, 14]) };
+    expect(passesFilters(datum({ zone: 12 }), outside)).toBe(true);
+    expect(passesFilters(datum({ zone: 5 }), outside)).toBe(false);
+  });
+
+  it("re-derives the GPU filter values when the league-zone set changes", () => {
+    const pitches = [datum({ zone: 5 }), datum({ zone: 14 })];
+    const inside = filteredLayerProps({ pitches, speedRange: [40, 105], leagueZones: new Set([5]) });
+    const chase = filteredLayerProps({ pitches, speedRange: [40, 105], leagueZones: new Set([14]) });
+    const mask = (p: ReturnType<typeof filteredLayerProps>) =>
+      pitches.map((d) => (p.getFilterValue as unknown as (x: PitchDatum) => number[])(d)[3]);
+    expect(mask(inside)).toEqual([1, 0]);
+    expect(mask(chase)).toEqual([0, 1]);
+  });
 });

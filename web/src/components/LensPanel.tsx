@@ -2,6 +2,8 @@ import { For, Show, type JSX } from "solid-js";
 import {
   CAMERA_VIEWS,
   COUNT_BUCKETS,
+  LEAGUE_ZONES,
+  LEAGUE_ZONE_TITLE,
   ZONE_CELLS,
   pitchColor,
   type CameraViewName,
@@ -42,6 +44,9 @@ export interface LensPanelProps {
   onToggleCount?: (b: CountBucket) => void;
   /** In-zone cell cut: empty means every cell shows. */
   zoneCells?: ReadonlySet<ZoneCell>;
+  /** MLB's own zone numbers; empty means every zone, the four outside cells included. */
+  leagueZones?: ReadonlySet<number>;
+  onToggleLeagueZone?: (zone: number) => void;
   onToggleZoneCell?: (cell: ZoneCell) => void;
   onZoneFilter: (v: ZoneFilter) => void;
   outcomeFilter: OutcomeFilter;
@@ -211,6 +216,28 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
                 onClick={() => props.onToggleZoneCell!(cell.cell)}
               >
                 {cell.cell}
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      <Show when={has("zone") && props.leagueZones && props.onToggleLeagueZone}>
+        <div
+          role="group"
+          aria-label="league zones"
+          style={{ display: "flex", "flex-wrap": "wrap", gap: "3px", width: "132px" }}
+        >
+          <For each={LEAGUE_ZONES}>
+            {(zone) => (
+              <button
+                class="ui-ctl ui-chip"
+                aria-pressed={props.leagueZones!.size === 0 || props.leagueZones!.has(zone)}
+                title={LEAGUE_ZONE_TITLE}
+                aria-label={`League zone ${zone}: ${LEAGUE_ZONE_TITLE}`}
+                onClick={() => props.onToggleLeagueZone!(zone)}
+              >
+                {zone}
               </button>
             )}
           </For>

@@ -59,6 +59,8 @@ export interface VisualizerProps {
   /** Count cut from the chip row: empty means every count shows. */
   countBuckets?: ReadonlySet<CountBucket>;
   zoneCells?: ReadonlySet<ZoneCell>;
+  /** MLB's own zone numbers (1-9 in the strike zone, 11-14 around it). */
+  leagueZones?: ReadonlySet<number>;
   viewState?: OrbitViewState | null;
   /** What a plain drag does; shift/right-drag does the other one. */
   dragMode?: DragMode;
@@ -261,6 +263,7 @@ export default function Visualizer(props: VisualizerProps) {
           playerFilter: props.playerFilter ?? null,
           countBuckets: props.countBuckets ?? null,
           zoneCells: props.zoneCells ?? null,
+          leagueZones: props.leagueZones ?? null,
           onHover: handleHover,
           flightProgress,
           isPlaying: playing,
