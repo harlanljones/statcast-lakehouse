@@ -107,8 +107,22 @@ export function computeReleaseDispersion(
   pitches: PitchDatum[],
   kSigma = 1.0
 ): ReleaseDispersion {
-  const valid = pitches.filter((p) => p.kinematics != null);
-  const n = valid.length;
+  // Count and mean in one pass over `pitches` (no filtered copy: this runs on
+  // every filter change), then the covariance pass in the same order, so the
+  // sums stay bit-identical to the previous two-pass version.
+  let n = 0;
+  let sumX = 0;
+  let sumY = 0;
+  let sumZ = 0;
+
+  for (const p of pitches) {
+    const k = p.kinematics;
+    if (k == null) continue;
+    n++;
+    sumX += k.x0;
+    sumY += k.y0;
+    sumZ += k.z0;
+  }
 
   if (n < 2) {
     return {
@@ -127,17 +141,6 @@ export function computeReleaseDispersion(
     };
   }
 
-  let sumX = 0;
-  let sumY = 0;
-  let sumZ = 0;
-
-  for (const p of valid) {
-    const k = p.kinematics!;
-    sumX += k.x0;
-    sumY += k.y0;
-    sumZ += k.z0;
-  }
-
   const mx = sumX / n;
   const my = sumY / n;
   const mz = sumZ / n;
@@ -149,8 +152,9 @@ export function computeReleaseDispersion(
   let covXZ = 0;
   let covYZ = 0;
 
-  for (const p of valid) {
-    const k = p.kinematics!;
+  for (const p of pitches) {
+    const k = p.kinematics;
+    if (k == null) continue;
     const dx = k.x0 - mx;
     const dy = k.y0 - my;
     const dz = k.z0 - mz;
