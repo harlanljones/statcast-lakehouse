@@ -346,14 +346,7 @@ export function diamondWireframeSegments(): WireSegment[] {
 type FilterRange4 = [[number, number], [number, number], [number, number], [number, number]];
 
 export type ZoneFilter = "all" | "in_zone" | "out_of_zone";
-export type OutcomeFilter =
-  | "all"
-  | "swings"
-  | "whiffs"
-  | "balls"
-  | "called_strikes"
-  /** Every pitch of the plate appearances that ended in a home run. */
-  | "home_run_at_bats";
+export type OutcomeFilter = "all" | "swings" | "whiffs" | "balls" | "called_strikes";
 
 /** The filter state shared by the GPU masks (buildLayers) and the CPU counts/panels (App). */
 /** The nine in-zone cells, numbered left to right with the top row first. */
@@ -434,6 +427,16 @@ export const COUNT_BUCKETS: readonly { bucket: CountBucket; label: string; title
  * 0-0 is its own bucket: the first pitch of an at-bat is a different decision
  * from any other even count, which is why it is not just "even".
  */
+/**
+ * Every plate-appearance outcome present in the loaded pitches, alphabetical.
+ * The picker is built from this, so it can only offer events the data has.
+ */
+export function distinctPlayEvents(pitches: readonly PitchDatum[]): string[] {
+  const seen = new Set<string>();
+  for (const p of pitches) if (p.playEvent) seen.add(p.playEvent);
+  return [...seen].sort();
+}
+
 export function countBucket(balls?: number, strikes?: number): CountBucket | null {
   if (balls == null || strikes == null) return null;
   if (balls === 0 && strikes === 0) return "first";
@@ -461,6 +464,8 @@ export interface FilterOpts {
   zoneCells?: ReadonlySet<ZoneCell> | null;
   /** Empty or absent means every zone; selecting any restricts to the league's own numbers. */
   leagueZones?: ReadonlySet<number> | null;
+  /** One plate-appearance outcome to keep every pitch of ("Strikeout", "Home Run", ...), or null for any. */
+  playEvent?: string | null;
   plateXRange?: [number, number];
   plateZRange?: [number, number];
   zoneFilter?: ZoneFilter;
@@ -470,7 +475,8 @@ export interface FilterOpts {
 
 type CriteriaOpts = Pick<
   FilterOpts,
-  "zoneFilter" | "outcomeFilter" | "selectedTypes" | "playerFilter" | "countBuckets" | "zoneCells" | "leagueZones"
+  "zoneFilter" | "outcomeFilter" | "selectedTypes" | "playerFilter" | "countBuckets" | "zoneCells" | "leagueZones" |
+  "playEvent"
 >;
 
 /**
@@ -519,9 +525,10 @@ function passesCriteria(d: PitchDatum, opts: CriteriaOpts): boolean {
   // called ball, and only the code tells a called strike from a ball.
   if (outcomeFilter === "balls" && d.pitchResult !== "ball" && d.pitchResult !== "ball_in_dirt") return false;
   if (outcomeFilter === "called_strikes" && d.pitchResult !== "called_strike") return false;
-  // At-bat level, not pitch level: this keeps every pitch of the appearances
-  // that ended in a home run, so the sequence that produced it stays together.
-  if (outcomeFilter === "home_run_at_bats" && d.playEvent !== "Home Run") return false;
+  // At-bat level, not pitch level: this keeps EVERY pitch of the appearances that
+  // ended in the chosen event, so the sequence that produced it stays together.
+  const playEvent = opts.playEvent;
+  if (playEvent != null && playEvent !== "" && d.playEvent !== playEvent) return false;
   return true;
 }
 
@@ -586,6 +593,7 @@ export interface BuildLayersOpts {
   countBuckets?: ReadonlySet<CountBucket> | null;
   zoneCells?: ReadonlySet<ZoneCell> | null;
   leagueZones?: ReadonlySet<number> | null;
+  playEvent?: string | null;
   pairedTypes?: [string, string] | null;
   arsenalCentroids?: Map<string, ArsenalCentroid> | null;
   showContactSim?: boolean;
@@ -661,6 +669,7 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
   const countBuckets = opts.countBuckets ?? null;
   const zoneCells = opts.zoneCells ?? null;
   const leagueZones = opts.leagueZones ?? null;
+  const playEvent = opts.playEvent ?? null;
   const hasTypeFilter = Boolean(selectedTypes && selectedTypes.size > 0);
   const hasZoneFilter = zoneFilter === "in_zone" || zoneFilter === "out_of_zone";
   const hasOutcomeFilter = outcomeFilter !== "all" && outcomeFilter != null;
@@ -668,9 +677,10 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
   const hasCountFilter = Boolean(countBuckets && countBuckets.size > 0);
   const hasCellFilter = Boolean(zoneCells && zoneCells.size > 0);
   const hasLeagueFilter = Boolean(leagueZones && leagueZones.size > 0);
+  const hasPlayEventFilter = playEvent != null && playEvent !== "";
   const typeRange: [number, number] =
     hasTypeFilter || hasZoneFilter || hasOutcomeFilter || hasPlayerFilter || hasCountFilter || hasCellFilter ||
-    hasLeagueFilter
+    hasLeagueFilter || hasPlayEventFilter
       ? [0.5, 1.5]
       : OPEN_RANGE;
   const xRange = plateXRange ?? hBreakRange ?? OPEN_RANGE;
@@ -684,6 +694,7 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
     countBuckets ? [...countBuckets].sort().join(",") : "",
     zoneCells ? [...zoneCells].sort((a, b) => a - b).join(",") : "",
     leagueZones ? [...leagueZones].sort((a, b) => a - b).join(",") : "",
+    playEvent ?? "",
   ];
   if (lastFiltered && lastFiltered.key.every((v, i) => v === key[i])) return lastFiltered.props;
 
@@ -695,6 +706,7 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
     countBuckets,
     zoneCells,
     leagueZones,
+    playEvent,
   };
   const props: FilteredLayerProps = {
     getFilterValue: (d) => [

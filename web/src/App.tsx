@@ -23,6 +23,7 @@ import {
   type OutcomeFilter,
   type PitchDatum,
   passesFilters,
+  distinctPlayEvents,
 } from "./lib/deck-layers";
 import { computeArsenalCentroids } from "./lib/arsenal";
 import {
@@ -65,6 +66,12 @@ export default function App() {
   const [plateZRange, setPlateZRange] = createSignal<[number, number]>([-1, 6]);
   const [zoneFilter, setZoneFilter] = createSignal<ZoneFilter>("all");
   const [outcomeFilter, setOutcomeFilter] = createSignal<OutcomeFilter>("all");
+  /**
+   * One plate-appearance outcome to keep every pitch of, or null for every
+   * at-bat. A filter, cleared like the other cuts; the picker is built from the
+   * outcomes actually present in the loaded pitches.
+   */
+  const [playEvent, setPlayEvent] = createSignal<string | null>(null);
   const [view, setView] = createSignal<CameraViewName>("Catcher");
   const [dragMode, setDragMode] = createSignal<DragMode>("rotate");
   // Where the loaded pitches came from; the player card links out only for real data.
@@ -144,6 +151,7 @@ export default function App() {
       plateZRange: plateZRange(),
       zoneFilter: zoneFilter(),
       outcomeFilter: outcomeFilter(),
+      playEvent: playEvent(),
       selectedTypes: selectedTypes(),
       playerFilter: playerFilter(),
       countBuckets: countBuckets(),
@@ -158,6 +166,7 @@ export default function App() {
   // loaded type (so a deselected one can be switched back on); the analysis
   // panels follow the filters.
   const availableTypes = createMemo(() => distinctPitchTypes(pitchData()?.pitches ?? []));
+  const availablePlayEvents = createMemo(() => distinctPlayEvents(pitchData()?.pitches ?? []));
   const gameDate = createMemo(() => {
     const d = pitchData();
     return d ? extractGameDate(d.table) : null;
@@ -305,6 +314,7 @@ export default function App() {
     setPlayerFilter,
     setCountBuckets,
     setZoneCells,
+    setPlayEvent,
     setLeagueZones,
       setLayer: (key, on) => layerSetters[key](on),
       setHeatmapMode,
@@ -380,6 +390,7 @@ export default function App() {
           setPlayerFilter,
     setCountBuckets,
           setZoneCells,
+    setPlayEvent,
     setLeagueZones,
     });
 
@@ -488,6 +499,7 @@ export default function App() {
             plateZRange={plateZRange()}
             zoneFilter={zoneFilter()}
             outcomeFilter={outcomeFilter()}
+            playEvent={playEvent()}
             selectedTypes={selectedTypes()}
             playerFilter={playerFilter()}
             onPlayerFilter={setPlayerFilter}
@@ -567,6 +579,9 @@ export default function App() {
               onToggleZoneCell={toggleZoneCell}
               onZoneFilter={setZoneFilter}
               outcomeFilter={outcomeFilter()}
+              playEvents={availablePlayEvents()}
+              playEvent={playEvent()}
+              onPlayEvent={setPlayEvent}
               onOutcomeFilter={setOutcomeFilter}
               heatmapMode={heatmapMode()}
               onHeatmapMode={setHeatmapMode}

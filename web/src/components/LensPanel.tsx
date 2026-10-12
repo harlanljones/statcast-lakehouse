@@ -51,6 +51,10 @@ export interface LensPanelProps {
   onZoneFilter: (v: ZoneFilter) => void;
   outcomeFilter: OutcomeFilter;
   onOutcomeFilter: (v: OutcomeFilter) => void;
+  /** Outcomes present in the loaded pitches; the picker offers only these. */
+  playEvents?: readonly string[];
+  playEvent?: string | null;
+  onPlayEvent?: (v: string | null) => void;
   heatmapMode: HeatmapMode;
   onHeatmapMode: (m: HeatmapMode) => void;
   batSpeed: number;
@@ -285,10 +289,37 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
             { value: "whiffs", label: "Whiffs" },
             { value: "balls", label: "Balls" },
             { value: "called_strikes", label: "Called strikes" },
-            { value: "home_run_at_bats", label: "Home-run at-bats" },
           ]}
           onChange={props.onOutcomeFilter}
         />
+      </Show>
+
+      <Show when={has("outcome") && props.playEvents && props.playEvents.length > 0 && props.onPlayEvent}>
+        <div role="group" aria-label="at-bat outcome" style={{ display: "flex", "flex-wrap": "wrap", gap: "4px", "align-items": "center" }}>
+          <span style={{ color: THEME.muted, "font-size": "11px", width: "52px" }} aria-hidden="true">
+            At-bat
+          </span>
+          <button
+            class="ui-ctl ui-chip"
+            aria-pressed={props.playEvent == null}
+            title="Every plate appearance, whatever it became"
+            onClick={() => props.onPlayEvent!(null)}
+          >
+            Any
+          </button>
+          <For each={props.playEvents}>
+            {(event) => (
+              <button
+                class="ui-ctl ui-chip"
+                aria-pressed={props.playEvent === event}
+                title={`Every pitch of the plate appearances that ended in ${event}`}
+                onClick={() => props.onPlayEvent!(props.playEvent === event ? null : event)}
+              >
+                {event}
+              </button>
+            )}
+          </For>
+        </div>
       </Show>
 
       <Show when={has("heatmapMode")}>

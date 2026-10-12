@@ -22,6 +22,7 @@ function fakeApp() {
     countBuckets: new Set<CountBucket>() as ReadonlySet<CountBucket>,
     zoneCells: new Set<ZoneCell>() as ReadonlySet<ZoneCell>,
     leagueZones: new Set<number>() as ReadonlySet<number>,
+    playEvent: null as string | null,
     heatmapMode: "" as ScenarioPreset["heatmapMode"] | "",
     batSpeed: NaN,
     attackAngleDeg: NaN,
@@ -41,6 +42,7 @@ function fakeApp() {
     setCountBuckets: (v) => { state.countBuckets = v; },
     setZoneCells: (v) => { state.zoneCells = v; },
     setLeagueZones: (v) => { state.leagueZones = v; },
+    setPlayEvent: (v) => { state.playEvent = v; },
     setLayer: (k, on) => { state.layers[k] = on; state.layerWrites++; },
     setHeatmapMode: (v) => { state.heatmapMode = v; },
     setBatSpeed: (v) => { state.batSpeed = v; },
@@ -86,6 +88,15 @@ describe("applyPresetTo", () => {
     app.setters.setLeagueZones(new Set([14]));
     expect([...app.state.leagueZones]).toEqual([14]);
     applyPresetFiltersTo(LIVE_PRESET, app.setters);
+    expect(app.state.leagueZones.size).toBe(0);
+  });
+
+  it("clears the at-bat cut when a preset or the reset lands", () => {
+    const app = fakeApp();
+    app.setters.setPlayEvent("Home Run");
+    expect(app.state.playEvent).toBe("Home Run");
+    applyPresetFiltersTo(LIVE_PRESET, app.setters);
+    expect(app.state.playEvent).toBeNull();
     expect(app.state.leagueZones.size).toBe(0);
   });
 

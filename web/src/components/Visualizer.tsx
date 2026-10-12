@@ -49,6 +49,8 @@ export interface VisualizerProps {
   plateZRange?: [number, number];
   zoneFilter?: ZoneFilter;
   outcomeFilter?: OutcomeFilter;
+  /** One plate-appearance outcome to keep every pitch of, or null for any. */
+  playEvent?: string | null;
   selectedTypes?: ReadonlySet<string> | null;
   /** Isolate one player's pitches (set from the player card). */
   playerFilter?: PlayerFilter | null;
@@ -259,6 +261,7 @@ export default function Visualizer(props: VisualizerProps) {
           plateZRange: props.plateZRange,
           zoneFilter: props.zoneFilter,
           outcomeFilter: props.outcomeFilter,
+          playEvent: props.playEvent ?? null,
           selectedTypes: props.selectedTypes ?? null,
           playerFilter: props.playerFilter ?? null,
           countBuckets: props.countBuckets ?? null,
