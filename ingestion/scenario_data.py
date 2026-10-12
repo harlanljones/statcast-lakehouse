@@ -296,6 +296,12 @@ def _to_row(
         "batter_id": play["matchup"]["batter"]["id"],
         "pitch_type": (details.get("type") or {}).get("code") or "UN",
         "pitch_result": result,
+        # The OUTCOME of the plate appearance this pitch belongs to ("Strikeout",
+        # "Single", "Home Run", ...), repeated on every pitch of that appearance
+        # exactly as Savant's own CSV does. It is the one thing the corpus could
+        # not tell apart at all: is_swing/is_whiff and bb_type say how the ball
+        # was met, never what the at-bat became.
+        "play_event": (play.get("result") or {}).get("event"),
         "release_speed": pitch.get("startSpeed"),
         "release_spin_rate": (pitch.get("breaks") or {}).get("spinRate"),
         "x0": coordinates["x0"],

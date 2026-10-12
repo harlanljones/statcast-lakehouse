@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS `statcast_analytics.bronze_pitches` (
   batter_id INT64,
   pitch_type STRING,
   pitch_result STRING,
+  play_event STRING,
   release_speed FLOAT64,
   release_spin_rate FLOAT64,
   x0 FLOAT64,

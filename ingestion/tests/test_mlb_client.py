@@ -143,6 +143,13 @@ class TestRowMapping:
         }
         assert observed <= set(FEED_DESCRIPTION_TO_RESULT)
 
+    def test_play_event_comes_through_verbatim(self):
+        # Savant's CSV spells the plate-appearance outcome in its own words; it is
+        # stored as-is (no mapping), unlike the pitch description.
+        assert _row(statcast_record(events="Strikeout"))["play_event"] == "Strikeout"
+        assert _row(statcast_record(events="Grounded Into DP"))["play_event"] == "Grounded Into DP"
+        assert _row(statcast_record())["play_event"] is None
+
     def test_contact_columns_from_savant(self):
         row = _row(
             statcast_record(

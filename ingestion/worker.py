@@ -48,6 +48,10 @@ SCHEMA = pa.schema(
         # mapped. is_swing/is_whiff are derived from it and cannot recover it —
         # a called strike and a ball share (0, 0), which is half the corpus.
         ("pitch_result", pa.string()),
+        # Outcome of the plate appearance the pitch belongs to (Savant's CSV
+        # "events"), repeated on every pitch of that appearance. Distinct from
+        # pitch_result, which is what THIS pitch did.
+        ("play_event", pa.string()),
         ("release_speed", pa.float64()),
         ("release_spin_rate", pa.float64()),
         ("x0", pa.float64()),

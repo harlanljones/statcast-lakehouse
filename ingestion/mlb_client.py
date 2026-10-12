@@ -99,6 +99,7 @@ COLUMN_MAP = {
     "hc_x": "hc_x",
     "hc_y": "hc_y",
     "description": "pitch_result",
+    "events": "play_event",
 }
 
 
@@ -120,7 +121,7 @@ INT_FIELDS = frozenset(
     {"game_id", "pitcher_id", "batter_id", "balls", "strikes", "at_bat_number", "pitch_number"}
 )
 TEXT_FIELDS = frozenset(
-    {"pitch_type", "game_date", "pitch_result", "stand", "p_throws", "bb_type"}
+    {"pitch_type", "game_date", "pitch_result", "play_event", "stand", "p_throws", "bb_type"}
 )
 
 

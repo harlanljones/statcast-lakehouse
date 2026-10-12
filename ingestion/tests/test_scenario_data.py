@@ -75,6 +75,16 @@ def test_pitch_result_is_the_canonical_code_not_the_feed_prose():
     assert scenario_data._to_row(1, game, play, pitch(4, 0, 0, "Pitchout"))["pitch_result"] == "pitchout"
 
 
+def test_play_event_is_the_plate_appearances_outcome():
+    play = feed()["liveData"]["plays"]["allPlays"][0]
+    game = date(2024, 9, 4)
+    assert scenario_data._to_row(1, game, play, play["playEvents"][0])["play_event"] is None
+    play["result"] = {"event": "Strikeout"}
+    # Repeated on every pitch of the appearance, as Savant's CSV does.
+    assert scenario_data._to_row(1, game, play, play["playEvents"][0])["play_event"] == "Strikeout"
+    assert scenario_data._to_row(1, game, play, play["playEvents"][2])["play_event"] == "Strikeout"
+
+
 def test_an_unseen_description_stops_the_refresh():
     play = feed()["liveData"]["plays"]["allPlays"][0]
     with pytest.raises(scenario_data.UnmappedPitchResult):

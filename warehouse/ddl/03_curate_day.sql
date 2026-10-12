@@ -3,7 +3,7 @@
 MERGE `statcast_analytics.fct_pitches` f
 USING (
   SELECT
-    pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type, pitch_result,
+    pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type, pitch_result, play_event,
     release_speed, release_spin_rate,
     x0, y0, z0, vx0, vy0, vz0, ax, ay, az,
     plate_x, plate_z, zone, sz_top, sz_bot,
@@ -25,7 +25,7 @@ WHEN NOT MATCHED THEN
   -- Named columns, not INSERT ROW: 06_add_pitch_context.sql appends columns to
   -- existing tables, so live column order differs from 02_fct_pitches.sql.
   INSERT (
-    pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type, pitch_result,
+    pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type, pitch_result, play_event,
     release_speed, release_spin_rate,
     x0, y0, z0, vx0, vy0, vz0, ax, ay, az,
     plate_x, plate_z, zone, sz_top, sz_bot,
@@ -33,7 +33,7 @@ WHEN NOT MATCHED THEN
     is_swing, is_whiff, launch_speed, launch_angle, hit_distance, bb_type, hc_x, hc_y, extension, plate_location
   )
   VALUES (
-    pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type, pitch_result,
+    pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type, pitch_result, play_event,
     release_speed, release_spin_rate,
     x0, y0, z0, vx0, vy0, vz0, ax, ay, az,
     plate_x, plate_z, zone, sz_top, sz_bot,

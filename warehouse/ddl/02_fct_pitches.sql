@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS `statcast_analytics.fct_pitches` (
   batter_id INT64 NOT NULL,
   pitch_type STRING,
   pitch_result STRING,
+  play_event STRING,
   release_speed FLOAT64,
   release_spin_rate FLOAT64,
   x0 FLOAT64,
