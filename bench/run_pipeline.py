@@ -76,36 +76,33 @@ CALIB_ITERATIONS = 1_000_000  # ~20 ms of pure-Python arithmetic
 
 PLATE_TOLERANCE_FT = 0.01
 
-# Physical plausibility bounds (feet, mph, rpm). Wide enough for any real MLB
-# pitch, tight enough that fabricated or corrupted rows fail the gate. The
-# corpus will keep widening these as it grows: they were first calibrated on the
-# 497-pitch corpus, and real pitches have since forced two of them out
-# (position-player lobs at 35.6 mph, and low-slot releases whose extrapolated
-# release-plane z0 is 1.2 ft). The plate-crossing check plus the per-pitch
-# relationships are what actually guard the corpus; these bounds only catch
-# garbage (zero, negative, or absurd values).
+# Garbage-catcher bounds (feet, mph, rpm): they exist to reject fabricated or
+# corrupted rows (zero, negative, absurd), not to judge unusual-but-real
+# pitches. Every time the corpus grew, a real pitch was outside the previous
+# values — position-player lobs at 35.6 and 32.8 mph, low-slot releases whose
+# extrapolated release-plane z0 is 1.2 ft, a pitch that sailed to plate_z 8.41 ft
+# — so the windows below are deliberately wide for any physically possible
+# tracked pitch. What actually guards this corpus is the plate-crossing check,
+# the unique-pitch-id check, the no-NULL rule, the schema-parity guard and the
+# mirrored-solver parity check in the TypeScript stage.
 BOUNDS = {
-    "release_speed": (25.0, 110.0),
-    "release_spin_rate": (0.0, 4000.0),
-    "x0": (-6.0, 6.0),
-    # y0 is either the 50 ft measurement plane (slices with a NULL extension)
-    # or, once the loader back-extrapolates with the feed's extension, the
-    # release plane 60.5 - extension ft, so the window spans both.
-    "y0": (45.0, 61.0),
-    # z0 is at the 50 ft plane, or at the release plane once the loader has
-    # back-extrapolated with the feed's extension, which a low slot can put
-    # below 2 ft.
-    "z0": (1.0, 10.0),
-    "vx0": (-30.0, 30.0),
-    "vy0": (-175.0, -40.0),
-    "vz0": (-40.0, 40.0),
-    "ax": (-40.0, 40.0),
-    "ay": (0.0, 60.0),
-    "az": (-60.0, 0.0),
-    "plate_x": (-5.0, 5.0),
-    "plate_z": (-3.0, 8.0),
-    "sz_top": (2.0, 4.5),
-    "sz_bot": (0.8, 2.5),
+    "release_speed": (10.0, 115.0),
+    "release_spin_rate": (0.0, 4500.0),
+    "x0": (-8.0, 8.0),
+    # y0 is the 50 ft measurement plane, or the release plane 60.5 - extension
+    # once the loader has back-extrapolated.
+    "y0": (40.0, 62.0),
+    "z0": (0.5, 12.0),
+    "vx0": (-40.0, 40.0),
+    "vy0": (-180.0, -30.0),
+    "vz0": (-50.0, 50.0),
+    "ax": (-50.0, 50.0),
+    "ay": (0.0, 75.0),
+    "az": (-75.0, 5.0),
+    "plate_x": (-8.0, 8.0),
+    "plate_z": (-6.0, 12.0),
+    "sz_top": (1.5, 5.0),
+    "sz_bot": (0.5, 3.0),
 }
 
 REQUIRED_COLUMNS = (
