@@ -9,7 +9,7 @@
 import type { PitchDatum } from "./deck-layers";
 import { PLATE_Y } from "./kinematics";
 
-export type HeatmapMode = "density" | "whiff_rate";
+export type HeatmapMode = "density" | "whiff_rate" | "hard_hit";
 
 export interface HeatmapCell {
   cellId: number;
@@ -21,7 +21,11 @@ export interface HeatmapCell {
   pitchCount: number;
   swingCount: number;
   whiffCount: number;
-  value: number; // Normalized [0, 1] for density, [0, 100] for whiff_rate
+  /** Batted balls in this cell with a measured launch speed (hard_hit mode). */
+  contactCount: number;
+  /** Of those, the ones at or above HARD_HIT_MPH. */
+  hardHitCount: number;
+  value: number; // Normalized [0, 1] for density, [0, 100] for the rate modes
   color: [number, number, number, number]; // RGBA
 }
 
@@ -95,11 +99,35 @@ export const WHIFF_COLOR_STOPS: Array<{
 ];
 
 /**
- * Compute spatial strike zone density or whiff frequency grid.
+ * Savant's hard-hit threshold: a batted ball at or above this exit velocity.
+ */
+export const HARD_HIT_MPH = 95;
+
+/**
+ * hard_hit mode: a cell needs at least this many measured batted balls before
+ * its rate is colored (one hard-hit ball out of one is "100%"). Mirrors the
+ * whiff rule below.
+ */
+export const MIN_CONTACT_FOR_HARD_HIT_COLOR = 3;
+
+export const HARD_HIT_COLOR_STOPS: Array<{
+  pos: number;
+  color: [number, number, number, number];
+}> = [
+  { pos: 0.0, color: [25, 25, 40, 40] },
+  { pos: 0.25, color: [30, 150, 140, 120] },
+  { pos: 0.5, color: [225, 190, 40, 170] },
+  { pos: 0.75, color: [245, 120, 30, 210] },
+  { pos: 1.0, color: [240, 40, 40, 240] },
+];
+
+/**
+ * Compute spatial strike zone density, whiff frequency or hard-hit frequency.
  *
  * @param pitches Set of pitch events to aggregate
- * @param mode "density" (pitch concentration) or "whiff_rate" (whiffs / swings;
- *   cells with fewer than MIN_SWINGS_FOR_WHIFF_COLOR swings render as no data)
+ * @param mode "density" (pitch concentration), "whiff_rate" (whiffs / swings) or
+ *   "hard_hit" (batted balls at HARD_HIT_MPH+ / measured batted balls); rate
+ *   cells below their minimum sample render as no data
  * @param nx Number of horizontal divisions (default: 6)
  * @param nz Number of vertical divisions (default: 6)
  */
@@ -141,6 +169,8 @@ export function computeStrikeZoneHeatmap(
         pitchCount: 0,
         swingCount: 0,
         whiffCount: 0,
+        contactCount: 0,
+        hardHitCount: 0,
         value: 0,
         color: [0, 0, 0, 0],
       });
@@ -172,6 +202,25 @@ export function computeStrikeZoneHeatmap(
     if (p.isWhiff) cell.whiffCount++;
   }
 
+  // Contact pass, only for the mode that needs it: the density and whiff grids
+  // stay exactly as cheap as they were (this runs on every filter change).
+  if (mode === "hard_hit") {
+    for (const p of pitches) {
+      const speed = p.launchSpeed;
+      if (speed == null) continue;
+      const px = p.plateX ?? p.pfxX ?? 0;
+      const pz = p.plateZ ?? p.pfxZ ?? 0;
+      if (px < xMin || px >= xMax || pz < zMin || pz >= zMax) continue;
+      let ix = ((px - xMin) / dx) | 0;
+      if (ix >= nx) ix = nx - 1;
+      let iz = ((pz - zMin) / dz) | 0;
+      if (iz >= nz) iz = nz - 1;
+      const cell = cells[iz * nx + ix];
+      cell.contactCount++;
+      if (speed >= HARD_HIT_MPH) cell.hardHitCount++;
+    }
+  }
+
   // Normalize values and assign colors
   let maxCount = 0;
   for (const c of cells) {
@@ -183,13 +232,20 @@ export function computeStrikeZoneHeatmap(
       const norm = maxCount > 0 ? cell.pitchCount / maxCount : 0;
       cell.value = norm;
       cell.color = interpolateColor(norm, DENSITY_COLOR_STOPS);
-    } else {
+    } else if (mode === "whiff_rate") {
       const rate = cell.swingCount > 0 ? (cell.whiffCount / cell.swingCount) : 0;
       cell.value = rate * 100.0;
       cell.color =
         cell.swingCount < MIN_SWINGS_FOR_WHIFF_COLOR
           ? [...DENSITY_COLOR_STOPS[0].color]
           : interpolateColor(rate, WHIFF_COLOR_STOPS);
+    } else {
+      const rate = cell.contactCount > 0 ? (cell.hardHitCount / cell.contactCount) : 0;
+      cell.value = rate * 100.0;
+      cell.color =
+        cell.contactCount < MIN_CONTACT_FOR_HARD_HIT_COLOR
+          ? [...DENSITY_COLOR_STOPS[0].color]
+          : interpolateColor(rate, HARD_HIT_COLOR_STOPS);
     }
   }
 

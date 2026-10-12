@@ -5,6 +5,8 @@ import {
   DENSITY_COLOR_STOPS,
   WHIFF_COLOR_STOPS,
   HEATMAP_BOUNDS,
+  HARD_HIT_MPH,
+  MIN_CONTACT_FOR_HARD_HIT_COLOR,
 } from "./heatmap";
 import type { PitchDatum } from "./deck-layers";
 
@@ -101,5 +103,67 @@ describe("Strike Zone Spatial Density & Heatmaps (Sprint 12)", () => {
     // Density mode is unaffected by the swing floor.
     const dens = at(computeStrikeZoneHeatmap([swing(1)], "density"));
     expect(dens.color).toEqual(DENSITY_COLOR_STOPS[DENSITY_COLOR_STOPS.length - 1].color);
+  });
+});
+
+describe("hard_hit heatmap mode", () => {
+  const at = (cells: ReturnType<typeof computeStrikeZoneHeatmap>, px: number, pz: number) => {
+    const cell = cells.find(
+      (c) => px >= c.xMin && px < c.xMax && pz >= c.zMin && pz < c.zMax
+    );
+    if (!cell) throw new Error(`no cell for (${px}, ${pz})`);
+    return cell;
+  };
+  /** A batted ball in the middle cell with a measured exit velocity. */
+  const batted = (launchSpeed: number | undefined) =>
+    dummyPitch({ plateX: 0, plateZ: 2.5, launchSpeed });
+
+  it("reports hard-hit share of measured batted balls and keeps the base counts", () => {
+    const pitches = [
+      batted(104.2),
+      batted(96.0),
+      batted(88.5),
+      batted(undefined), // a pitch that was not put in play
+    ];
+    const cell = at(computeStrikeZoneHeatmap(pitches, "hard_hit", 6, 6), 0, 2.5);
+
+    expect(cell.contactCount).toBe(3);
+    expect(cell.hardHitCount).toBe(2);
+    expect(cell.value).toBeCloseTo((2 / 3) * 100);
+    // Base counts still describe every pitch in the cell.
+    expect(cell.pitchCount).toBe(4);
+  });
+
+  it("counts a batted ball exactly at the hard-hit threshold", () => {
+    const cell = at(computeStrikeZoneHeatmap([batted(HARD_HIT_MPH)], "hard_hit", 6, 6), 0, 2.5);
+    expect(cell.hardHitCount).toBe(1);
+    expect(cell.value).toBeCloseTo(100);
+  });
+
+  it("treats cells below the minimum sample as no data, like the whiff grid", () => {
+    const below = Array.from({ length: MIN_CONTACT_FOR_HARD_HIT_COLOR - 1 }, () => batted(104.2));
+    const sparse = at(computeStrikeZoneHeatmap(below, "hard_hit", 6, 6), 0, 2.5);
+    expect(sparse.contactCount).toBe(MIN_CONTACT_FOR_HARD_HIT_COLOR - 1);
+    expect(sparse.value).toBeCloseTo(100);
+    expect(sparse.color).toEqual([...DENSITY_COLOR_STOPS[0].color]);
+
+    const enough = at(
+      computeStrikeZoneHeatmap([...below, batted(70.0)], "hard_hit", 6, 6),
+      0,
+      2.5
+    );
+    expect(enough.color).not.toEqual([...DENSITY_COLOR_STOPS[0].color]);
+    expect(enough.color[3]).toBeGreaterThan(DENSITY_COLOR_STOPS[0].color[3]);
+  });
+
+  it("leaves the density and whiff grids untouched by contact data", () => {
+    const pitches = [batted(104.2), batted(96.0), batted(88.5)];
+    const density = at(computeStrikeZoneHeatmap(pitches, "density", 6, 6), 0, 2.5);
+    const whiff = at(computeStrikeZoneHeatmap(pitches, "whiff_rate", 6, 6), 0, 2.5);
+
+    // The contact pass only runs for hard_hit, so these stay zero there.
+    expect(density.contactCount).toBe(0);
+    expect(whiff.hardHitCount).toBe(0);
+    expect(density.pitchCount).toBe(3);
   });
 });

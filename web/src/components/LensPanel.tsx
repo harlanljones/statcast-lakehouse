@@ -206,6 +206,7 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
           options={[
             { value: "density", label: "Density" },
             { value: "whiff_rate", label: "Whiff %" },
+            { value: "hard_hit", label: "Hard Hit %" },
           ]}
           onChange={props.onHeatmapMode}
         />

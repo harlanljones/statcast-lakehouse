@@ -941,6 +941,8 @@ describe("buildLayers", () => {
           pitchCount: 5,
           swingCount: 3,
           whiffCount: 2,
+          contactCount: 4,
+          hardHitCount: 2,
           value: 1.0,
           color: [255, 50, 30, 240],
         },
@@ -963,7 +965,7 @@ describe("buildLayers", () => {
     const cell = {
       cellId: 0, xMin: -0.5, xMax: 0.0, zMin: 1.5, zMax: 2.5,
       polygon: [[-0.5, 1.417, 1.5], [0.0, 1.417, 1.5], [0.0, 1.417, 2.5], [-0.5, 1.417, 2.5]] as [number, number, number][],
-      pitchCount: 5, swingCount: 3, whiffCount: 2, value: 1.0,
+      pitchCount: 5, swingCount: 3, whiffCount: 2, contactCount: 4, hardHitCount: 2, value: 1.0,
       color: [255, 50, 30, 240] as [number, number, number, number],
     };
     const everything = buildLayers({
