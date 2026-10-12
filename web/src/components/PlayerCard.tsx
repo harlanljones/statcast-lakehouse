@@ -57,17 +57,32 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
     return `Spray: ${Math.round(distance)} ft to ${direction}`;
   };
   const isolated = (role: "pitcher" | "batter", id: number | undefined) =>
-    id != null && props.playerFilter?.role === role && props.playerFilter.id === id;
+    id != null && props.playerFilter?.[role] === id;
+  /** Setting one role never clears the other, so both together is the matchup. */
+  const toggleIsolate = (role: "pitcher" | "batter", id: number) => {
+    const next: PlayerFilter = { ...(props.playerFilter ?? {}) };
+    if (next[role] === id) delete next[role];
+    else next[role] = id;
+    props.onPlayerFilter?.(next.pitcher == null && next.batter == null ? null : next);
+  };
+  const matchup = () =>
+    props.playerFilter?.pitcher != null && props.playerFilter.batter != null;
   const isolateButton = (role: "pitcher" | "batter", id: number | undefined) => (
     <Show when={id != null}>
       <button
         class="ui-ctl"
         type="button"
         aria-pressed={isolated(role, id)}
-        title={isolated(role, id) ? "Show every player again" : "Filter the scene to this player's pitches"}
-        onClick={() =>
-          props.onPlayerFilter?.(isolated(role, id) ? null : { role, id: id as number })
+        title={
+          isolated(role, id)
+            ? matchup()
+              ? `Showing only this ${role} to the isolated ${role === "pitcher" ? "batter" : "pitcher"} — press to clear`
+              : "Show every player again"
+            : matchup()
+              ? `Add this ${role} to the matchup`
+              : "Filter the scene to this player's pitches"
         }
+        onClick={() => toggleIsolate(role, id as number)}
         style={{
           "margin-top": "4px",
           padding: "2px 8px",

@@ -401,10 +401,14 @@ export function countBucket(balls?: number, strikes?: number): CountBucket | nul
   return "even";
 }
 
-/** Narrows the view to one player's pitches — what the card's isolate action sets. */
+/**
+ * Narrows the view to specific players' pitches — what the card's isolate
+ * actions set. Either role may be set alone (only this pitcher / only this
+ * batter) or both together, which is the matchup: this pitcher to this batter.
+ */
 export interface PlayerFilter {
-  role: "pitcher" | "batter";
-  id: number;
+  pitcher?: number;
+  batter?: number;
 }
 
 export interface FilterOpts {
@@ -439,8 +443,8 @@ function passesCriteria(d: PitchDatum, opts: CriteriaOpts): boolean {
   // it before the other criteria.
   const playerFilter = opts.playerFilter;
   if (playerFilter) {
-    const id = playerFilter.role === "pitcher" ? d.pitcherId : d.batterId;
-    if (id !== playerFilter.id) return false;
+    if (playerFilter.pitcher != null && d.pitcherId !== playerFilter.pitcher) return false;
+    if (playerFilter.batter != null && d.batterId !== playerFilter.batter) return false;
   }
   const zoneCells = opts.zoneCells;
   if (zoneCells && zoneCells.size > 0) {
@@ -618,7 +622,7 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
     speedRange[0], speedRange[1], xRange[0], xRange[1], zRange[0], zRange[1],
     typeRange[0], typeRange[1], selectedTypes, zoneFilter ?? "all", outcomeFilter ?? "all",
     selectedTypes ? selectedTypes.size : 0,
-    playerFilter ? `${playerFilter.role}:${playerFilter.id}` : "",
+    playerFilter ? `${playerFilter.pitcher ?? ""}:${playerFilter.batter ?? ""}` : "",
     countBuckets ? [...countBuckets].sort().join(",") : "",
     zoneCells ? [...zoneCells].sort((a, b) => a - b).join(",") : "",
   ];

@@ -89,11 +89,11 @@ describe("applyPresetTo", () => {
 
   it("clears a player isolate when a preset or the reset lands", () => {
     const app = fakeApp();
-    app.setters.setPlayerFilter({ role: "batter", id: 42 });
-    expect(app.state.playerFilter).toEqual({ role: "batter", id: 42 });
+    app.setters.setPlayerFilter({ batter: 42 });
+    expect(app.state.playerFilter).toEqual({ batter: 42 });
     applyPresetFiltersTo(LIVE_PRESET, app.setters);
     expect(app.state.playerFilter).toBeNull();
-    app.setters.setPlayerFilter({ role: "pitcher", id: 7 });
+    app.setters.setPlayerFilter({ pitcher: 7 });
     applyPresetTo(SCENARIOS[0].preset, app.setters);
     expect(app.state.playerFilter).toBeNull();
   });

@@ -1201,13 +1201,32 @@ describe("isolating one player", () => {
   });
 
   it("keeps only that pitcher's or batter's pitches, and treats a missing id as a miss", () => {
-    const opts = { speedRange: [40, 105] as [number, number], playerFilter: { role: "batter" as const, id: 7 } };
+    const opts = { speedRange: [40, 105] as [number, number], playerFilter: { batter: 7 } };
     expect(passesFilters(datum({ batterId: 7 }), opts)).toBe(true);
     expect(passesFilters(datum({ batterId: 8 }), opts)).toBe(false);
     expect(passesFilters(datum({}), opts)).toBe(false);
-    const byPitcher = { speedRange: [40, 105] as [number, number], playerFilter: { role: "pitcher" as const, id: 3 } };
+    const byPitcher = { speedRange: [40, 105] as [number, number], playerFilter: { pitcher: 3 } };
     expect(passesFilters(datum({ pitcherId: 3, batterId: 99 }), byPitcher)).toBe(true);
     expect(passesFilters(datum({ pitcherId: 4, batterId: 99 }), byPitcher)).toBe(false);
+  });
+
+  it("combines both roles into a matchup, and changing either one re-derives the mask", () => {
+    const matchup = {
+      speedRange: [40, 105] as [number, number],
+      playerFilter: { pitcher: 1, batter: 7 },
+    };
+    expect(passesFilters(datum({ pitcherId: 1, batterId: 7 }), matchup)).toBe(true);
+    expect(passesFilters(datum({ pitcherId: 1, batterId: 8 }), matchup)).toBe(false);
+    expect(passesFilters(datum({ pitcherId: 2, batterId: 7 }), matchup)).toBe(false);
+
+    const pitches = [datum({ pitcherId: 1, batterId: 7 }), datum({ pitcherId: 1, batterId: 8 })];
+    const both = filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { pitcher: 1, batter: 7 } });
+    const batterOnly = filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { batter: 7 } });
+    const mask = (p: ReturnType<typeof filteredLayerProps>) =>
+      pitches.map((d) => (p.getFilterValue as unknown as (x: PitchDatum) => number[])(d)[3]);
+    expect(mask(both)).toEqual([1, 0]);
+    expect(mask(batterOnly)).toEqual([1, 0]);
+    expect(mask(filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { pitcher: 2 } }))).toEqual([0, 0]);
   });
 
   it("changes nothing when no player filter is set", () => {
@@ -1219,8 +1238,8 @@ describe("isolating one player", () => {
   it("re-derives the GPU filter values when the isolated player changes", () => {
     const pitches = [datum({ pitcherId: 1, batterId: 7 }), datum({ pitcherId: 2, batterId: 8 })];
     const none = filteredLayerProps({ pitches, speedRange: [40, 105] });
-    const first = filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { role: "batter", id: 7 } });
-    const second = filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { role: "batter", id: 8 } });
+    const first = filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { batter: 7 } });
+    const second = filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { batter: 8 } });
     const mask = (p: ReturnType<typeof filteredLayerProps>) =>
       pitches.map((d) => (p.getFilterValue as unknown as (x: PitchDatum) => number[])(d)[3]);
     expect(mask(none)).toEqual([1, 1]);
