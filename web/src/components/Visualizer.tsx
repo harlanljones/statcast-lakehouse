@@ -25,6 +25,7 @@ import {
 import { keyboardCameraStep, stepPitch } from "../lib/keyboard";
 import PlayerCard from "./PlayerCard";
 import type { CountRow } from "../lib/count-mix";
+import type { SprayProfile } from "../lib/spray-profile";
 import type { CountBucket, PlayerFilter, ZoneCell } from "../lib/deck-layers";
 import { THEME } from "./ui";
 import type { ArsenalCentroid } from "../lib/arsenal";
@@ -37,6 +38,7 @@ const BreakChart = lazy(() => import("./BreakChart"));
 const PairComparisonPanel = lazy(() => import("./PairComparisonPanel"));
 const FatiguePanel = lazy(() => import("./FatiguePanel"));
 const CountPanel = lazy(() => import("./CountPanel"));
+const SprayProfilePanel = lazy(() => import("./SprayProfilePanel"));
 
 export interface VisualizerProps {
   data: PitchTable | null;
@@ -92,6 +94,8 @@ export interface VisualizerProps {
   showCountMix?: boolean;
   countRows?: CountRow[];
   onToggleCountMix?: (on: boolean) => void;
+  sprayProfile?: SprayProfile | null;
+  onToggleSprayProfile?: (on: boolean) => void;
   onToggleFatigue?: (v: boolean) => void;
   showHeatmap?: boolean;
   heatmapCells?: HeatmapCell[] | null;
@@ -414,6 +418,13 @@ export default function Visualizer(props: VisualizerProps) {
               onSelectPairedTypes={(pair) => props.onSelectPairedTypes?.(pair)}
               centroids={props.arsenalCentroids!}
               onClose={() => props.onTogglePairComparison?.(false)}
+            />
+          </Show>
+          <Show when={props.sprayProfile}>
+            <SprayProfilePanel
+              profile={props.sprayProfile!}
+              pitcherLabel={props.fatiguePitcherLabel}
+              onClose={() => props.onToggleSprayProfile?.(false)}
             />
           </Show>
           <Show when={props.showCountMix && props.countRows}>

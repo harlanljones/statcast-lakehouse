@@ -48,6 +48,7 @@ export type LayerKey =
   | "dispersion"
   | "fatigue"
   | "countMix"
+  | "sprayProfile"
   | "heatmap";
 
 export type LensId =
@@ -89,6 +90,7 @@ export const LAYER_TOGGLES: readonly { key: LayerKey; label: string }[] = [
   { key: "dispersion", label: "Release dispersion" },
   { key: "fatigue", label: "Fatigue" },
   { key: "countMix", label: "Count mix" },
+  { key: "sprayProfile", label: "Spray profile" },
   { key: "heatmap", label: "Zone heatmap" },
 ];
 
@@ -135,6 +137,7 @@ const NO_LAYERS: Record<LayerKey, boolean> = {
   dispersion: false,
   fatigue: false,
   countMix: false,
+  sprayProfile: false,
   heatmap: false,
 };
 
@@ -677,7 +680,7 @@ export const SCENARIOS: readonly Scenario[] = [
     lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Batter",
-      layers: { plateCrossings: true, heatmap: true, spray: true },
+      layers: { plateCrossings: true, heatmap: true, spray: true, sprayProfile: true },
       heatmapMode: "hard_hit",
     }),
   },

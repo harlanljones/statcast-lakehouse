@@ -45,6 +45,7 @@ export const LAYER_KEYS: readonly LayerKey[] = [
   "dispersion",
   "fatigue",
   "countMix",
+  "sprayProfile",
   "heatmap",
 ];
 

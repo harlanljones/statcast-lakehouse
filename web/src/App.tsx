@@ -53,6 +53,7 @@ import {
 } from "./lib/scenarios";
 import { applyPresetFiltersTo, applyPresetTo } from "./lib/scenario-state";
 import { countMix } from "./lib/count-mix";
+import { sprayProfile } from "./lib/spray-profile";
 import type { CountBucket, PlayerFilter, ZoneCell } from "./lib/deck-layers";
 import { nextPlayState, prefersReducedMotion } from "./lib/playback";
 import type { DragMode } from "./lib/camera";
@@ -99,6 +100,7 @@ export default function App() {
   const [showDispersion, setShowDispersion] = createSignal<boolean>(false);
   const [showFatigue, setShowFatigue] = createSignal<boolean>(false);
   const [showCountMix, setShowCountMix] = createSignal<boolean>(false);
+  const [showSprayProfile, setShowSprayProfile] = createSignal<boolean>(false);
   const [showHeatmap, setShowHeatmap] = createSignal<boolean>(false);
   // "Isolate this player": set from the card, cleared by a scenario change or Reset filters.
   const [playerFilter, setPlayerFilter] = createSignal<PlayerFilter | null>(null);
@@ -173,6 +175,12 @@ export default function App() {
   const countRows = createMemo(() => {
     if (!showCountMix()) return [];
     return countMix(visiblePitches(), fatigueInfo().id);
+  });
+
+  // The spray profile follows the same pitcher as the fatigue panel and the count mix.
+  const sprayProfileData = createMemo(() => {
+    if (!showSprayProfile()) return null;
+    return sprayProfile(visiblePitches(), fatigueInfo().id);
   });
 
   const fatigueBuckets = createMemo(() => {
@@ -266,6 +274,7 @@ export default function App() {
     dispersion: setShowDispersion,
     fatigue: setShowFatigue,
     countMix: setShowCountMix,
+    sprayProfile: setShowSprayProfile,
     heatmap: setShowHeatmap,
   };
 
@@ -398,6 +407,7 @@ export default function App() {
     dispersion: showDispersion(),
     fatigue: showFatigue(),
     countMix: showCountMix(),
+    sprayProfile: showSprayProfile(),
     heatmap: showHeatmap(),
   });
   // A scenario shows its own lenses; "All controls" (and Live data) show every lens plus the layer toggles.
@@ -486,6 +496,8 @@ export default function App() {
             releaseDispersion={releaseDispersion()}
             showFatigue={showFatigue()}
             showCountMix={showCountMix()}
+            sprayProfile={sprayProfileData()}
+            onToggleSprayProfile={setShowSprayProfile}
             countRows={countRows()}
             onToggleCountMix={setShowCountMix}
             fatigueBuckets={fatigueBuckets()}
