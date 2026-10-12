@@ -43,6 +43,7 @@ SCENARIO_ROWS = {
     "unclassified-pitches": 3076,
     "short-left-lines": 3576,
     "short-centre-fields": 3692,
+    "deep-centre-fields": 3598,
 }
 
 

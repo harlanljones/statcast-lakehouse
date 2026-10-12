@@ -151,6 +151,17 @@ SHORT_CENTRE_GAMES = (
     746804, 746882, 746880, 745503, 745502, 745500,
     745501, 746794, 745333, 746225, 745409, 746136,
 )
+# The six deepest centre fields among the venues that hosted regular-season
+# games and whose centre distance the venue endpoint and the game feed AGREE on
+# (MLB venue endpoint fieldInfo.center): Fenway Park 420 ft, Comerica Park 420,
+# Coors Field 415, Kauffman Stadium 410, Daikin Park 409, Citi Field 408.
+# Oriole Park at Camden Yards is excluded: the venue endpoint says 410 and the
+# game feed says 400 for the same venue id, so its value is not settled enough
+# to be a criterion park for a distance theme. Twelve games, one per date, all unused.
+DEEP_CENTRE_GAMES = (
+    746469, 745818, 746382, 746949, 746950, 746466,
+    746300, 746463, 746947, 746543, 746542, 746538,
+)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -175,6 +186,7 @@ GAME_IDS = (
     *ROOFED_GAMES,
     *SHORT_LEFT_LINES_GAMES,
     *SHORT_CENTRE_GAMES,
+    *DEEP_CENTRE_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -219,6 +231,7 @@ SWEEP_SCENARIOS = {
     "under-a-roof": ROOFED_GAMES,
     "short-left-lines": SHORT_LEFT_LINES_GAMES,
     "short-centre-fields": SHORT_CENTRE_GAMES,
+    "deep-centre-fields": DEEP_CENTRE_GAMES,
 }
 
 

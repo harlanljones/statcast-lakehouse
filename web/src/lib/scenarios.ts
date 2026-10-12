@@ -37,7 +37,8 @@ export type ScenarioId =
   | "unclassified-pitches"
   | "under-a-roof"
   | "short-left-lines"
-  | "short-centre-fields";
+  | "short-centre-fields"
+  | "deep-centre-fields";
 
 export type LayerKey =
   | "tunneling"
@@ -780,6 +781,30 @@ export const SCENARIOS: readonly Scenario[] = [
       + "home runs were hit across the twelve and 600 pitches were put in play with measured contact data.",
     tryThis:
       "Turn on the spray layer and compare where the batted balls landed: these seven parks hold the league's shallowest centre fields, from Oracle Park's 391 ft to Wrigley Field's 400.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
+    preset: preset({
+      view: "Batter",
+      layers: { plateCrossings: true, spray: true },
+    }),
+  },
+  {
+    id: "deep-centre-fields",
+    title: "Deep Centre Fields",
+    dateLabel: "May 26 - Jun 19, 2024",
+    gameLabel: "Twelve games · 6 parks",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/746949/feed/live",
+    synthetic: false,
+    hook: "Twelve games at the six deepest centre fields in MLB's venue data - 420 ft at Fenway Park and Comerica Park down to 408 at Citi Field.",
+    lookFor:
+      "3,598 tracked pitches, 1,715 swings and 382 whiffs across twelve games in May and June 2024 at the "
+      + "six deepest centre fields in MLB's venue data: 420 ft at Fenway Park and Comerica Park, 415 at "
+      + "Coors Field, 410 at Kauffman Stadium, 409 at Minute Maid Park (now Daikin Park) and 408 at Citi "
+      + "Field. 37 home runs were hit across the twelve and 633 pitches were put in play with measured "
+      + "contact data.",
+    tryThis:
+      "Turn on the spray layer and compare where the batted balls landed: these six parks hold the "
+      + "league's deepest centre fields, from Fenway Park and Comerica Park at 420 ft to Citi Field at 408.",
     lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Batter",

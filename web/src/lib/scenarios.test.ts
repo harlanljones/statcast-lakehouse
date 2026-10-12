@@ -45,6 +45,7 @@ const SERVER_IDS = [
   "under-a-roof",
   "short-left-lines",
   "short-centre-fields",
+  "deep-centre-fields",
 ];
 
 describe("real-game story catalog", () => {
