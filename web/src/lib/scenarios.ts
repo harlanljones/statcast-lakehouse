@@ -33,7 +33,8 @@ export type ScenarioId =
   | "called-early"
   | "combined-shutouts"
   | "blowouts"
-  | "hundred-pitch-starts";
+  | "hundred-pitch-starts"
+  | "unclassified-pitches";
 
 export type LayerKey =
   | "tunneling"
@@ -692,6 +693,25 @@ export const SCENARIOS: readonly Scenario[] = [
     preset: preset({
       view: "Pitcher",
       layers: { plateCrossings: true, fatigue: true },
+    }),
+  },
+  {
+    id: "unclassified-pitches",
+    title: "Unclassified Pitches",
+    dateLabel: "Mar 28, 2025 – Jul 4, 2026",
+    gameLabel: "Ten games · one pitch each",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/778560/feed/live",
+    synthetic: false,
+    hook: "Ten games holding a pitch Statcast could not classify — every one of them a ball.",
+    lookFor:
+      "3,076 tracked pitches, 1,523 swings and 341 whiffs across ten games from March 2025 to July 2026, each containing exactly one pitch the classifier could not label. They came in at 51.9 to 82.4 mph from ten different pitchers and every one was called a ball. These ten close the set: the catalogue now covers all seventeen pitch types the MLB feed emits in these seasons. 547 pitches were put in play with measured contact data.",
+    tryThis:
+      "Drag the speed filter to its low end — in most of these games the unclassified pitch is the slowest thing thrown.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    preset: preset({
+      view: "Pitcher",
+      layers: { releasePoints: true, plateCrossings: true },
     }),
   },
 ];

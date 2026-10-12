@@ -105,6 +105,12 @@ SHUTOUT_GAMES = (
 # per date (105-112 pitches; Ranger Suarez's 112 was a complete-game shutout,
 # Parker Messick's 112 came in eight innings, Zack Wheeler and Michael King
 # each appear twice, and in two of the games both starters topped 100).
+# Ten games each holding exactly one pitch Statcast could not classify (the
+# feed's own UN code): 51.9-82.4 mph, and every one of them was called a ball.
+# With these the catalogue covers every pitch type the feed emits in these
+# seasons. 2024 has no unused ones — only two exist, both on used dates.
+UNCLASSIFIED_GAMES = (778560, 777928, 777581, 776852, 776351, 823649, 823562, 824116, 822799, 822716)
+
 HUNDRED_PITCH_GAMES = (
     745593, 746005, 745590, 746319,
     778279, 778218, 778203, 778176,
@@ -136,6 +142,7 @@ GAME_IDS = (
     *SHUTOUT_GAMES,
     *BLOWOUT_GAMES,
     *HUNDRED_PITCH_GAMES,
+    *UNCLASSIFIED_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -176,6 +183,7 @@ SWEEP_SCENARIOS = {
     "combined-shutouts": SHUTOUT_GAMES,
     "blowouts": BLOWOUT_GAMES,
     "hundred-pitch-starts": HUNDRED_PITCH_GAMES,
+    "unclassified-pitches": UNCLASSIFIED_GAMES,
 }
 
 

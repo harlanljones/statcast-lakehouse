@@ -41,6 +41,7 @@ const SERVER_IDS = [
   "combined-shutouts",
   "blowouts",
   "hundred-pitch-starts",
+  "unclassified-pitches",
 ];
 
 describe("real-game story catalog", () => {

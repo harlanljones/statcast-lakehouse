@@ -51,6 +51,7 @@ SCENARIO_FILES = {
     "combined-shutouts": "combined-shutouts.arrow",
     "blowouts": "blowouts.arrow",
     "hundred-pitch-starts": "hundred-pitch-starts.arrow",
+    "unclassified-pitches": "unclassified-pitches.arrow",
 }
 
 
