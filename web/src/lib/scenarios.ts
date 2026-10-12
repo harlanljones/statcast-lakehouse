@@ -32,7 +32,8 @@ export type ScenarioId =
   | "inning-after-inning"
   | "called-early"
   | "combined-shutouts"
-  | "blowouts";
+  | "blowouts"
+  | "hundred-pitch-starts";
 
 export type LayerKey =
   | "tunneling"
@@ -672,6 +673,25 @@ export const SCENARIOS: readonly Scenario[] = [
       view: "Batter",
       layers: { plateCrossings: true, heatmap: true, spray: true },
       heatmapMode: "hard_hit",
+    }),
+  },
+  {
+    id: "hundred-pitch-starts",
+    title: "100-Pitch Starts",
+    dateLabel: "Apr 16, 2024 – Apr 24, 2026",
+    gameLabel: "Twelve games · 105–112 pitches",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/745593/feed/live",
+    synthetic: false,
+    hook: "Twelve starts that ran past 100 pitches — one of them a complete-game shutout.",
+    lookFor:
+      "3,450 tracked pitches, 1,630 swings and 388 whiffs across twelve games from April 2024 to April 2026 in which a starter threw 105 to 112 pitches: Ranger Suarez's 112 finished a shutout, Parker Messick's 112 came in eight innings, Zack Wheeler and Michael King each appear twice, and in two of the games both starters topped 100. 568 pitches were put in play with measured contact data.",
+    tryThis:
+      "Follow one of these outings inning by inning with the fatigue layer on — the velocity and whiff rate tell the workload story.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    preset: preset({
+      view: "Pitcher",
+      layers: { plateCrossings: true, fatigue: true },
     }),
   },
 ];

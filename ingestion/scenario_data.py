@@ -101,6 +101,16 @@ SHUTOUT_GAMES = (
 # (179 runs in all, margins 9-16). Four of them had an arm that never topped
 # 75 mph as the game ran away — the slowest a 43.8 mph pitch with the Braves
 # 17 runs ahead at Arizona on 2026-04-02.
+# Twelve games with a starter who threw 100+ pitches, four per season and one
+# per date (105-112 pitches; Ranger Suarez's 112 was a complete-game shutout,
+# Parker Messick's 112 came in eight innings, Zack Wheeler and Michael King
+# each appear twice, and in two of the games both starters topped 100).
+HUNDRED_PITCH_GAMES = (
+    745593, 746005, 745590, 746319,
+    778279, 778218, 778203, 778176,
+    824453, 824047, 823236, 823232,
+)
+
 BLOWOUT_GAMES = (
     746327, 746323, 745110, 745352,
     778432, 778382, 778328, 778309,
@@ -125,6 +135,7 @@ GAME_IDS = (
     *CALLED_EARLY_GAMES,
     *SHUTOUT_GAMES,
     *BLOWOUT_GAMES,
+    *HUNDRED_PITCH_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -164,6 +175,7 @@ SWEEP_SCENARIOS = {
     "called-early": CALLED_EARLY_GAMES,
     "combined-shutouts": SHUTOUT_GAMES,
     "blowouts": BLOWOUT_GAMES,
+    "hundred-pitch-starts": HUNDRED_PITCH_GAMES,
 }
 
 

@@ -50,6 +50,7 @@ SCENARIO_FILES = {
     "called-early": "called-early.arrow",
     "combined-shutouts": "combined-shutouts.arrow",
     "blowouts": "blowouts.arrow",
+    "hundred-pitch-starts": "hundred-pitch-starts.arrow",
 }
 
 
