@@ -8,6 +8,7 @@ import {
   effectiveViewState,
   FALLBACK_COLOR,
   FILTER_SIZE,
+  countBucket,
   filteredLayerProps,
   PITCH_COLORS,
   STRIKE_ZONE,
@@ -1224,5 +1225,56 @@ describe("isolating one player", () => {
     expect(mask(none)).toEqual([1, 1]);
     expect(mask(first)).toEqual([1, 0]);
     expect(mask(second)).toEqual([0, 1]);
+  });
+});
+
+describe("the count cut", () => {
+  const datum = (over: Partial<PitchDatum>): PitchDatum => ({
+    path: new Float32Array(3),
+    releaseSpeed: 92,
+    pfxX: 0,
+    pfxZ: 0,
+    plateX: 0,
+    plateZ: 2.5,
+    pitchType: "FF",
+    ...over,
+  });
+
+  it("classifies every count into one disjoint bucket, with no count as null", () => {
+    expect(countBucket(0, 0)).toBe("first");
+    expect(countBucket(0, 1)).toBe("pitcher_ahead");
+    expect(countBucket(1, 2)).toBe("pitcher_ahead");
+    expect(countBucket(1, 0)).toBe("hitter_ahead");
+    expect(countBucket(3, 2)).toBe("hitter_ahead");
+    expect(countBucket(1, 1)).toBe("even");
+    expect(countBucket(2, 2)).toBe("even");
+    expect(countBucket(undefined, 1)).toBeNull();
+    expect(countBucket(1, undefined)).toBeNull();
+  });
+
+  it("filters to the chosen buckets and drops rows that carry no count", () => {
+    const opts = {
+      speedRange: [40, 105] as [number, number],
+      countBuckets: new Set(["pitcher_ahead" as const]),
+    };
+    expect(passesFilters(datum({ balls: 0, strikes: 2 }), opts)).toBe(true);
+    expect(passesFilters(datum({ balls: 1, strikes: 1 }), opts)).toBe(false);
+    expect(passesFilters(datum({}), opts)).toBe(false);
+  });
+
+  it("changes nothing when no bucket is chosen", () => {
+    const plain = { speedRange: [40, 105] as [number, number] };
+    expect(passesFilters(datum({ balls: 3, strikes: 0 }), plain)).toBe(true);
+    expect(passesFilters(datum({}), plain)).toBe(true);
+  });
+
+  it("re-derives the GPU filter values when the bucket set changes", () => {
+    const pitches = [datum({ balls: 0, strikes: 2 }), datum({ balls: 2, strikes: 0 })];
+    const ahead = filteredLayerProps({ pitches, speedRange: [40, 105], countBuckets: new Set(["pitcher_ahead"]) });
+    const behind = filteredLayerProps({ pitches, speedRange: [40, 105], countBuckets: new Set(["hitter_ahead"]) });
+    const mask = (p: ReturnType<typeof filteredLayerProps>) =>
+      pitches.map((d) => (p.getFilterValue as unknown as (x: PitchDatum) => number[])(d)[3]);
+    expect(mask(ahead)).toEqual([1, 0]);
+    expect(mask(behind)).toEqual([0, 1]);
   });
 });

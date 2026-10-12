@@ -69,6 +69,9 @@ export interface PitchDatum {
   /** Plate-appearance and pitch order within the game; nullable in older files. */
   atBatNumber?: number;
   pitchNumber?: number;
+  /** Count when the pitch was thrown (drives the count cut in the filter panel). */
+  balls?: number;
+  strikes?: number;
   /**
    * Observed batted-ball data (MLB's contact columns): measured exit velocity
    * (mph), launch angle (degrees), projected distance (feet) and batted-ball
@@ -322,6 +325,22 @@ export type ZoneFilter = "all" | "in_zone" | "out_of_zone";
 export type OutcomeFilter = "all" | "swings" | "whiffs";
 
 /** The filter state shared by the GPU masks (buildLayers) and the CPU counts/panels (App). */
+/** Game state when the pitch was thrown, as a disjoint cut of the count. */
+export type CountBucket = "first" | "pitcher_ahead" | "hitter_ahead" | "even";
+
+/**
+ * Which side the count favours, or null when the row carries no count.
+ * 0-0 is its own bucket: the first pitch of an at-bat is a different decision
+ * from any other even count, which is why it is not just "even".
+ */
+export function countBucket(balls?: number, strikes?: number): CountBucket | null {
+  if (balls == null || strikes == null) return null;
+  if (balls === 0 && strikes === 0) return "first";
+  if (strikes > balls) return "pitcher_ahead";
+  if (balls > strikes) return "hitter_ahead";
+  return "even";
+}
+
 /** Narrows the view to one player's pitches — what the card's isolate action sets. */
 export interface PlayerFilter {
   role: "pitcher" | "batter";
@@ -331,6 +350,8 @@ export interface PlayerFilter {
 export interface FilterOpts {
   speedRange: [number, number];
   playerFilter?: PlayerFilter | null;
+  /** Empty or absent means every count; otherwise only these buckets show. */
+  countBuckets?: ReadonlySet<CountBucket> | null;
   plateXRange?: [number, number];
   plateZRange?: [number, number];
   zoneFilter?: ZoneFilter;
@@ -338,7 +359,10 @@ export interface FilterOpts {
   selectedTypes?: ReadonlySet<string> | null;
 }
 
-type CriteriaOpts = Pick<FilterOpts, "zoneFilter" | "outcomeFilter" | "selectedTypes" | "playerFilter">;
+type CriteriaOpts = Pick<
+  FilterOpts,
+  "zoneFilter" | "outcomeFilter" | "selectedTypes" | "playerFilter" | "countBuckets"
+>;
 
 /**
  * Categorical criteria (type set, zone, outcome): the part of the filter that
@@ -355,6 +379,11 @@ function passesCriteria(d: PitchDatum, opts: CriteriaOpts): boolean {
   if (playerFilter) {
     const id = playerFilter.role === "pitcher" ? d.pitcherId : d.batterId;
     if (id !== playerFilter.id) return false;
+  }
+  const countBuckets = opts.countBuckets;
+  if (countBuckets && countBuckets.size > 0) {
+    const bucket = countBucket(d.balls, d.strikes);
+    if (bucket === null || !countBuckets.has(bucket)) return false;
   }
   const selectedTypes = opts.selectedTypes;
   if (selectedTypes && selectedTypes.size > 0 && !selectedTypes.has(d.pitchType)) return false;
@@ -429,6 +458,7 @@ export interface BuildLayersOpts {
   showPlateCrossings?: boolean;
   showSpray?: boolean;
   playerFilter?: PlayerFilter | null;
+  countBuckets?: ReadonlySet<CountBucket> | null;
   pairedTypes?: [string, string] | null;
   arsenalCentroids?: Map<string, ArsenalCentroid> | null;
   showContactSim?: boolean;
@@ -501,12 +531,16 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
   const { speedRange, hBreakRange, vBreakRange, plateXRange, plateZRange, zoneFilter, outcomeFilter } = opts;
   const selectedTypes = opts.selectedTypes ?? null;
   const playerFilter = opts.playerFilter ?? null;
+  const countBuckets = opts.countBuckets ?? null;
   const hasTypeFilter = Boolean(selectedTypes && selectedTypes.size > 0);
   const hasZoneFilter = zoneFilter === "in_zone" || zoneFilter === "out_of_zone";
   const hasOutcomeFilter = outcomeFilter === "swings" || outcomeFilter === "whiffs";
   const hasPlayerFilter = playerFilter !== null;
+  const hasCountFilter = Boolean(countBuckets && countBuckets.size > 0);
   const typeRange: [number, number] =
-    hasTypeFilter || hasZoneFilter || hasOutcomeFilter || hasPlayerFilter ? [0.5, 1.5] : OPEN_RANGE;
+    hasTypeFilter || hasZoneFilter || hasOutcomeFilter || hasPlayerFilter || hasCountFilter
+      ? [0.5, 1.5]
+      : OPEN_RANGE;
   const xRange = plateXRange ?? hBreakRange ?? OPEN_RANGE;
   const zRange = plateZRange ?? vBreakRange ?? OPEN_RANGE;
 
@@ -515,10 +549,11 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
     typeRange[0], typeRange[1], selectedTypes, zoneFilter ?? "all", outcomeFilter ?? "all",
     selectedTypes ? selectedTypes.size : 0,
     playerFilter ? `${playerFilter.role}:${playerFilter.id}` : "",
+    countBuckets ? [...countBuckets].sort().join(",") : "",
   ];
   if (lastFiltered && lastFiltered.key.every((v, i) => v === key[i])) return lastFiltered.props;
 
-  const criteria: CriteriaOpts = { zoneFilter, outcomeFilter, selectedTypes, playerFilter };
+  const criteria: CriteriaOpts = { zoneFilter, outcomeFilter, selectedTypes, playerFilter, countBuckets };
   const props: FilteredLayerProps = {
     getFilterValue: (d) => [
       d.releaseSpeed,

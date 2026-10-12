@@ -56,6 +56,7 @@ export type LensId =
   | "speed"
   | "plate"
   | "zone"
+  | "count"
   | "outcome"
   | "heatmapMode"
   | "contact";
@@ -71,6 +72,7 @@ export const ALL_LENSES: readonly LensId[] = [
   "outcome",
   "heatmapMode",
   "contact",
+  "count",
 ];
 
 /** Layer-toggle labels, in display order (LensPanel's "All controls" row). */
@@ -190,7 +192,7 @@ export const SCENARIOS: readonly Scenario[] = [
     lookFor:
       "All 370 tracked pitches from Los Angeles's 20–4 win over Miami. Ohtani went 6-for-6 with three home runs, two doubles and 10 RBIs; this view keeps the full game's pitch data together.",
     tryThis: "Isolate a pitch type, then turn on plate crossings to compare where each pitch finished.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Catcher",
       layers: { plateCrossings: true, ghostBreak: true, breakChart: true },
@@ -208,7 +210,7 @@ export const SCENARIOS: readonly Scenario[] = [
     lookFor:
       "This slice contains every pitch from Ohtani's six plate appearances: three homers, two doubles and a single. The plate locations and pitch outcomes come from the game feed; the 50/50 milestone is linked to MLB's game story.",
     tryThis: "Set the outcome filter to Whiffs, then compare those locations with the pitches he put in play.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Batter",
       layers: { plateCrossings: true, heatmap: true },
@@ -242,7 +244,7 @@ export const SCENARIOS: readonly Scenario[] = [
     lookFor:
       "Thirteen pitches from Freeman's five trips to the plate, including the bottom-of-the-10th at-bat against Nestor Cortes. The Dodgers won 6–3 on Freeman's walk-off grand slam.",
     tryThis: "Use the plate crossings and flight scrubber to inspect the recorded paths from the at-bats.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Pitcher",
       layers: { plateCrossings: true, ghostBreak: true },
@@ -279,7 +281,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "Tyler Glasnow's 81 pitches for the Dodgers against Miles Mikolas's 74 for St. Louis: 137 swings, 32 whiffs, and a mix that runs from four-seamers to 41 sinkers, 27 sweepers and a slurve. Speeds span 69.0 to 98.5 mph.",
     tryThis:
       "Isolate the sinkers and sweepers, then open the break chart to compare their movement with the four-seamers.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Catcher",
       layers: { plateCrossings: true, ghostBreak: true, breakChart: true },
@@ -298,7 +300,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "357 tracked pitches from Minute Maid Park — Jack Flaherty's 73 plus nine more arms — 163 swings and 36 whiffs across ten pitch types, including two slurves.",
     tryThis:
       "Open pitch pairs, choose the four-seamer and the slider, and compare where the two separate between the commitment plane and the plate.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Catcher",
       layers: { tunneling: true, pairComparison: true, plateCrossings: true },
@@ -318,7 +320,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "Carlos Rodón's 98 pitches against JP Sears's 82, with Mason Miller out of the bullpen; 148 swings produced 46 whiffs. Speeds span 75.5 to 102.1 mph.",
     tryThis:
       "Turn on release points and compare Rodón's and Sears's release spread pitch type by pitch type.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Side",
       layers: { releasePoints: true, dispersion: true, heatmap: true },
@@ -337,7 +339,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "Sliders (92) outnumber four-seamers (48) in this game, with Patrick Corbin's 85 pitches leading the staff; 147 swings produced 23 whiffs.",
     tryThis:
       "Set the whiff-rate heatmap, then compare where sliders missed bats with where sinkers were put in play.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Batter",
       layers: { plateCrossings: true, heatmap: true, fatigue: true },
@@ -357,7 +359,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "Every tracked pitch from twelve games: 4,063 pitches, 108 pitchers, 194 batters, 13 pitch types and 1,950 swings (415 whiffs), across ten ballparks from Camden Yards to Citi Field. One of the twelve is Cincinnati's 24–2 win in Baltimore on 2025-04-20.",
     tryThis:
       "Run the density heatmap over the whole sweep, then pick a single date partition in the Live data card to compare one game against the corpus.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true, dispersion: true },
@@ -376,7 +378,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "1,739 tracked pitches and 871 swings that produced 264 whiffs, one game per date from April 2024 to July 2026: 20 to 24 strikeouts a game, 132 in all. 278 of those pitches were put in play with measured contact data.",
     tryThis:
       "Set the heatmap to Whiff %, then switch it to Hard Hit % to see where the same staffs were squared up.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true },
@@ -396,7 +398,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "2,143 tracked pitches, 996 swings and 246 whiffs across six extra-inning games from May 2024 to April 2026 — 65 innings in all, and 367 of the pitches were put in play with measured contact data.",
     tryThis:
       "Open the fatigue panel to see how the arms held up, then set the heatmap to Hard Hit % and compare the 1–0 duel in Pittsburgh with the 12-inning games.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Side",
       layers: { plateCrossings: true, dispersion: true, fatigue: true },
@@ -415,7 +417,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "1,792 tracked pitches, 838 swings and 167 whiffs across six games from June 2024 to August 2026, including an eight-homer night in Baltimore. 354 of the pitches were put in play with measured contact data, 83 of them at 100 mph or harder.",
     tryThis:
       "Set the heatmap to Hard Hit % and compare the eight-homer game in Baltimore with the rest.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Batter",
       layers: { plateCrossings: true, heatmap: true },
@@ -435,7 +437,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "2,010 tracked pitches, 931 swings and 209 whiffs across six walk-off games from July 2024 to June 2026, all decided in the tenth inning or later: two home runs, two singles and two fielders' choices ended them, and four were one-run games. 352 pitches were put in play with measured contact data.",
     tryThis:
       "Scrub to the final pitch of a game and compare where the winning contact was made.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Batter",
       layers: { plateCrossings: true, ghostBreak: true },
@@ -454,7 +456,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "1,965 tracked pitches, 910 swings and 221 whiffs across six high-scoring one-run games from May 2024 to June 2026 — 104 runs in all, an average of 17 a game, and 331 of the pitches were put in play with measured contact data.",
     tryThis:
       "Set the heatmap to Hard Hit % and compare where the 23-run game at Coors Field was pitched with the rest.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Pitcher",
       layers: { plateCrossings: true, heatmap: true },
@@ -474,7 +476,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "1,532 tracked pitches, 760 swings and 167 whiffs across six low-scoring games from April 2024 to August 2026: four 1–0 finals and two 2–0, eight runs in all, none of them needing extra innings. 274 of the pitches were put in play with measured contact data.",
     tryThis:
       "Turn on release dispersion and compare how the two 2–0 games were pitched with the four 1–0s.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Side",
       layers: { dispersion: true, releasePoints: true, tunneling: true },
@@ -493,7 +495,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "1,731 tracked pitches, 860 swings and 191 whiffs across six games from April 2024 to May 2026 in which at least one hitter homered twice, including two nine-home-run games and two three-homer performances. 331 of the pitches were put in play with measured contact data, 79 of them at 100 mph or harder.",
     tryThis:
       "Set the heatmap to Hard Hit % and compare where the Athletics' 18-run game was pitched with the Rockies' 6–0 shutout.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true },
@@ -513,7 +515,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "1,906 tracked pitches, 893 swings and 163 whiffs across six games from May 2024 to August 2026 that produced seven grand slams, two of them in the Cubs' 19–2 win in Seattle. 353 of the pitches were put in play with measured contact data, 83 of them at 100 mph or harder.",
     tryThis:
       "Scrub to the grand-slam pitch in each game and compare where it was left over the plate.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true },
@@ -533,7 +535,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "2,012 tracked pitches, 993 swings and 212 whiffs across six games from April 2024 to August 2026 in which one inning produced six runs or more: 43 runs in those six innings alone, from the Mariners' eight-run third in an 18–2 win to the Rockies' seven-run eighth that won a one-run game. 356 of the pitches were put in play with measured contact data.",
     tryThis:
       "Scrub through the big inning in each game and watch the pitch locations change as the runs pile up.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Pitcher",
       layers: { plateCrossings: true, heatmap: true },
@@ -552,7 +554,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "1,681 tracked pitches, 830 swings and 246 whiffs across six games from July 2024 to September 2026 in which the starting pitcher struck out ten or more: George Kirby's 14 for Seattle, Tarik Skubal's 13 for Detroit, and 12 each from Spencer Arrighetti, Garrett Crochet, Zack Wheeler and Payton Tolle. Three of the six were one-run games.",
     tryThis:
       "Set the heatmap to Whiff % and compare where these six starters put hitters away.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true },
@@ -572,7 +574,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "1,903 tracked pitches, 842 swings and 213 whiffs across six regulation games from April 2024 to April 2026 in which the winning team trailed by three or four runs: the Angels spotted the Marlins four runs on opening day, the Orioles and Dodgers each erased three, and the Dodgers turned a three-run deficit into a 13-6 win in Washington. 318 pitches were put in play with measured contact data.",
     tryThis:
       "Scrub to the inning the lead changed and compare where the pitches had to go.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Batter",
       layers: { plateCrossings: true, ghostBreak: true },
@@ -591,7 +593,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "1,866 tracked pitches, 877 swings and 192 whiffs across six regulation games from April 2024 to April 2026 in which a team made three or more errors: four by the Rockies in a 17-2 loss at Coors Field, three each behind the White Sox, Red Sox, Diamondbacks and Phillies, and five across the Reds and Phillies in the same game. 352 pitches were put in play with measured contact data.",
     tryThis:
       "Scrub through an inning with an error and watch where the next pitches went.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true },
@@ -610,7 +612,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "2,090 tracked pitches, 1,008 swings and 214 whiffs across six regulation games from April 2024 to July 2026 in which one team scored in seven or more different innings — three of them in eight — for 93 runs in all: the Giants put up 19 at Coors Field, the Orioles 17 at Yankee Stadium, and the Royals 15 while holding the Phillies to a single run. 395 pitches were put in play with measured contact data.",
     tryThis:
       "Step through the innings and watch how the pitch mix changes once a lead is built.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Batter",
       layers: { plateCrossings: true, heatmap: true },
@@ -630,7 +632,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "1,341 tracked pitches, 627 swings and 152 whiffs across six shortened games from April 2024 to August 2026, 37 innings in all: the Blue Jays and Royals played five on wet grounds in 93 minutes and 143 pitches, and four more games were called for rain in the sixth or seventh. 206 pitches were put in play with measured contact data.",
     tryThis:
       "Scrub to the last inning of each game — the final pitch is where the day ended.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Pitcher",
       layers: { releasePoints: true, plateCrossings: true },
@@ -649,7 +651,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "3,152 tracked pitches, 1,487 swings and 355 whiffs across twelve shutouts from April 2024 to April 2026, four per season: five of them ended 1-0, and no starter went the distance — every shutout was combined, using between two and five pitchers. 532 pitches were put in play with measured contact data.",
     tryThis:
       "Compare where the strike zone was attacked in a 1-0 game with the 6-0 one.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true },
@@ -669,7 +671,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "3,680 tracked pitches, 1,732 swings and 338 whiffs across twelve blowouts from April 2024 to April 2026, four per season: 179 runs in all and margins from nine to sixteen, including 18-7 in Boston, 17-1 in San Francisco and 17-2 in Arizona. Four of the twelve had an arm that never topped 75 mph as the game ran away — the slowest 43.8 mph with Atlanta already 17 ahead. 723 pitches were put in play with measured contact data.",
     tryThis:
       "Step into the late innings and watch the pitch speeds fall away — then switch on Spray landings to see where the contact went.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome", "heatmapMode"],
     preset: preset({
       view: "Batter",
       layers: { plateCrossings: true, heatmap: true, spray: true },
@@ -689,7 +691,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "3,450 tracked pitches, 1,630 swings and 388 whiffs across twelve games from April 2024 to April 2026 in which a starter threw 105 to 112 pitches: Ranger Suarez's 112 finished a shutout, Parker Messick's 112 came in eight innings, Zack Wheeler and Michael King each appear twice, and in two of the games both starters topped 100. 568 pitches were put in play with measured contact data.",
     tryThis:
       "Follow one of these outings inning by inning with the fatigue layer on — the velocity and whiff rate tell the workload story.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Pitcher",
       layers: { plateCrossings: true, fatigue: true },
@@ -708,7 +710,7 @@ export const SCENARIOS: readonly Scenario[] = [
       "3,076 tracked pitches, 1,523 swings and 341 whiffs across ten games from March 2025 to July 2026, each containing exactly one pitch the classifier could not label. They came in at 51.9 to 82.4 mph from ten different pitchers and every one was called a ball. These ten close the set: the catalogue now covers all seventeen pitch types the MLB feed emits in these seasons. 547 pitches were put in play with measured contact data.",
     tryThis:
       "Drag the speed filter to its low end — in most of these games the unclassified pitch is the slowest thing thrown.",
-    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Pitcher",
       layers: { releasePoints: true, plateCrossings: true },

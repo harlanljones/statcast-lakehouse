@@ -1,5 +1,12 @@
 import { For, Show, type JSX } from "solid-js";
-import { CAMERA_VIEWS, pitchColor, type CameraViewName, type OutcomeFilter, type ZoneFilter } from "../lib/deck-layers";
+import {
+  CAMERA_VIEWS,
+  pitchColor,
+  type CameraViewName,
+  type CountBucket,
+  type OutcomeFilter,
+  type ZoneFilter,
+} from "../lib/deck-layers";
 import type { HeatmapMode } from "../lib/heatmap";
 import { LAYER_TOGGLES, type LayerKey, type LensId } from "../lib/scenarios";
 import type { DragMode } from "../lib/camera";
@@ -27,6 +34,9 @@ export interface LensPanelProps {
   plateZ: [number, number];
   onPlateZ: (v: [number, number]) => void;
   zoneFilter: ZoneFilter;
+  /** Count cut: empty means every count shows, like the pitch-type chips. */
+  countBuckets?: ReadonlySet<CountBucket>;
+  onToggleCount?: (b: CountBucket) => void;
   onZoneFilter: (v: ZoneFilter) => void;
   outcomeFilter: OutcomeFilter;
   onOutcomeFilter: (v: OutcomeFilter) => void;
@@ -43,6 +53,14 @@ export interface LensPanelProps {
 }
 
 const VIEWS = (Object.keys(CAMERA_VIEWS) as CameraViewName[]).map((v) => ({ value: v, label: v }));
+
+/** The count cut, phrased from the pitcher's point of view and stated in titles. */
+const COUNT_CHIPS: readonly { bucket: CountBucket; label: string; title: string }[] = [
+  { bucket: "first", label: "First pitch", title: "First pitch of the at-bat (0-0)" },
+  { bucket: "pitcher_ahead", label: "Pitcher ahead", title: "More strikes than balls (0-1, 1-2, 0-2)" },
+  { bucket: "hitter_ahead", label: "Hitter ahead", title: "More balls than strikes (1-0, 2-0, 3-0, 3-1, 2-1, 3-2)" },
+  { bucket: "even", label: "Even", title: "Level count, not the first pitch (1-1, 2-2)" },
+];
 
 /**
  * The one control surface. A scenario picks which lenses to show; the header's
@@ -171,6 +189,24 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
           unit=" ft"
           onChange={(v) => props.onPlateX([props.plateX[0], Math.max(v, props.plateX[0])])}
         />
+      </Show>
+
+      <Show when={has("count") && props.countBuckets && props.onToggleCount}>
+        <div role="group" aria-label="count" style={{ display: "flex", "flex-wrap": "wrap", gap: "4px", "align-items": "center" }}>
+          <For each={COUNT_CHIPS}>
+            {(chip) => (
+              <button
+                class="ui-ctl ui-chip"
+                aria-pressed={props.countBuckets!.size === 0 || props.countBuckets!.has(chip.bucket)}
+                title={chip.title}
+                aria-label={chip.title}
+                onClick={() => props.onToggleCount!(chip.bucket)}
+              >
+                {chip.label}
+              </button>
+            )}
+          </For>
+        </div>
       </Show>
 
       <Show when={has("zone")}>

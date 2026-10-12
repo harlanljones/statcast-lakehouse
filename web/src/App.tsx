@@ -52,7 +52,7 @@ import {
   type ScenarioPreset,
 } from "./lib/scenarios";
 import { applyPresetFiltersTo, applyPresetTo } from "./lib/scenario-state";
-import type { PlayerFilter } from "./lib/deck-layers";
+import type { CountBucket, PlayerFilter } from "./lib/deck-layers";
 import { nextPlayState, prefersReducedMotion } from "./lib/playback";
 import type { DragMode } from "./lib/camera";
 import { isSyntheticSource, playerLabel, type DataSource } from "./lib/player-card";
@@ -100,6 +100,8 @@ export default function App() {
   const [showHeatmap, setShowHeatmap] = createSignal<boolean>(false);
   // "Isolate this player": set from the card, cleared by a scenario change or Reset filters.
   const [playerFilter, setPlayerFilter] = createSignal<PlayerFilter | null>(null);
+  // Count cut: empty means every count is shown, mirroring the pitch-type chips.
+  const [countBuckets, setCountBuckets] = createSignal<ReadonlySet<CountBucket>>(new Set());
   const [heatmapMode, setHeatmapMode] = createSignal<HeatmapMode>("density");
   const [activeScenarioId, setActiveScenarioId] = createSignal<ScenarioId | null>(null);
   const [showAllControls, setShowAllControls] = createSignal<boolean>(false);
@@ -124,6 +126,7 @@ export default function App() {
       outcomeFilter: outcomeFilter(),
       selectedTypes: selectedTypes(),
       playerFilter: playerFilter(),
+      countBuckets: countBuckets(),
     };
     return all.filter((p) => passesFilters(p, opts));
   });
@@ -264,6 +267,7 @@ export default function App() {
       setOutcomeFilter,
       setSelectedTypes,
     setPlayerFilter,
+    setCountBuckets,
       setLayer: (key, on) => layerSetters[key](on),
       setHeatmapMode,
       setBatSpeed,
@@ -336,6 +340,7 @@ export default function App() {
       setOutcomeFilter,
       setSelectedTypes,
           setPlayerFilter,
+    setCountBuckets,
     });
 
   onMount(() => {
@@ -349,7 +354,15 @@ export default function App() {
     void pitchData();
     setPinned(null);
     setPlayerFilter(null);
+    setCountBuckets(new Set<CountBucket>());
   });
+
+  const toggleCount = (bucket: CountBucket) => {
+    const next = new Set<CountBucket>(countBuckets());
+    if (next.has(bucket)) next.delete(bucket);
+    else next.add(bucket);
+    setCountBuckets(next);
+  };
 
   const layerState = (): Record<LayerKey, boolean> => ({
     tunneling: showTunneling(),
@@ -420,6 +433,7 @@ export default function App() {
             selectedTypes={selectedTypes()}
             playerFilter={playerFilter()}
             onPlayerFilter={setPlayerFilter}
+            countBuckets={countBuckets()}
             viewState={CAMERA_VIEWS[view()]}
             dragMode={dragMode()}
             resetKey={resetKey()}
@@ -478,6 +492,8 @@ export default function App() {
               plateZ={plateZRange()}
               onPlateZ={setPlateZRange}
               zoneFilter={zoneFilter()}
+              countBuckets={countBuckets()}
+              onToggleCount={toggleCount}
               onZoneFilter={setZoneFilter}
               outcomeFilter={outcomeFilter()}
               onOutcomeFilter={setOutcomeFilter}

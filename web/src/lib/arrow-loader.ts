@@ -201,6 +201,8 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const szBot = columnGetter(table, "sz_bot");
   const extension = columnGetter(table, "extension");
   const atBat = columnGetter(table, "at_bat_number");
+  const balls = columnGetter(table, "balls");
+  const strikes = columnGetter(table, "strikes");
   const pitchNum = columnGetter(table, "pitch_number");
   const pitcherId = columnGetter(table, "pitcher_id");
   const batterId = columnGetter(table, "batter_id");
@@ -260,6 +262,8 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
       hcX: hcX ? finiteOrUndefined(hcX(i)) : undefined,
       hcY: hcY ? finiteOrUndefined(hcY(i)) : undefined,
       atBatNumber: idNumber(atBat?.(i)),
+      balls: balls ? idNumber(balls(i)) : undefined,
+      strikes: strikes ? idNumber(strikes(i)) : undefined,
       pitchNumber: idNumber(pitchNum?.(i)),
       path,
       releaseSpeed: speed[i],
