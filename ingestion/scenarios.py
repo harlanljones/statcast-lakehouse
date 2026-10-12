@@ -47,6 +47,7 @@ SCENARIO_FILES = {
     "comeback-wins": "comeback-wins.arrow",
     "multi-error-games": "multi-error-games.arrow",
     "inning-after-inning": "inning-after-inning.arrow",
+    "called-early": "called-early.arrow",
 }
 
 

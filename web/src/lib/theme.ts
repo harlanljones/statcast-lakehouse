@@ -43,4 +43,5 @@ export const SCENE_ACCENT: Record<string, string> = {
   "comeback-wins": "#5eead4",
   "multi-error-games": "#f9a8d4",
   "inning-after-inning": "#c7d2fe",
+  "called-early": "#94a3b8",
 };

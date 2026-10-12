@@ -29,7 +29,8 @@ export type ScenarioId =
   | "strikeout-starts"
   | "comeback-wins"
   | "multi-error-games"
-  | "inning-after-inning";
+  | "inning-after-inning"
+  | "called-early";
 
 export type LayerKey =
   | "tunneling"
@@ -607,6 +608,25 @@ export const SCENARIOS: readonly Scenario[] = [
       view: "Batter",
       layers: { plateCrossings: true, heatmap: true },
       heatmapMode: "hard_hit",
+    }),
+  },
+  {
+    id: "called-early",
+    title: "Called Early",
+    dateLabel: "Apr 25, 2024 – Aug 2, 2026",
+    gameLabel: "Six games · 37 innings",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/746320/feed/live",
+    synthetic: false,
+    hook: "Six games that stopped before nine innings — five for rain, one for wet grounds.",
+    lookFor:
+      "1,341 tracked pitches, 627 swings and 152 whiffs across six shortened games from April 2024 to August 2026, 37 innings in all: the Blue Jays and Royals played five on wet grounds in 93 minutes and 143 pitches, and four more games were called for rain in the sixth or seventh. 206 pitches were put in play with measured contact data.",
+    tryThis:
+      "Scrub to the last inning of each game — the final pitch is where the day ended.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Pitcher",
+      layers: { releasePoints: true, plateCrossings: true },
     }),
   },
 ];

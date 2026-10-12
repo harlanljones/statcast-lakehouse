@@ -81,6 +81,11 @@ MULTI_ERROR_GAMES = (745598, 746330, 778463, 778379, 823646, 823481)
 # Six games in which one team scored in seven or more different innings
 # (three of them in eight), one per date across the three seasons.
 INNING_AFTER_INNING_GAMES = (744954, 745734, 776533, 777331, 824354, 824089)
+
+# Six games called before nine innings, one per date across the three seasons:
+# five for rain, one (Blue Jays at Royals 2024-04-25) for wet grounds. The
+# shortest lasted 93 minutes and 143 pitches; 37 innings in all.
+CALLED_EARLY_GAMES = (746320, 745890, 778370, 777474, 778189, 824807)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -97,6 +102,7 @@ GAME_IDS = (
     *COMEBACK_GAMES,
     *MULTI_ERROR_GAMES,
     *INNING_AFTER_INNING_GAMES,
+    *CALLED_EARLY_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -133,6 +139,7 @@ SWEEP_SCENARIOS = {
     "comeback-wins": COMEBACK_GAMES,
     "multi-error-games": MULTI_ERROR_GAMES,
     "inning-after-inning": INNING_AFTER_INNING_GAMES,
+    "called-early": CALLED_EARLY_GAMES,
 }
 
 

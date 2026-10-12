@@ -35,6 +35,7 @@ SCENARIO_ROWS = {
     "comeback-wins": 1903,
     "multi-error-games": 1866,
     "inning-after-inning": 2090,
+    "called-early": 1341,
 }
 
 
