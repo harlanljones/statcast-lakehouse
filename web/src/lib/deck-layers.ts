@@ -81,6 +81,13 @@ export interface PitchDatum {
    */
   zone?: number;
   /**
+   * The pitch's outcome as one canonical code (the pipeline's PITCH_RESULTS):
+   * "called_strike", "ball", "ball_in_dirt", "foul", "hit_into_play", ...
+   * isSwing/isWhiff cannot recover it — a called strike, a ball, a hit batter
+   * and a pitchout are all (0, 0), about half the corpus.
+   */
+  pitchResult?: string;
+  /**
    * Observed batted-ball data (MLB's contact columns): measured exit velocity
    * (mph), launch angle (degrees), projected distance (feet) and batted-ball
    * class. Undefined unless the pitch was put in play.
@@ -332,7 +339,7 @@ export function diamondWireframeSegments(): WireSegment[] {
 type FilterRange4 = [[number, number], [number, number], [number, number], [number, number]];
 
 export type ZoneFilter = "all" | "in_zone" | "out_of_zone";
-export type OutcomeFilter = "all" | "swings" | "whiffs";
+export type OutcomeFilter = "all" | "swings" | "whiffs" | "balls" | "called_strikes";
 
 /** The filter state shared by the GPU masks (buildLayers) and the CPU counts/panels (App). */
 /** The nine in-zone cells, numbered left to right with the top row first. */
@@ -494,6 +501,10 @@ function passesCriteria(d: PitchDatum, opts: CriteriaOpts): boolean {
   const outcomeFilter = opts.outcomeFilter;
   if (outcomeFilter === "swings" && !d.isSwing) return false;
   if (outcomeFilter === "whiffs" && !d.isWhiff) return false;
+  // Reads the stored result code, not a derivation: a pitch in the dirt is a
+  // called ball, and only the code tells a called strike from a ball.
+  if (outcomeFilter === "balls" && d.pitchResult !== "ball" && d.pitchResult !== "ball_in_dirt") return false;
+  if (outcomeFilter === "called_strikes" && d.pitchResult !== "called_strike") return false;
   return true;
 }
 
@@ -635,7 +646,7 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
   const leagueZones = opts.leagueZones ?? null;
   const hasTypeFilter = Boolean(selectedTypes && selectedTypes.size > 0);
   const hasZoneFilter = zoneFilter === "in_zone" || zoneFilter === "out_of_zone";
-  const hasOutcomeFilter = outcomeFilter === "swings" || outcomeFilter === "whiffs";
+  const hasOutcomeFilter = outcomeFilter !== "all" && outcomeFilter != null;
   const hasPlayerFilter = playerFilter !== null;
   const hasCountFilter = Boolean(countBuckets && countBuckets.size > 0);
   const hasCellFilter = Boolean(zoneCells && zoneCells.size > 0);

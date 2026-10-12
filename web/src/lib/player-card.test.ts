@@ -3,6 +3,7 @@ import type { PitchDatum } from "./deck-layers";
 import {
   comparisonAgainst,
   formatRateDelta,
+  PITCH_RESULT_LABELS,
   isSyntheticSource,
   mlbLinks,
   pitchResult,
@@ -247,6 +248,29 @@ describe("summarizeOthers", () => {
     expect(summarizeOthers([group[0], group[1]], "pitcher", 1)).toBeNull();
     expect(summarizeOthers([], "batter", 10)).toBeNull();
   });
+
+describe("pitchResult", () => {
+  it("reads the stored code, which isSwing/isWhiff cannot recover", () => {
+    const take = { isSwing: 0, isWhiff: 0 } as const;
+    expect(pitchResult(pitch({ ...take, pitchResult: "called_strike" }))).toBe("Called strike");
+    expect(pitchResult(pitch({ ...take, pitchResult: "ball" }))).toBe("Ball");
+    expect(pitchResult(pitch({ ...take, pitchResult: "ball_in_dirt" }))).toBe("Ball in dirt");
+    expect(pitchResult(pitch({ ...take, pitchResult: "pitchout" }))).toBe("Pitchout");
+    expect(pitchResult(pitch({ ...take, pitchResult: "hit_by_pitch" }))).toBe("Hit by pitch");
+  });
+
+  it("falls back to the derived label when the row has no code", () => {
+    expect(pitchResult(pitch({ isSwing: 0, isWhiff: 0 }))).toBe("Take");
+    expect(pitchResult(pitch({ isSwing: 1, isWhiff: 1 }))).toBe("Swinging strike");
+    expect(pitchResult(pitch({ isSwing: 1, isWhiff: 0 }))).toBe("Contact");
+    expect(pitchResult(pitch({}))).toBe("Unknown");
+  });
+
+  it("shows an unseen code as-is rather than guessing at it", () => {
+    expect(pitchResult(pitch({ pitchResult: "some_new_code" }))).toBe("some_new_code");
+    expect(Object.keys(PITCH_RESULT_LABELS)).toContain("swinging_strike_blocked");
+  });
+});
 
 describe("comparisonAgainst", () => {
   const group = [

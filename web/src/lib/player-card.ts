@@ -274,7 +274,32 @@ export function formatRateDelta(rate: number | null, other: number | null): stri
   return `${points > 0 ? "+" : "−"}${Math.abs(points)} pts`;
 }
 
-export function pitchResult(p: Pick<PitchDatum, "isSwing" | "isWhiff">): string {
+/**
+ * Reader-facing names for the pipeline's canonical pitch-result codes
+ * (ingestion.mlb_client.PITCH_RESULTS), in the app's sentence case.
+ */
+export const PITCH_RESULT_LABELS: Readonly<Record<string, string>> = {
+  ball: "Ball",
+  ball_in_dirt: "Ball in dirt",
+  called_strike: "Called strike",
+  foul: "Foul",
+  foul_bunt: "Foul bunt",
+  foul_tip: "Foul tip",
+  hit_by_pitch: "Hit by pitch",
+  hit_into_play: "In play",
+  missed_bunt: "Missed bunt",
+  pitchout: "Pitchout",
+  swinging_strike: "Swinging strike",
+  swinging_strike_blocked: "Swinging strike (blocked)",
+};
+
+export function pitchResult(p: Pick<PitchDatum, "isSwing" | "isWhiff" | "pitchResult">): string {
+  const code = p.pitchResult;
+  // The stored code says what isSwing/isWhiff cannot: a called strike, a ball,
+  // a hit batter, a pitchout and a ball in the dirt all used to read "Take"
+  // (about half the corpus). Rows without the column keep the derived label,
+  // and an unseen code is shown as-is rather than guessed at.
+  if (code) return PITCH_RESULT_LABELS[code] ?? code;
   if (p.isSwing === undefined) return "Unknown";
   if (!p.isSwing) return "Take";
   return p.isWhiff ? "Swinging strike" : "Contact";

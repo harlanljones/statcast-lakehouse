@@ -202,6 +202,7 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const extension = columnGetter(table, "extension");
   const atBat = columnGetter(table, "at_bat_number");
   const zone = columnGetter(table, "zone");
+  const pitchResult = columnGetter(table, "pitch_result");
   const balls = columnGetter(table, "balls");
   const strikes = columnGetter(table, "strikes");
   const pitchNum = columnGetter(table, "pitch_number");
@@ -266,6 +267,7 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
       balls: balls ? idNumber(balls(i)) : undefined,
       strikes: strikes ? idNumber(strikes(i)) : undefined,
       zone: zone ? idNumber(zone(i)) : undefined,
+      pitchResult: pitchResult ? textOrUndefined(pitchResult(i)) : undefined,
       pitchNumber: idNumber(pitchNum?.(i)),
       path,
       releaseSpeed: speed[i],

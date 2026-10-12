@@ -1391,4 +1391,18 @@ describe("in-zone cells", () => {
     expect(mask(inside)).toEqual([1, 0]);
     expect(mask(chase)).toEqual([0, 1]);
   });
+
+  it("cuts called strikes from balls, which the derived flags cannot tell apart", () => {
+    const take = { isSwing: 0, isWhiff: 0 } as const;
+    const called = { speedRange: [40, 105] as [number, number], outcomeFilter: "called_strikes" as const };
+    expect(passesFilters(datum({ ...take, pitchResult: "called_strike" }), called)).toBe(true);
+    expect(passesFilters(datum({ ...take, pitchResult: "ball" }), called)).toBe(false);
+    // Without the stored code there is nothing to match on.
+    expect(passesFilters(datum({ ...take }), called)).toBe(false);
+    const balls = { speedRange: [40, 105] as [number, number], outcomeFilter: "balls" as const };
+    expect(passesFilters(datum({ pitchResult: "ball" }), balls)).toBe(true);
+    expect(passesFilters(datum({ pitchResult: "ball_in_dirt" }), balls)).toBe(true);
+    expect(passesFilters(datum({ pitchResult: "called_strike" }), balls)).toBe(false);
+    expect(passesFilters(datum({}), { speedRange: [40, 105] })).toBe(true);
+  });
 });
