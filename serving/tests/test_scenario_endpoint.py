@@ -23,6 +23,7 @@ SCENARIO_ROWS = {
     "twins-blue-jays-2026": 311,
     "season-sweep": 4063,
     "strikeout-nights": 1739,
+    "extra-innings": 2143,
 }
 
 

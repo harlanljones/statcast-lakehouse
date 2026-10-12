@@ -31,4 +31,5 @@ export const SCENE_ACCENT: Record<string, string> = {
   "twins-blue-jays-2026": "#f472b6",
   "season-sweep": "#e879f9",
   "strikeout-nights": "#38bdf8",
+  "extra-innings": "#fbbf24",
 };

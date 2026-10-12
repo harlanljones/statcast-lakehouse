@@ -35,6 +35,7 @@ SCENARIO_FILES = {
     "twins-blue-jays-2026": "twins-blue-jays-2026.arrow",
     "season-sweep": "season-sweep.arrow",
     "strikeout-nights": "strikeout-nights.arrow",
+    "extra-innings": "extra-innings.arrow",
 }
 
 

@@ -17,7 +17,8 @@ export type ScenarioId =
   | "yankees-athletics-2025"
   | "twins-blue-jays-2026"
   | "season-sweep"
-  | "strikeout-nights";
+  | "strikeout-nights"
+  | "extra-innings";
 
 export type LayerKey =
   | "tunneling"
@@ -361,6 +362,25 @@ export const SCENARIOS: readonly Scenario[] = [
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true },
       heatmapMode: "whiff_rate",
+    }),
+  },
+  {
+    id: "extra-innings",
+    title: "Extra Innings",
+    dateLabel: "May 5, 2024 – Apr 20, 2026",
+    gameLabel: "Six games · 65 innings",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/745707/feed/live",
+    synthetic: false,
+    hook: "Six games that ran past nine innings, from a 1–0 duel to two 12-inning games.",
+    lookFor:
+      "2,143 tracked pitches, 996 swings and 246 whiffs across six extra-inning games from May 2024 to April 2026 — 65 innings in all, and 367 of the pitches were put in play with measured contact data.",
+    tryThis:
+      "Open the fatigue panel to see how the arms held up, then set the heatmap to Hard Hit % and compare the 1–0 duel in Pittsburgh with the 12-inning games.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    preset: preset({
+      view: "Side",
+      layers: { plateCrossings: true, dispersion: true, fatigue: true },
     }),
   },
 ];
