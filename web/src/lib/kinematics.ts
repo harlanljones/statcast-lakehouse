@@ -119,27 +119,47 @@ export function trajectory(p: PitchKinematics, n = 60): Array<[number, number, n
 }
 
 /** Path as a flat Float32Array [x0,y0,z0, x1,y1,z1, ...] for zero-copy GPU upload. */
-export function trajectoryFlat(p: PitchKinematics, n = 60): Float32Array {
-  // Same closed form and same expression order as positionAt (Horner form,
-  // 0.5 * a hoisted, timestamps accumulated), written straight into the typed
-  // array: the GPU path needs the flat buffer, never the tuple list, and the
-  // intermediate array of 60 points is the loader's biggest per-pitch
-  // allocation. ingestion/worker.py trajectory accumulates the same sequence,
-  // so both solvers produce the same floats to the last bit.
+/** Points every trajectory carries; the loader sizes one shared buffer by this. */
+export const TRAJECTORY_POINTS = 60;
+export const TRAJECTORY_FLOATS = TRAJECTORY_POINTS * 3;
+
+/**
+ * Write one trajectory into `out`, which must hold at least n*3 floats.
+ *
+ * Same closed form and same expression order as positionAt (Horner form,
+ * 0.5 * a hoisted, timestamps accumulated): the GPU path needs the flat buffer,
+ * never the tuple list. ingestion/worker.py trajectory accumulates the same
+ * sequence, so both solvers produce the same floats to the last bit.
+ *
+ * The `Into` form exists so the loader can fill ONE buffer for the whole corpus:
+ * allocating a fresh 720-byte array per pitch was its biggest allocation (about
+ * 45 MB on the full corpus) and the GC cost of it made identical code scale worse
+ * than linearly (runs 87-89).
+ */
+export function trajectoryFlatInto(
+  p: PitchKinematics,
+  out: Float32Array,
+  n = TRAJECTORY_POINTS,
+): void {
   const tEnd = flightTime(p);
   const { x0, y0, z0, vx0, vy0, vz0 } = p;
   const halfAx = 0.5 * p.ax;
   const halfAy = 0.5 * p.ay;
   const halfAz = 0.5 * p.az;
   const dt = tEnd / (n - 1);
-  const flat = new Float32Array(n * 3);
   let t = 0;
   for (let i = 0, j = 0; i < n; i++, j += 3) {
-    flat[j] = x0 + t * (vx0 + halfAx * t);
-    flat[j + 1] = y0 + t * (vy0 + halfAy * t);
-    flat[j + 2] = z0 + t * (vz0 + halfAz * t);
+    out[j] = x0 + t * (vx0 + halfAx * t);
+    out[j + 1] = y0 + t * (vy0 + halfAy * t);
+    out[j + 2] = z0 + t * (vz0 + halfAz * t);
     t += dt;
   }
+}
+
+/** A fresh flat trajectory, for callers that keep one (the ghost layer, tests). */
+export function trajectoryFlat(p: PitchKinematics, n = TRAJECTORY_POINTS): Float32Array {
+  const flat = new Float32Array(n * 3);
+  trajectoryFlatInto(p, flat, n);
   return flat;
 }
 

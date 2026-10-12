@@ -2,7 +2,9 @@
 import { tableFromIPC, compressionRegistry, CompressionType, type Table } from "apache-arrow";
 import { decompress as zstdDecompress } from "fzstd";
 import {
+  TRAJECTORY_FLOATS,
   trajectoryFlat,
+  trajectoryFlatInto,
   computeBreakVector,
   extrapolateToReleaseInPlace,
   commitmentPosition,
@@ -226,6 +228,13 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
 
   const pitches: PitchDatum[] = [];
   const n = table.numRows;
+  // One buffer for every trajectory. A fresh 720-byte Float32Array per pitch was
+  // this function's biggest allocation — about 45 MB on the full corpus — and the
+  // GC cost of it is why identical code scaled worse than linearly (runs 87-89,
+  // profiled at GC 12.4%). Every consumer only reads `path`, so views are safe;
+  // the buffer outlives them because it is held by the returned table's pitches.
+  const paths = new Float32Array(n * TRAJECTORY_FLOATS);
+  let pathCursor = 0;
   for (let i = 0; i < n; i++) {
     const ext = extension ? finiteOrUndefined(extension(i)) : undefined;
     const measured: PitchKinematics = {
@@ -237,7 +246,9 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
     const k = extrapolateToReleaseInPlace(measured, ext);
     let path: Float32Array;
     try {
-      path = trajectoryFlat(k);
+      path = paths.subarray(pathCursor, pathCursor + TRAJECTORY_FLOATS);
+      trajectoryFlatInto(k, path);
+      pathCursor += TRAJECTORY_FLOATS;
     } catch {
       continue; // degenerate row (never reaches plate) — drop, don't crash
     }
