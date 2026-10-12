@@ -8,9 +8,9 @@ network. To refresh them from the same public feeds, run
 The same files also back `GET /pitches/sample` and `python3 -m ingestion.worker
 --dry-run`: `ingestion.scenarios.real_pitches()` returns every pitch here once
 (the Ohtani slices repeat pitches from the full game), in game order. Ten
-slices across thirteen games and thirteen game dates, from the 2024 regular
-season and World Series to the 2025 and 2026 seasons; the `season-sweep` slice
-carries one game per period across all three seasons.
+slices across nineteen games and nineteen game dates (5,810 pitches), from the
+2024 regular season and World Series to the 2025 and 2026 seasons; the
+`season-sweep` slice carries one game per period across all three seasons.
 
 | Scenario | Source game | Selected pitches | Story reference |
 |---|---|---:|---|
@@ -23,7 +23,7 @@ carries one game per period across all three seasons.
 | `tigers-astros-june` | Tigers at Astros, 2024-06-15, game 746381 | All 357 tracked pitches | [Tigers 13, Astros 5](https://www.mlb.com/gameday/tigers-vs-astros/2024/06/15/746381/final) |
 | `yankees-athletics-2025` | Yankees at Athletics, 2025-05-10, game 777972 | All 323 tracked pitches | [Athletics 11, Yankees 7](https://www.mlb.com/gameday/yankees-vs-athletics/2025/05/10/777972/final) |
 | `twins-blue-jays-2026` | Twins at Blue Jays, 2026-04-10, game 822829 | All 311 tracked pitches | [Blue Jays 10, Twins 4](https://www.mlb.com/gameday/twins-vs-blue-jays/2026/04/10/822829/final) |
-| `season-sweep` | Six games: Twins at Orioles 2024-04-15 (747053), Rays at Yankees 2024-07-20 (745720), Reds at Orioles 2025-04-20 (778250), Brewers at Reds 2025-08-15 (776740), Phillies at Pirates 2026-05-15 (823384), Phillies at Mets 2026-09-20 (823570) | All 2,040 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
+| `season-sweep` | Twelve games, one per period: Twins at Orioles 2024-04-15 (747053), Padres at Braves 2024-05-20 (747119), Rays at Yankees 2024-07-20 (745720), Rangers at Yankees 2024-08-10 (745712), Reds at Orioles 2025-04-20 (778250), Blue Jays at Phillies 2025-06-15 (777499), Brewers at Reds 2025-08-15 (776740), White Sox at Tigers 2025-09-05 (776452), Phillies at Pirates 2026-05-15 (823384), Padres at Rangers 2026-06-20 (822885), Red Sox at Marlins 2026-08-25 (823826), Phillies at Mets 2026-09-20 (823570) | All 4,063 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 
 ## Source and field mapping
 

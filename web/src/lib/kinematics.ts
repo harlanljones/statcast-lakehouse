@@ -101,18 +101,22 @@ export function trajectory(p: PitchKinematics, n = 60): Array<[number, number, n
 
 /** Path as a flat Float32Array [x0,y0,z0, x1,y1,z1, ...] for zero-copy GPU upload. */
 export function trajectoryFlat(p: PitchKinematics, n = 60): Float32Array {
-  // Same closed form and same expression order as positionAt, written straight
-  // into the typed array: the GPU path needs the flat buffer, never the tuple
-  // list, and the intermediate array of 60 points is the loader's biggest
-  // per-pitch allocation.
+  // Same closed form and same expression order as positionAt (with the
+  // 0.5 * a factors hoisted out of the loop), written straight into the typed
+  // array: the GPU path needs the flat buffer, never the tuple list, and the
+  // intermediate array of 60 points is the loader's biggest per-pitch
+  // allocation.
   const tEnd = flightTime(p);
-  const { x0, y0, z0, vx0, vy0, vz0, ax, ay, az } = p;
+  const { x0, y0, z0, vx0, vy0, vz0 } = p;
+  const halfAx = 0.5 * p.ax;
+  const halfAy = 0.5 * p.ay;
+  const halfAz = 0.5 * p.az;
   const flat = new Float32Array(n * 3);
   for (let i = 0, j = 0; i < n; i++, j += 3) {
     const t = (tEnd * i) / (n - 1);
-    flat[j] = x0 + vx0 * t + 0.5 * ax * t * t;
-    flat[j + 1] = y0 + vy0 * t + 0.5 * ay * t * t;
-    flat[j + 2] = z0 + vz0 * t + 0.5 * az * t * t;
+    flat[j] = x0 + vx0 * t + halfAx * t * t;
+    flat[j + 1] = y0 + vy0 * t + halfAy * t * t;
+    flat[j + 2] = z0 + vz0 * t + halfAz * t * t;
   }
   return flat;
 }

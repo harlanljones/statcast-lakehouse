@@ -18,7 +18,10 @@ from ingestion.scenarios import DATA_DIR, SCENARIO_FILES, SLICE_SCHEMA
 
 # One game per period across the 2024, 2025 and 2026 seasons: the sweep slice
 # is the corpus-wide view (dates, teams, pitchers and pitch types at scale).
-SEASON_SWEEP_GAMES = (747053, 745720, 778250, 776740, 823384, 823570)
+SEASON_SWEEP_GAMES = (
+    747053, 745720, 747119, 745712, 778250, 776740,
+    777499, 776452, 823384, 822885, 823826, 823570,
+)
 GAME_IDS = (746011, 775300, 746679, 746165, 746381, 777972, 822829, *SEASON_SWEEP_GAMES)
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300

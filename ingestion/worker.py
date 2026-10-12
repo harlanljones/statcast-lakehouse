@@ -126,31 +126,31 @@ def trajectory(pitch: dict[str, float], n: int = 60) -> list[tuple[float, float,
     """n points from release to the plate plane (Statcast's 60-point path).
 
     The closed form of ``position_at`` is inlined over the loop, bit for bit
-    (same expression order), because this is the hot path of every trajectory
-    export: 60 points per pitch, where the per-point dict lookups and tuple
-    allocation cost more than the arithmetic. Batch exports and the mirrored
-    TypeScript solver must keep agreeing to the last float, so do not
-    re-associate these expressions.
+    (same expression order, with the ``0.5 * a`` factors hoisted out of the
+    loop), because this is the hot path of every trajectory export: 60 points
+    per pitch, where the per-point dict lookups and tuple allocation cost more
+    than the arithmetic. Batch exports and the mirrored TypeScript solver must
+    keep agreeing to the last float, so do not re-associate these expressions.
     """
     t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
     x0 = pitch["x0"]
     vx0 = pitch["vx0"]
-    ax = pitch["ax"]
+    half_ax = 0.5 * pitch["ax"]
     y0 = pitch["y0"]
     vy0 = pitch["vy0"]
-    ay = pitch["ay"]
+    half_ay = 0.5 * pitch["ay"]
     z0 = pitch["z0"]
     vz0 = pitch["vz0"]
-    az = pitch["az"]
+    half_az = 0.5 * pitch["az"]
     points: list[tuple[float, float, float]] = []
     append = points.append
     for i in range(n):
         t = t_end * i / (n - 1)
         append(
             (
-                x0 + vx0 * t + 0.5 * ax * t * t,
-                y0 + vy0 * t + 0.5 * ay * t * t,
-                z0 + vz0 * t + 0.5 * az * t * t,
+                x0 + vx0 * t + half_ax * t * t,
+                y0 + vy0 * t + half_ay * t * t,
+                z0 + vz0 * t + half_az * t * t,
             )
         )
     return points

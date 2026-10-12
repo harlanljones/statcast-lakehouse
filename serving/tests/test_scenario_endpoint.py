@@ -21,7 +21,7 @@ SCENARIO_ROWS = {
     "tigers-astros-june": 357,
     "yankees-athletics-2025": 323,
     "twins-blue-jays-2026": 311,
-    "season-sweep": 2040,
+    "season-sweep": 4063,
 }
 
 

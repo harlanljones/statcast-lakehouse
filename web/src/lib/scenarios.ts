@@ -327,13 +327,13 @@ export const SCENARIOS: readonly Scenario[] = [
     id: "season-sweep",
     title: "Six Games Across Three Seasons",
     dateLabel: "Apr 15, 2024 – Sep 20, 2026",
-    gameLabel: "Six games · 2,040 pitches",
+    gameLabel: "Twelve games · 4,063 pitches",
     storyUrl: "https://www.mlb.com/schedule",
     feedUrl: "https://statsapi.mlb.com/api/v1.1/game/778250/feed/live",
     synthetic: false,
     hook: "One game per period from the 2024, 2025 and 2026 seasons in a single slice.",
     lookFor:
-      "Every tracked pitch from six games: 2,040 pitches, 52 pitchers, 99 batters, 14 pitch types and 959 swings (173 whiffs), from Yankee Stadium to PNC Park. One of the six is Cincinnati's 24–2 win in Baltimore on 2025-04-20.",
+      "Every tracked pitch from twelve games: 4,063 pitches, 108 pitchers, 194 batters, 13 pitch types and 1,950 swings (415 whiffs), from Fenway Park to PNC Park. One of the twelve is Cincinnati's 24–2 win in Baltimore on 2025-04-20.",
     tryThis:
       "Run the density heatmap over the whole sweep, then pick a single date partition in the Live data card to compare one game against the corpus.",
     lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
