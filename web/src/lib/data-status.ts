@@ -35,13 +35,40 @@ export function extractGameDate(table: Table): string | null {
   return s === "" ? null : s;
 }
 
+/**
+ * Distinct game dates in the table (0 when the column is absent or empty).
+ * Slices can span several games, so the caption cannot assume one date.
+ */
+export function countGameDates(table: Table): number {
+  const col = table.getChild("game_date");
+  if (!col || table.numRows === 0) return 0;
+  const seen = new Set<number | string>();
+  for (let i = 0; i < table.numRows; i++) {
+    const v = col.get(i);
+    if (v == null) continue;
+    if (typeof v === "number") {
+      // Days since epoch (date32) or milliseconds since epoch (date64/timestamp).
+      seen.add(v > 1e11 ? Math.floor(v / 86400000) : Math.floor(v));
+    } else if (v instanceof Date) {
+      seen.add(Math.floor(v.getTime() / 86400000));
+    } else {
+      seen.add(String(v).trim().slice(0, 10));
+    }
+  }
+  return seen.size;
+}
+
 /** en-US thousands grouping: 1234 -> "1,234". */
 export function formatRowCount(n: number): string {
   return n.toLocaleString("en-US");
 }
 
-/** "1,234 rows · 2024-04-01", or "1,234 rows" when no date is available. */
-export function formatDataStatus(rowCount: number, gameDate: string | null): string {
+/**
+ * "1,234 rows · 2024-04-01", "1,234 rows · 3 game days" for a slice that spans
+ * several games, or "1,234 rows" when no date is available.
+ */
+export function formatDataStatus(rowCount: number, gameDate: string | null, gameDays = 1): string {
+  if (gameDays > 1) return `${formatRowCount(rowCount)} rows · ${gameDays} game days`;
   return gameDate ? `${formatRowCount(rowCount)} rows · ${gameDate}` : `${formatRowCount(rowCount)} rows`;
 }
 

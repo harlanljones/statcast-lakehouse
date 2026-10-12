@@ -9,7 +9,13 @@ import {
   type PitchTable,
 } from "./lib/arrow-loader";
 import { fetchPitcherStorylines, type PitcherStoryline } from "./lib/storylines";
-import { extractGameDate, distinctPitchTypes, computeWhiffRate, formatDataStatus } from "./lib/data-status";
+import {
+  computeWhiffRate,
+  countGameDates,
+  distinctPitchTypes,
+  extractGameDate,
+  formatDataStatus,
+} from "./lib/data-status";
 import {
   CAMERA_VIEWS,
   type CameraViewName,
@@ -125,6 +131,10 @@ export default function App() {
   const gameDate = createMemo(() => {
     const d = pitchData();
     return d ? extractGameDate(d.table) : null;
+  });
+  const gameDays = createMemo(() => {
+    const d = pitchData();
+    return d ? countGameDates(d.table) : 0;
   });
   const whiffRate = createMemo(() => computeWhiffRate(visiblePitches()));
   const arsenalCentroids = createMemo(() => {
@@ -386,7 +396,7 @@ export default function App() {
             activeCount={activeCount()}
             totalCount={pitchData()?.pitches.length ?? 0}
             whiffRate={whiffRate()}
-            dataStatus={formatDataStatus(pitchData()?.pitches.length ?? 0, gameDate())}
+            dataStatus={formatDataStatus(pitchData()?.pitches.length ?? 0, gameDate(), gameDays())}
             onResetFilters={resetFilters}
           />
           <Visualizer
