@@ -87,6 +87,7 @@ export default function App() {
   const [showGhostBreak, setShowGhostBreak] = createSignal<boolean>(false);
   const [showReleasePoints, setShowReleasePoints] = createSignal<boolean>(false);
   const [showPlateCrossings, setShowPlateCrossings] = createSignal<boolean>(false);
+  const [showSpray, setShowSpray] = createSignal<boolean>(false);
   const [showBreakChart, setShowBreakChart] = createSignal<boolean>(false);
   const [showPairComparison, setShowPairComparison] = createSignal<boolean>(false);
   const [pairedTypes, setPairedTypes] = createSignal<[string, string] | null>(null);
@@ -240,6 +241,7 @@ export default function App() {
     ghostBreak: setShowGhostBreak,
     releasePoints: setShowReleasePoints,
     plateCrossings: setShowPlateCrossings,
+    spray: setShowSpray,
     breakChart: setShowBreakChart,
     pairComparison: setShowPairComparison,
     contactSim: setShowContactSim,
@@ -347,6 +349,7 @@ export default function App() {
     ghostBreak: showGhostBreak(),
     releasePoints: showReleasePoints(),
     plateCrossings: showPlateCrossings(),
+    spray: showSpray(),
     breakChart: showBreakChart(),
     pairComparison: showPairComparison(),
     contactSim: showContactSim(),
@@ -421,6 +424,7 @@ export default function App() {
             showGhostBreak={showGhostBreak()}
             showReleasePoints={showReleasePoints()}
             showPlateCrossings={showPlateCrossings()}
+            showSpray={showSpray()}
             showBreakChart={showBreakChart()}
             showPairComparison={showPairComparison()}
             pairedTypes={pairedTypes()}

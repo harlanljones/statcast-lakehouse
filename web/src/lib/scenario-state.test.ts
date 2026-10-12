@@ -3,7 +3,7 @@ import { applyPresetFiltersTo, applyPresetTo, type PresetSetters } from "./scena
 import { LIVE_PRESET, SCENARIOS, scenarioById, type LayerKey, type ScenarioPreset } from "./scenarios";
 
 const LAYER_KEYS: LayerKey[] = [
-  "tunneling", "ghostBreak", "releasePoints", "plateCrossings", "breakChart",
+  "tunneling", "ghostBreak", "releasePoints", "plateCrossings", "spray", "breakChart",
   "pairComparison", "contactSim", "dispersion", "fatigue", "heatmap",
 ];
 

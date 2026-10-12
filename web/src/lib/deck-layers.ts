@@ -27,6 +27,7 @@ import {
 } from "./collision";
 import type { ReleaseDispersion } from "./dispersion";
 import type { HeatmapCell } from "./heatmap";
+import { sprayColor, sprayPoint } from "./spray";
 
 export const ORBIT_TARGET: [number, number, number] = [0, 14, 1.8];
 export const INITIAL_VIEW: OrbitViewState = {
@@ -77,6 +78,13 @@ export interface PitchDatum {
   launchAngle?: number;
   hitDistance?: number;
   bbType?: string;
+  /**
+   * Savant's hit-chart coordinates (250x250 image space, home near (125, 205));
+   * undefined unless the pitch was put in play. The spray layer turns them into
+   * scene feet with `sprayPoint`.
+   */
+  hcX?: number;
+  hcY?: number;
 }
 
 export const FILTER_SIZE = 4;
@@ -405,6 +413,7 @@ export interface BuildLayersOpts {
   showGhostBreak?: boolean;
   showReleasePoints?: boolean;
   showPlateCrossings?: boolean;
+  showSpray?: boolean;
   pairedTypes?: [string, string] | null;
   arsenalCentroids?: Map<string, ArsenalCentroid> | null;
   showContactSim?: boolean;
@@ -414,6 +423,23 @@ export interface BuildLayersOpts {
   releaseDispersion?: ReleaseDispersion | null;
   showHeatmap?: boolean;
   heatmapCells?: HeatmapCell[] | null;
+}
+
+/** Spray-dot radius in metres (the scene is in feet; keep the dots pitch-sized). */
+const SPRAY_RADIUS = 0.9;
+
+/**
+ * Landing position in scene feet. Rows that cannot be placed get the origin and
+ * a zero radius below, which draws nothing — ScatterplotLayer needs a position
+ * for every row, and a NaN would corrupt the vertex buffer.
+ */
+function sprayPosition(d: PitchDatum): [number, number, number] {
+  const p = sprayPoint(d.hcX, d.hcY, d.hitDistance);
+  return p ? [p.x, p.y, 0] : [0, 0, 0];
+}
+
+function sprayRadius(d: PitchDatum): number {
+  return sprayPoint(d.hcX, d.hcY, d.hitDistance) ? SPRAY_RADIUS : 0;
 }
 
 /** Base trajectory width in meters (the un-picked line width). */
@@ -543,6 +569,7 @@ export function buildLayers(opts: BuildLayersOpts) {
     showGhostBreak,
     showReleasePoints,
     showPlateCrossings,
+    showSpray,
     pairedTypes,
     arsenalCentroids,
     showDispersion,
@@ -613,6 +640,30 @@ export function buildLayers(opts: BuildLayersOpts) {
         getFillColor: getPitchFill190,
         getLineColor: [255, 255, 255, 200],
         ...markerStyle(1),
+        ...filtered,
+      }),
+    );
+  }
+
+  if (showSpray) {
+    layers.push(
+      new ScatterplotLayer<PitchDatum>({
+        id: "spray-landings",
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        data: pitches,
+        getPosition: sprayPosition,
+        getRadius: sprayRadius,
+        radiusUnits: "meters",
+        filled: true,
+        stroked: true,
+        getFillColor: (d) => {
+          const [r, g, b] = sprayColor(d.bbType);
+          return [r, g, b, 215];
+        },
+        getLineColor: [12, 14, 18, 220],
+        lineWidthUnits: "meters",
+        getLineWidth: 0.06,
+        pickable: true,
         ...filtered,
       }),
     );

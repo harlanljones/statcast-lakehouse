@@ -33,6 +33,8 @@ function ipcBuffer(rows: {
   launchAngle?: (number | null)[];
   hitDistance?: (number | null)[];
   bbType?: (string | null)[];
+  hcX?: (number | null)[];
+  hcY?: (number | null)[];
   atBatNumber?: (number | null)[];
   pitchNumber?: (number | null)[];
   /** int64 ids (arrive as bigint) and string ids, as in the real schema. */
@@ -75,6 +77,8 @@ function ipcBuffer(rows: {
   if (rows.launchAngle) arrays.launch_angle = rows.launchAngle;
   if (rows.hitDistance) arrays.hit_distance = rows.hitDistance;
   if (rows.bbType) arrays.bb_type = rows.bbType;
+  if (rows.hcX) arrays.hc_x = rows.hcX;
+  if (rows.hcY) arrays.hc_y = rows.hcY;
   if (rows.atBatNumber) arrays.at_bat_number = rows.atBatNumber;
   if (rows.pitchNumber) arrays.pitch_number = rows.pitchNumber;
   if (rows.ids?.pitcherId) arrays.pitcher_id = new BigInt64Array(rows.ids.pitcherId);
@@ -443,6 +447,21 @@ describe("fetchDatePartitions", () => {
 });
 
 describe("batted-ball contact columns", () => {
+  it("carries Savant's hit-chart coordinates and leaves unmeasured balls undefined", () => {
+    const buf = ipcBuffer({
+      count: 2,
+      pitchTypes: ["FF", "SL"],
+      hitDistance: [402, null],
+      hcX: [187.4, null],
+      hcY: [42.1, null],
+    });
+    const { pitches } = loadPitchTable(buf);
+    expect(pitches[0].hcX).toBeCloseTo(187.4);
+    expect(pitches[0].hcY).toBeCloseTo(42.1);
+    expect(pitches[1].hcX).toBeUndefined();
+    expect(pitches[1].hcY).toBeUndefined();
+  });
+
   it("carries measured contact data and leaves non-contact pitches undefined", () => {
     const buf = ipcBuffer({
       count: 2,

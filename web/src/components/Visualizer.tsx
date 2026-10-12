@@ -63,6 +63,7 @@ export interface VisualizerProps {
   showGhostBreak?: boolean;
   showReleasePoints?: boolean;
   showPlateCrossings?: boolean;
+  showSpray?: boolean;
   showBreakChart?: boolean;
   pairedTypes?: [string, string] | null;
   arsenalCentroids?: Map<string, ArsenalCentroid> | null;
@@ -245,6 +246,7 @@ export default function Visualizer(props: VisualizerProps) {
           showGhostBreak: props.showGhostBreak,
           showReleasePoints: props.showReleasePoints,
           showPlateCrossings: props.showPlateCrossings,
+          showSpray: props.showSpray,
           pairedTypes: props.pairedTypes,
           arsenalCentroids: props.arsenalCentroids,
           showDispersion: props.showDispersion,

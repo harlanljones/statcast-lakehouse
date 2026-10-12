@@ -69,12 +69,16 @@ SCHEMA = pa.schema(
         ("is_swing", pa.int64()),
         ("is_whiff", pa.int64()),
         # Batted-ball outcome (Savant's contact columns): measured exit
-        # velocity and launch angle, projected distance in feet, and the
-        # batted-ball class. NULL unless the pitch was put in play.
+        # velocity and launch angle, projected distance in feet, the batted-ball
+        # class, and Savant's hit-chart coordinates (a 250x250 image space with
+        # home plate at about (125, 205); x grows toward right field, y grows
+        # back toward the plate). NULL unless the pitch was put in play.
         ("launch_speed", pa.float64()),
         ("launch_angle", pa.float64()),
         ("hit_distance", pa.float64()),
         ("bb_type", pa.string()),
+        ("hc_x", pa.float64()),
+        ("hc_y", pa.float64()),
         # MLB pitchData.extension: feet from the rubber to the release point.
         ("extension", pa.float64()),
         ("ingestion_time", pa.timestamp("us", tz="UTC")),

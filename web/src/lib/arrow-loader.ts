@@ -214,6 +214,8 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const launchAngle = columnGetter(table, "launch_angle");
   const hitDistance = columnGetter(table, "hit_distance");
   const bbType = columnGetter(table, "bb_type");
+  const hcX = columnGetter(table, "hc_x");
+  const hcY = columnGetter(table, "hc_y");
 
   const pitches: PitchDatum[] = [];
   const n = table.numRows;
@@ -255,6 +257,8 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
       launchAngle: launchAngle ? finiteOrUndefined(launchAngle(i)) : undefined,
       hitDistance: hitDistance ? finiteOrUndefined(hitDistance(i)) : undefined,
       bbType: bbType ? textOrUndefined(bbType(i)) : undefined,
+      hcX: hcX ? finiteOrUndefined(hcX(i)) : undefined,
+      hcY: hcY ? finiteOrUndefined(hcY(i)) : undefined,
       atBatNumber: idNumber(atBat?.(i)),
       pitchNumber: idNumber(pitchNum?.(i)),
       path,

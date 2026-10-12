@@ -39,6 +39,7 @@ export type LayerKey =
   | "ghostBreak"
   | "releasePoints"
   | "plateCrossings"
+  | "spray"
   | "breakChart"
   | "pairComparison"
   | "contactSim"
@@ -76,6 +77,7 @@ export const LAYER_TOGGLES: readonly { key: LayerKey; label: string }[] = [
   { key: "ghostBreak", label: "Ghost break" },
   { key: "releasePoints", label: "Release points" },
   { key: "plateCrossings", label: "Plate crossings" },
+  { key: "spray", label: "Spray landings" },
   { key: "breakChart", label: "Break chart" },
   { key: "pairComparison", label: "Pitch pairs" },
   { key: "contactSim", label: "Contact sim" },
@@ -120,6 +122,7 @@ const NO_LAYERS: Record<LayerKey, boolean> = {
   ghostBreak: false,
   releasePoints: false,
   plateCrossings: false,
+  spray: false,
   breakChart: false,
   pairComparison: false,
   contactSim: false,
@@ -663,11 +666,11 @@ export const SCENARIOS: readonly Scenario[] = [
     lookFor:
       "3,680 tracked pitches, 1,732 swings and 338 whiffs across twelve blowouts from April 2024 to April 2026, four per season: 179 runs in all and margins from nine to sixteen, including 18-7 in Boston, 17-1 in San Francisco and 17-2 in Arizona. Four of the twelve had an arm that never topped 75 mph as the game ran away — the slowest 43.8 mph with Atlanta already 17 ahead. 723 pitches were put in play with measured contact data.",
     tryThis:
-      "Step into the late innings and watch the pitch speeds fall away.",
+      "Step into the late innings and watch the pitch speeds fall away — then switch on Spray landings to see where the contact went.",
     lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
     preset: preset({
       view: "Batter",
-      layers: { plateCrossings: true, heatmap: true },
+      layers: { plateCrossings: true, heatmap: true, spray: true },
       heatmapMode: "hard_hit",
     }),
   },

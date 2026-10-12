@@ -265,6 +265,10 @@ def _to_row(
         "launch_angle": hit.get("launchAngle"),
         "hit_distance": hit.get("totalDistance"),
         "bb_type": hit.get("trajectory"),
+        # Savant's hit-chart coordinates: the feed nests them under the pitch's
+        # hitData.coordinates as coordX/coordY.
+        "hc_x": (hit.get("coordinates") or {}).get("coordX"),
+        "hc_y": (hit.get("coordinates") or {}).get("coordY"),
         "extension": pitch.get("extension"),
         "ingestion_time": day,
         "pitcher_name": play["matchup"]["pitcher"].get("fullName"),

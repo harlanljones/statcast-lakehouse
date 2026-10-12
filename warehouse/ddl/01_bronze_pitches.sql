@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS `statcast_analytics.bronze_pitches` (
   launch_angle FLOAT64,
   hit_distance FLOAT64,
   bb_type STRING,
+  -- Savant hit-chart coordinates (250x250 space, home plate near (125, 205)).
+  hc_x FLOAT64,
+  hc_y FLOAT64,
   extension FLOAT64,
   ingestion_time TIMESTAMP,
   raw JSON

@@ -28,6 +28,7 @@ export const LAYER_KEYS: readonly LayerKey[] = [
   "ghostBreak",
   "releasePoints",
   "plateCrossings",
+  "spray",
   "breakChart",
   "pairComparison",
   "contactSim",

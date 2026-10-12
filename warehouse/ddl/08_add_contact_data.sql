@@ -4,15 +4,21 @@
 -- backfill re-curates those days. launch_speed/launch_angle/hit_distance are
 -- MLB's measured exit velocity (mph), launch angle (degrees) and projected
 -- distance (feet); bb_type is the batted-ball class (fly_ball, line_drive,
--- ground_ball, popup). All four are NULL unless the pitch was put in play.
+-- ground_ball, popup). hc_x/hc_y are Savant's hit-chart coordinates (a 250x250
+-- image space with home plate near (125, 205)). All six are NULL unless the
+-- pitch was put in play.
 ALTER TABLE `statcast_analytics.bronze_pitches`
   ADD COLUMN IF NOT EXISTS launch_speed FLOAT64,
   ADD COLUMN IF NOT EXISTS launch_angle FLOAT64,
   ADD COLUMN IF NOT EXISTS hit_distance FLOAT64,
-  ADD COLUMN IF NOT EXISTS bb_type STRING;
+  ADD COLUMN IF NOT EXISTS bb_type STRING,
+  ADD COLUMN IF NOT EXISTS hc_x FLOAT64,
+  ADD COLUMN IF NOT EXISTS hc_y FLOAT64;
 
 ALTER TABLE `statcast_analytics.fct_pitches`
   ADD COLUMN IF NOT EXISTS launch_speed FLOAT64,
   ADD COLUMN IF NOT EXISTS launch_angle FLOAT64,
   ADD COLUMN IF NOT EXISTS hit_distance FLOAT64,
-  ADD COLUMN IF NOT EXISTS bb_type STRING;
+  ADD COLUMN IF NOT EXISTS bb_type STRING,
+  ADD COLUMN IF NOT EXISTS hc_x FLOAT64,
+  ADD COLUMN IF NOT EXISTS hc_y FLOAT64;

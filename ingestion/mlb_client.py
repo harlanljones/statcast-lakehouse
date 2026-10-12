@@ -95,6 +95,8 @@ COLUMN_MAP = {
     "launch_angle": "launch_angle",
     "hit_distance_sc": "hit_distance",
     "bb_type": "bb_type",
+    "hc_x": "hc_x",
+    "hc_y": "hc_y",
     "description": "description",
 }
 

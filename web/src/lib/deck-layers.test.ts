@@ -1139,3 +1139,48 @@ describe("pickedLayers", () => {
     expect(buildLayers({ pitches: [p], speedRange: [60, 105] }).some((l) => l.id.startsWith("picked-"))).toBe(false);
   });
 });
+
+describe("spray landings layer", () => {
+  const contact = (over: Partial<PitchDatum>): PitchDatum => ({
+    path: new Float32Array(3),
+    releaseSpeed: 92,
+    pfxX: 0,
+    pfxZ: 0,
+    plateX: 0,
+    plateZ: 2.5,
+    pitchType: "FF",
+    ...over,
+  });
+
+  it("only builds when asked for", () => {
+    const off = buildLayers({ pitches: [contact({})], speedRange: [40, 105] });
+    const on = buildLayers({ pitches: [contact({})], speedRange: [40, 105], showSpray: true });
+    expect(off.some((l) => l.id === "spray-landings")).toBe(false);
+    expect(on.some((l) => l.id === "spray-landings")).toBe(true);
+  });
+
+  it("places an in-play ball by chart direction and measured distance", () => {
+    const layer = buildLayers({ pitches: [contact({})], speedRange: [40, 105], showSpray: true }).find(
+      (l) => l.id === "spray-landings",
+    )!;
+    const props = layer.props as unknown as {
+      getPosition: (d: PitchDatum) => number[];
+      getRadius: (d: PitchDatum) => number;
+    };
+    const rightField = contact({ hcX: 200, hcY: 150, hitDistance: 350 });
+    const pos = props.getPosition(rightField);
+    expect(pos[0]).toBeGreaterThan(0);          // right field is positive x
+    expect(pos[1]).toBeLessThan(0);             // beyond the plate, out into the outfield
+    expect(Math.hypot(pos[0], pos[1])).toBeCloseTo(350, 4);
+    expect(props.getRadius(rightField)).toBeGreaterThan(0);
+  });
+
+  it("gives pitches with no measured landing a zero radius, so nothing is drawn", () => {
+    const layer = buildLayers({ pitches: [contact({})], speedRange: [40, 105], showSpray: true }).find(
+      (l) => l.id === "spray-landings",
+    )!;
+    const props = layer.props as unknown as { getRadius: (d: PitchDatum) => number };
+    expect(props.getRadius(contact({}))).toBe(0);                      // not in play at all
+    expect(props.getRadius(contact({ hcX: 180, hcY: 150 }))).toBe(0);  // in play, distance never measured
+  });
+});
