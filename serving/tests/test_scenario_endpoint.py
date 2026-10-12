@@ -30,6 +30,7 @@ SCENARIO_ROWS = {
     "pitchers-duels": 1532,
     "multi-homer-nights": 1731,
     "grand-slams": 1906,
+    "big-innings": 2012,
 }
 
 

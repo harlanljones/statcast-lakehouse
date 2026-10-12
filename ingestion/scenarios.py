@@ -42,6 +42,7 @@ SCENARIO_FILES = {
     "pitchers-duels": "pitchers-duels.arrow",
     "multi-homer-nights": "multi-homer-nights.arrow",
     "grand-slams": "grand-slams.arrow",
+    "big-innings": "big-innings.arrow",
 }
 
 

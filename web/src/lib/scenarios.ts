@@ -24,7 +24,8 @@ export type ScenarioId =
   | "one-run-slugfests"
   | "pitchers-duels"
   | "multi-homer-nights"
-  | "grand-slams";
+  | "grand-slams"
+  | "big-innings";
 
 export type LayerKey =
   | "tunneling"
@@ -505,6 +506,25 @@ export const SCENARIOS: readonly Scenario[] = [
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true },
       heatmapMode: "hard_hit",
+    }),
+  },
+  {
+    id: "big-innings",
+    title: "Big Innings",
+    dateLabel: "Apr 28, 2024 – Aug 16, 2026",
+    gameLabel: "Six games · 43 runs in six innings",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/776428/feed/live",
+    synthetic: false,
+    hook: "Six games turned by one big inning — two of them eight-run frames.",
+    lookFor:
+      "2,012 tracked pitches, 993 swings and 212 whiffs across six games from April 2024 to August 2026 in which one inning produced six runs or more: 43 runs in those six innings alone, from the Mariners' eight-run third in an 18–2 win to the Rockies' seven-run eighth that won a one-run game. 356 of the pitches were put in play with measured contact data.",
+    tryThis:
+      "Scrub through the big inning in each game and watch the pitch locations change as the runs pile up.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Pitcher",
+      layers: { plateCrossings: true, heatmap: true },
     }),
   },
 ];

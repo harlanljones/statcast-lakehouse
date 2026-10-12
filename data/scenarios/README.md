@@ -7,9 +7,9 @@ network. To refresh them from the same public feeds, run
 
 The same files also back `GET /pitches/sample` and `python3 -m ingestion.worker
 --dry-run`: `ingestion.scenarios.real_pitches()` returns every pitch here once
-(the Ohtani slices repeat pitches from the full game), in game order. Eighteen
-slices across sixty-seven games and sixty-seven game dates (20,628 pitches), from
-the 2024 regular season and World Series to the 2025 and 2026 seasons. The
+(the Ohtani slices repeat pitches from the full game), in game order. Nineteen
+slices across seventy-three games and seventy-three game dates (22,640 pitches),
+from the 2024 regular season and World Series to the 2025 and 2026 seasons. The
 `season-sweep` slice carries one game per period across all three seasons,
 `strikeout-nights` the six games with 20+ combined strikeouts (132 in all),
 `extra-innings` the six games that ran past nine innings (65 innings in all),
@@ -17,8 +17,9 @@ the 2024 regular season and World Series to the 2025 and 2026 seasons. The
 `walk-off-wins` the six games decided by the final swing, `one-run-slugfests` the
 six one-run games with 104 runs in all, `pitchers-duels` the six games with three
 runs or fewer (eight in all), `multi-homer-nights` the six games with a
-multi-homer hitter (34 home runs in all), and `grand-slams` the six games with a
-grand slam (seven in all).
+multi-homer hitter (34 home runs in all), `grand-slams` the six games with a
+grand slam (seven in all), and `big-innings` the six games turned by a 6+ run
+inning (43 runs in those six innings).
 
 | Scenario | Source game | Selected pitches | Story reference |
 |---|---|---:|---|
@@ -31,6 +32,7 @@ grand slam (seven in all).
 | `tigers-astros-june` | Tigers at Astros, 2024-06-15, game 746381 | All 357 tracked pitches | [Tigers 13, Astros 5](https://www.mlb.com/gameday/tigers-vs-astros/2024/06/15/746381/final) |
 | `yankees-athletics-2025` | Yankees at Athletics, 2025-05-10, game 777972 | All 323 tracked pitches | [Athletics 11, Yankees 7](https://www.mlb.com/gameday/yankees-vs-athletics/2025/05/10/777972/final) |
 | `twins-blue-jays-2026` | Twins at Blue Jays, 2026-04-10, game 822829 | All 311 tracked pitches | [Blue Jays 10, Twins 4](https://www.mlb.com/gameday/twins-vs-blue-jays/2026/04/10/822829/final) |
+| `big-innings` | Six games with a 6+ run inning, one per date: Yankees at Brewers 2024-04-28 (746001, 7 in the 6th), Padres at Orioles 2024-07-28 (747008, 6 in the 3rd), Braves at Rockies 2024-08-11 (746517, 7 in the 8th), Rockies at Diamondbacks 2025-08-10 (776794, 8 in the 5th), Mariners at Braves 2025-09-07 (776428, 8 in the 3rd), Orioles at Rays 2026-08-16 (822940, 7 in the 6th) | All 2,012 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `grand-slams` | Six games featuring a grand slam, one per date: Yankees at Rays 2024-05-12 (745092, Jose Siri), Guardians at Blue Jays 2024-06-16 (744926, Daulton Varsho), Padres at Nationals 2025-07-20 (777077, Xander Bogaerts), Giants at Athletics 2026-05-17 (825006, Harrison Bader), Cubs at Pirates 2026-07-26 (823354, Ryan O'Hearn), Cubs at Mariners 2026-08-23 (823099, Ian Happ and Pedro Ramirez — two in one game) | All 1,906 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `multi-homer-nights` | Six games in which a hitter homered at least twice, one per date: Giants at Rays 2024-04-14 (745113, René Pinto 2), Athletics at Phillies 2024-07-14 (745551, Lawrence Butler 3, Brent Rooker 2, Seth Brown 2), Giants at Yankees 2025-04-13 (778339, Jung Hoo Lee 2), Mariners at Cubs 2025-06-22 (777403, three hitters with 2 each), Marlins at Orioles 2025-07-13 (777129, Kyle Stowers 3), Rockies at Phillies 2026-05-10 (823463, Kyle Schwarber 2) | All 1,731 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `pitchers-duels` | Six games with three runs or fewer, one per date: Brewers at Cardinals 2024-04-21 (745192, 2-0), Marlins at Tigers 2024-05-15 (746472, 2-0), White Sox at Braves 2025-08-20 (776669, 0-1), Pirates at Diamondbacks 2026-05-06 (825091, 1-0), Giants at Brewers 2026-06-03 (823780, 1-0), Giants at Guardians 2026-08-19 (824394, 1-0) | All 1,532 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |

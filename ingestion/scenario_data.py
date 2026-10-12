@@ -60,6 +60,11 @@ MULTI_HOMER_GAMES = (745113, 745551, 778339, 777403, 777129, 823463)
 # Six games featuring a grand slam, one per date across the 2024, 2025 and 2026
 # seasons (one of them, the Cubs' 19-2 win in Seattle, had two).
 GRAND_SLAM_GAMES = (745092, 744926, 777077, 825006, 823354, 823099)
+
+# Six games turned by one big inning (six runs or more), one per date across the
+# 2024, 2025 and 2026 seasons: 43 runs in those six innings alone, including two
+# eight-run frames and a seven-run eighth that won a one-run game.
+BIG_INNING_GAMES = (746001, 747008, 746517, 776794, 776428, 822940)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -71,6 +76,7 @@ GAME_IDS = (
     *PITCHERS_DUEL_GAMES,
     *MULTI_HOMER_GAMES,
     *GRAND_SLAM_GAMES,
+    *BIG_INNING_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -102,6 +108,7 @@ SWEEP_SCENARIOS = {
     "pitchers-duels": PITCHERS_DUEL_GAMES,
     "multi-homer-nights": MULTI_HOMER_GAMES,
     "grand-slams": GRAND_SLAM_GAMES,
+    "big-innings": BIG_INNING_GAMES,
 }
 
 

@@ -38,4 +38,5 @@ export const SCENE_ACCENT: Record<string, string> = {
   "pitchers-duels": "#22d3ee",
   "multi-homer-nights": "#c4b5fd",
   "grand-slams": "#facc15",
+  "big-innings": "#38bdf8",
 };
