@@ -18,7 +18,8 @@ export type ScenarioId =
   | "twins-blue-jays-2026"
   | "season-sweep"
   | "strikeout-nights"
-  | "extra-innings";
+  | "extra-innings"
+  | "power-nights";
 
 export type LayerKey =
   | "tunneling"
@@ -381,6 +382,26 @@ export const SCENARIOS: readonly Scenario[] = [
     preset: preset({
       view: "Side",
       layers: { plateCrossings: true, dispersion: true, fatigue: true },
+    }),
+  },
+  {
+    id: "power-nights",
+    title: "Power Nights",
+    dateLabel: "Jun 22, 2024 – Aug 15, 2026",
+    gameLabel: "Six games · 32 home runs",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/777873/feed/live",
+    synthetic: false,
+    hook: "Six games that produced four or more home runs apiece — 32 in all.",
+    lookFor:
+      "1,792 tracked pitches, 838 swings and 167 whiffs across six games from June 2024 to August 2026, including an eight-homer night in Baltimore. 354 of the pitches were put in play with measured contact data, 83 of them at 100 mph or harder.",
+    tryThis:
+      "Set the heatmap to Hard Hit % and compare the eight-homer game in Baltimore with the rest.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Batter",
+      layers: { plateCrossings: true, heatmap: true },
+      heatmapMode: "hard_hit",
     }),
   },
 ];

@@ -32,11 +32,17 @@ STRIKEOUT_NIGHTS_GAMES = (746576, 747029, 745042, 778440, 776190, 823525)
 # 2026 seasons (10 to 12 innings, 65 innings in all): the long-game end of the
 # corpus, where bullpens and late-inning leverage show up.
 EXTRA_INNINGS_GAMES = (745103, 745707, 745203, 777642, 777014, 824125)
+
+# Six games with four or more combined home runs, one per date across the 2024,
+# 2025 and 2026 seasons (32 home runs in all, including an eight-homer night):
+# the batted-ball end of the corpus, where the contact columns earn their keep.
+POWER_NIGHTS_GAMES = (745163, 746038, 777873, 825014, 823364, 824644)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
     *STRIKEOUT_NIGHTS_GAMES,
     *EXTRA_INNINGS_GAMES,
+    *POWER_NIGHTS_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -62,6 +68,7 @@ SWEEP_SCENARIOS = {
     "season-sweep": SEASON_SWEEP_GAMES,
     "strikeout-nights": STRIKEOUT_NIGHTS_GAMES,
     "extra-innings": EXTRA_INNINGS_GAMES,
+    "power-nights": POWER_NIGHTS_GAMES,
 }
 
 

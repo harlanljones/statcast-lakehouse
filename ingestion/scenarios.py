@@ -36,6 +36,7 @@ SCENARIO_FILES = {
     "season-sweep": "season-sweep.arrow",
     "strikeout-nights": "strikeout-nights.arrow",
     "extra-innings": "extra-innings.arrow",
+    "power-nights": "power-nights.arrow",
 }
 
 

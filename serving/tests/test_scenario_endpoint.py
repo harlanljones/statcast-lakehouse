@@ -24,6 +24,7 @@ SCENARIO_ROWS = {
     "season-sweep": 4063,
     "strikeout-nights": 1739,
     "extra-innings": 2143,
+    "power-nights": 1792,
 }
 
 

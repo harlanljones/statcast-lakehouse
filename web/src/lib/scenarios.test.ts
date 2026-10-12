@@ -26,6 +26,7 @@ const SERVER_IDS = [
   "season-sweep",
   "strikeout-nights",
   "extra-innings",
+  "power-nights",
 ];
 
 describe("real-game story catalog", () => {

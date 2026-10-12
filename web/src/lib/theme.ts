@@ -32,4 +32,5 @@ export const SCENE_ACCENT: Record<string, string> = {
   "season-sweep": "#e879f9",
   "strikeout-nights": "#38bdf8",
   "extra-innings": "#fbbf24",
+  "power-nights": "#fb923c",
 };
