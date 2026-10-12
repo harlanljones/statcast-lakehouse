@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS `statcast_analytics.fct_pitches` (
   pitch_number INT64,
   is_swing INT64,
   is_whiff INT64,
+  launch_speed FLOAT64,
+  launch_angle FLOAT64,
+  hit_distance FLOAT64,
+  bb_type STRING,
   extension FLOAT64,
   plate_location GEOGRAPHY
 )

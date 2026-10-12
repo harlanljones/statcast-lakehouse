@@ -68,6 +68,15 @@ export interface PitchDatum {
   /** Plate-appearance and pitch order within the game; nullable in older files. */
   atBatNumber?: number;
   pitchNumber?: number;
+  /**
+   * Observed batted-ball data (MLB's contact columns): measured exit velocity
+   * (mph), launch angle (degrees), projected distance (feet) and batted-ball
+   * class. Undefined unless the pitch was put in play.
+   */
+  launchSpeed?: number;
+  launchAngle?: number;
+  hitDistance?: number;
+  bbType?: string;
 }
 
 export const FILTER_SIZE = 4;

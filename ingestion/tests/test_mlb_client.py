@@ -105,6 +105,27 @@ class TestRowMapping:
     def test_descriptions_are_popped(self):
         assert "description" not in _row(statcast_record())
 
+    def test_contact_columns_from_savant(self):
+        row = _row(
+            statcast_record(
+                launch_speed="104.2",
+                launch_angle="18.0",
+                hit_distance_sc="358",
+                bb_type="line_drive",
+            )
+        )
+        assert row["launch_speed"] == pytest.approx(104.2)
+        assert row["launch_angle"] == pytest.approx(18.0)
+        assert row["hit_distance"] == pytest.approx(358.0)
+        assert row["bb_type"] == "line_drive"
+
+    def test_contact_columns_are_null_without_a_batted_ball(self):
+        row = _row(statcast_record())
+        assert row["launch_speed"] is None
+        assert row["launch_angle"] is None
+        assert row["hit_distance"] is None
+        assert row["bb_type"] is None
+
 
 class TestSwingClassification:
     @pytest.mark.parametrize(

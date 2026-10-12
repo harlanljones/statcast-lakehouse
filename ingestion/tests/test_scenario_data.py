@@ -11,8 +11,10 @@ COORDS = {
 }
 
 
-def pitch(number, balls_after, strikes_after, desc="Ball", **extra):
-    return {
+def pitch(number, balls_after, strikes_after, desc="Ball", hit_data=None, **extra):
+    """One pitch event. `extra` lands in pitchData (startSpeed, extension, ...);
+    `hit_data` lands on the event, where the feed puts Savant contact data."""
+    event = {
         "isPitch": True,
         "playId": f"p{number}",
         "pitchNumber": number,
@@ -20,6 +22,9 @@ def pitch(number, balls_after, strikes_after, desc="Ball", **extra):
         "details": {"description": desc, "type": {"code": "FF"}},
         "pitchData": {"coordinates": COORDS, "startSpeed": 95.0, **extra},
     }
+    if hit_data is not None:
+        event["hitData"] = hit_data
+    return event
 
 
 def feed():
@@ -35,7 +40,18 @@ def feed():
                 "pitchHand": {"code": "L"},
             },
             "playEvents": [
-                pitch(1, 1, 0),
+                pitch(
+                    1,
+                    1,
+                    0,
+                    "In play, out(s)",
+                    hit_data={
+                        "launchSpeed": 104.2,
+                        "launchAngle": 18.0,
+                        "totalDistance": 358.0,
+                        "trajectory": "line_drive",
+                    },
+                ),
                 # Pitch-clock violation: not a pitch, but it changes the count.
                 {"isPitch": False, "count": {"balls": 2, "strikes": 0, "outs": 0}},
                 pitch(2, 2, 1, "Swinging Strike", extension=6.4),
@@ -60,6 +76,11 @@ def test_refresh_writes_pre_pitch_count_and_hands(tmp_path, monkeypatch):
     assert {r["at_bat_number"] for r in rows} == {5}
     assert {(r["stand"], r["p_throws"]) for r in rows} == {("L", "L")}
     assert [r["is_whiff"] for r in rows] == [0, 1]
+    # Savant contact columns come from the pitch event's hitData and stay NULL
+    # for every pitch that was not put in play.
+    assert (rows[0]["launch_speed"], rows[0]["launch_angle"]) == (104.2, 18.0)
+    assert (rows[0]["hit_distance"], rows[0]["bb_type"]) == (358.0, "line_drive")
+    assert (rows[1]["launch_speed"], rows[1]["bb_type"]) == (None, None)
     # Feed extension is carried when present and NULL when absent; names ride along.
     assert [r["extension"] for r in rows] == [None, 6.4]
     assert {(r["pitcher_name"], r["batter_name"]) for r in rows} == {("Blake Snell", "Someone")}

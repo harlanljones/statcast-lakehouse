@@ -99,8 +99,8 @@ function idString(v: unknown): string | undefined {
   return s === "" ? undefined : s;
 }
 
-/** Nullable Arrow UTF-8 fields arrive as strings; omit empty display names. */
-function displayName(v: unknown): string | undefined {
+/** Nullable Arrow UTF-8 fields arrive as strings; omit empty values. */
+function textOrUndefined(v: unknown): string | undefined {
   if (v == null) return undefined;
   const name = String(v).trim();
   return name === "" ? undefined : name;
@@ -188,6 +188,10 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const pitchId = columnGetter(table, "pitch_id");
   const playId = columnGetter(table, "play_id");
   const pitchType = columnGetter(table, "pitch_type");
+  const launchSpeed = columnGetter(table, "launch_speed");
+  const launchAngle = columnGetter(table, "launch_angle");
+  const hitDistance = columnGetter(table, "hit_distance");
+  const bbType = columnGetter(table, "bb_type");
 
   const pitches: PitchDatum[] = [];
   const n = table.numRows;
@@ -219,11 +223,15 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
     pitches.push({
       pitcherId: idNumber(pitcherId?.(i)),
       batterId: idNumber(batterId?.(i)),
-      pitcherName: displayName(pitcherName?.(i)),
-      batterName: displayName(batterName?.(i)),
+      pitcherName: textOrUndefined(pitcherName?.(i)),
+      batterName: textOrUndefined(batterName?.(i)),
       gameId: idNumber(gameId?.(i)),
       pitchId: idString(pitchId?.(i)),
       playId: sourcePlayId(playId?.(i), pitchId?.(i)),
+      launchSpeed: launchSpeed ? finiteOrUndefined(launchSpeed(i)) : undefined,
+      launchAngle: launchAngle ? finiteOrUndefined(launchAngle(i)) : undefined,
+      hitDistance: hitDistance ? finiteOrUndefined(hitDistance(i)) : undefined,
+      bbType: bbType ? textOrUndefined(bbType(i)) : undefined,
       atBatNumber: idNumber(atBat?.(i)),
       pitchNumber: idNumber(pitchNum?.(i)),
       path,

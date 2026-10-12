@@ -90,6 +90,11 @@ COLUMN_MAP = {
     "at_bat_number": "at_bat_number",
     "pitch_number": "pitch_number",
     "release_extension": "extension",
+    # Savant's batted-ball contact columns (NULL unless the ball was put in play).
+    "launch_speed": "launch_speed",
+    "launch_angle": "launch_angle",
+    "hit_distance_sc": "hit_distance",
+    "bb_type": "bb_type",
     "description": "description",
 }
 
@@ -111,7 +116,9 @@ def _to_int(v: Any) -> int | None:
 INT_FIELDS = frozenset(
     {"game_id", "pitcher_id", "batter_id", "balls", "strikes", "at_bat_number", "pitch_number"}
 )
-TEXT_FIELDS = frozenset({"pitch_type", "game_date", "description", "stand", "p_throws"})
+TEXT_FIELDS = frozenset(
+    {"pitch_type", "game_date", "description", "stand", "p_throws", "bb_type"}
+)
 
 
 class _RawReader(io.RawIOBase):

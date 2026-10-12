@@ -35,7 +35,10 @@ the feed's `playId` to `pitch_id`, and `coordinates` to `worker.SCHEMA`: `x0/y0/
 pitch type, batter/pitcher ids, and strike-zone bounds. Swing and whiff flags
 come from the source event description. Batter and pitcher hand, the count
 before each pitch, at-bat number, and pitch number fill the plate-appearance
-context columns. The feed's `pitchData.extension` (feet from the rubber to
+context columns. The pitch event that was put in play carries the feed's
+`hitData`, which fills the contact columns `launch_speed` (mph), `launch_angle`
+(degrees), `hit_distance` (projected feet) and `bb_type` (fly_ball,
+line_drive, ground_ball, popup, ...); all four are NULL on every other pitch. The feed's `pitchData.extension` (feet from the rubber to
 the release point) fills `extension`, and `matchup.pitcher.fullName` /
 `matchup.batter.fullName` fill the nullable string columns `pitcher_name` and
 `batter_name` (slice files only, not `fct_pitches`). `x0/y0/z0` are measured

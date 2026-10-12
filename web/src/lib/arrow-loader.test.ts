@@ -29,6 +29,10 @@ function ipcBuffer(rows: {
   szBot?: Float64Array | number[];
   /** Nullable optional columns: plain arrays so NULLs survive. */
   extension?: (number | null)[];
+  launchSpeed?: (number | null)[];
+  launchAngle?: (number | null)[];
+  hitDistance?: (number | null)[];
+  bbType?: (string | null)[];
   atBatNumber?: (number | null)[];
   pitchNumber?: (number | null)[];
   /** int64 ids (arrive as bigint) and string ids, as in the real schema. */
@@ -67,6 +71,10 @@ function ipcBuffer(rows: {
   if (rows.szTop) arrays.sz_top = new Float64Array(rows.szTop);
   if (rows.szBot) arrays.sz_bot = new Float64Array(rows.szBot);
   if (rows.extension) arrays.extension = rows.extension;
+  if (rows.launchSpeed) arrays.launch_speed = rows.launchSpeed;
+  if (rows.launchAngle) arrays.launch_angle = rows.launchAngle;
+  if (rows.hitDistance) arrays.hit_distance = rows.hitDistance;
+  if (rows.bbType) arrays.bb_type = rows.bbType;
   if (rows.atBatNumber) arrays.at_bat_number = rows.atBatNumber;
   if (rows.pitchNumber) arrays.pitch_number = rows.pitchNumber;
   if (rows.ids?.pitcherId) arrays.pitcher_id = new BigInt64Array(rows.ids.pitcherId);
@@ -431,5 +439,26 @@ describe("fetchDatePartitions", () => {
     );
     const result = await fetchDatePartitions();
     expect(result).toEqual([]);
+  });
+});
+
+describe("batted-ball contact columns", () => {
+  it("carries measured contact data and leaves non-contact pitches undefined", () => {
+    const buf = ipcBuffer({
+      count: 2,
+      pitchTypes: ["FF", "SL"],
+      launchSpeed: [104.2, null],
+      launchAngle: [18, null],
+      hitDistance: [358, null],
+      bbType: ["line_drive", null],
+    });
+    const { pitches } = loadPitchTable(buf);
+
+    expect(pitches[0].launchSpeed).toBeCloseTo(104.2);
+    expect(pitches[0].launchAngle).toBeCloseTo(18);
+    expect(pitches[0].hitDistance).toBeCloseTo(358);
+    expect(pitches[0].bbType).toBe("line_drive");
+    expect(pitches[1].launchSpeed).toBeUndefined();
+    expect(pitches[1].bbType).toBeUndefined();
   });
 });

@@ -318,3 +318,33 @@ describe("cursorFlight (deck.gl 3D pick → position along the flight)", () => {
     expect(cursorFlight(null, 20)).toBeNull();
   });
 });
+
+describe("observed contact", () => {
+  it("labels measured batted-ball data and classifies it with the Statcast criteria", () => {
+    // 105.7 mph at 19 deg sits inside the Statcast barrel cone; 104.2 at 18
+    // does not (the cone starts at 26-30 deg at 98 mph and widens with speed).
+    const barrel = pitchTooltip(
+      pitch({ launchSpeed: 105.7, launchAngle: 19, hitDistance: 340, bbType: "line_drive" })
+    );
+    expect(barrel?.observedContact).toBe("Contact: 105.7 mph, 19.0° • 340.0 ft (line_drive) · Barrel");
+
+    const solid = pitchTooltip(
+      pitch({ launchSpeed: 104.2, launchAngle: 18, hitDistance: 358, bbType: "line_drive" })
+    );
+    expect(solid?.observedContact).toBe("Contact: 104.2 mph, 18.0° • 358.0 ft (line_drive) · Solid Contact");
+  });
+
+  it("omits the line for pitches that were not put in play", () => {
+    expect(pitchTooltip(pitch())?.observedContact).toBeUndefined();
+  });
+
+  it("appears in the accessible summary", () => {
+    const summary = pitchTooltipSummary(
+      pitch({ launchSpeed: 91.8, launchAngle: 40, hitDistance: 296, bbType: "fly_ball" }),
+      undefined,
+      undefined,
+      false
+    );
+    expect(summary).toContain("Contact: 91.8 mph, 40.0° • 296.0 ft (fly_ball)");
+  });
+});

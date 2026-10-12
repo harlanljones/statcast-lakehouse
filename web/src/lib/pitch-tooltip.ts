@@ -5,7 +5,7 @@
  */
 import { isInsideStrikeZone, pitchColor, type PitchDatum } from "./deck-layers";
 import { commitmentPosition, flightTime, PLATE_Y } from "./kinematics";
-import { computeCollision } from "./collision";
+import { classifyContactQuality, computeCollision } from "./collision";
 
 export interface PitchTooltipInfo {
   pitchType: string;
@@ -33,6 +33,8 @@ export interface PitchTooltipInfo {
   tunnel?: string;
   /** Simulated ball-bat contact quality and distance, e.g. "Sim: 106.5 mph (Barrel) • 375.7 ft" */
   simulatedContact?: string;
+  /** Measured contact for a ball in play, e.g. "Contact: 104.2 mph, 18.0° • 358 ft (line_drive) · Barrel" */
+  observedContact?: string;
 }
 
 /** Round half away from zero, then fix to one decimal (deterministic sign handling). */
@@ -108,6 +110,18 @@ export function pitchTooltip(
     }
   }
 
+  let observedContact: string | undefined;
+  if (d.launchSpeed != null && d.launchAngle != null) {
+    // Measured by MLB's tracking, not simulated: exit velocity and launch
+    // angle classify the batted ball with the same Statcast criteria the
+    // contact lens uses, so the label is the real one.
+    const quality = classifyContactQuality(d.launchSpeed, d.launchAngle);
+    const distance = d.hitDistance != null ? ` • ${round1(d.hitDistance)} ft` : "";
+    const kind = d.bbType ? ` (${d.bbType})` : "";
+    const label = quality && quality !== "Whiff" ? ` · ${quality}` : "";
+    observedContact = `Contact: ${round1(d.launchSpeed)} mph, ${round1(d.launchAngle)}°${distance}${kind}${label}`;
+  }
+
   let simulatedContact: string | undefined;
   if (includeContactSim && d.kinematics) {
     const col = computeCollision(d.kinematics, batSpeed, attackAngleDeg);
@@ -131,6 +145,7 @@ export function pitchTooltip(
     extension,
     zoneBounds,
     tunnel,
+    observedContact,
     simulatedContact,
   };
 }
@@ -200,6 +215,7 @@ export function pitchTooltipSummary(
   if (info.release) parts.push(info.release);
   if (info.extension) parts.push(info.extension);
   if (info.tunnel) parts.push(info.tunnel);
+  if (info.observedContact) parts.push(info.observedContact);
   if (info.simulatedContact) parts.push(info.simulatedContact);
   if (info.outcome) parts.push(info.outcome);
   return parts.join(", ");

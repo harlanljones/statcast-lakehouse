@@ -508,6 +508,11 @@ export default function Visualizer(props: VisualizerProps) {
                 </div>
               )}
             </Show>
+            {t.observedContact && (
+              <div style={{ color: THEME.gold, "margin-top": "3px", "border-top": `1px solid ${THEME.border}`, "padding-top": "2px" }}>
+                {t.observedContact}
+              </div>
+            )}
             {t.simulatedContact && (
               <div style={{ color: "#ff99ff", "margin-top": "3px", "border-top": `1px solid ${THEME.border}`, "padding-top": "2px" }}>
                 {t.simulatedContact}

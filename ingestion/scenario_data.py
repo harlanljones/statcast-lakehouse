@@ -96,6 +96,9 @@ def _to_row(
     details = event["details"]
     pitch = event["pitchData"]
     coordinates = pitch["coordinates"]
+    # Savant contact columns: the feed attaches hitData to the pitch event that
+    # was put in play (NULL on every other pitch).
+    hit = event.get("hitData") or {}
     description = (details.get("description") or "").casefold()
     swing = description.startswith(("foul", "in play", "swinging strike", "missed bunt"))
     whiff = description.startswith(("swinging strike", "missed bunt"))
@@ -137,6 +140,10 @@ def _to_row(
         "pitch_number": event.get("pitchNumber"),
         "is_swing": int(swing),
         "is_whiff": int(swing and whiff),
+        "launch_speed": hit.get("launchSpeed"),
+        "launch_angle": hit.get("launchAngle"),
+        "hit_distance": hit.get("totalDistance"),
+        "bb_type": hit.get("trajectory"),
         "extension": pitch.get("extension"),
         "ingestion_time": day,
         "pitcher_name": play["matchup"]["pitcher"].get("fullName"),
