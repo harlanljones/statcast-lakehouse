@@ -156,8 +156,14 @@ export function computeStrikeZoneHeatmap(
       continue;
     }
 
-    const ix = Math.min(nx - 1, Math.max(0, Math.floor((px - xMin) / dx)));
-    const iz = Math.min(nz - 1, Math.max(0, Math.floor((pz - zMin) / dz)));
+    // The bounds check above guarantees 0 <= (px - xMin) / dx < nx, so
+    // truncation is floor here and only a cell-edge rounding needs the clamp:
+    // two Math calls and a division per axis per pitch cost more than the
+    // comparison that replaced them.
+    let ix = ((px - xMin) / dx) | 0;
+    if (ix >= nx) ix = nx - 1;
+    let iz = ((pz - zMin) / dz) | 0;
+    if (iz >= nz) iz = nz - 1;
     const idx = iz * nx + ix;
     const cell = cells[idx];
 
