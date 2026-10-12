@@ -38,6 +38,7 @@ const SERVER_IDS = [
   "multi-error-games",
   "inning-after-inning",
   "called-early",
+  "combined-shutouts",
 ];
 
 describe("real-game story catalog", () => {

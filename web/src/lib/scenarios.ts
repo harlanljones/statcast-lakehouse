@@ -30,7 +30,8 @@ export type ScenarioId =
   | "comeback-wins"
   | "multi-error-games"
   | "inning-after-inning"
-  | "called-early";
+  | "called-early"
+  | "combined-shutouts";
 
 export type LayerKey =
   | "tunneling"
@@ -627,6 +628,26 @@ export const SCENARIOS: readonly Scenario[] = [
     preset: preset({
       view: "Pitcher",
       layers: { releasePoints: true, plateCrossings: true },
+    }),
+  },
+  {
+    id: "combined-shutouts",
+    title: "Combined Shutouts",
+    dateLabel: "Apr 6, 2024 – Apr 7, 2026",
+    gameLabel: "Twelve games · five 1-0",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/745029/feed/live",
+    synthetic: false,
+    hook: "Twelve games in which a team was shut out — none of them by a complete game.",
+    lookFor:
+      "3,152 tracked pitches, 1,487 swings and 355 whiffs across twelve shutouts from April 2024 to April 2026, four per season: five of them ended 1-0, and no starter went the distance — every shutout was combined, using between two and five pitchers. 532 pitches were put in play with measured contact data.",
+    tryThis:
+      "Compare where the strike zone was attacked in a 1-0 game with the 6-0 one.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Catcher",
+      layers: { plateCrossings: true, heatmap: true },
+      heatmapMode: "whiff_rate",
     }),
   },
 ];

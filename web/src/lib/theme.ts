@@ -44,4 +44,5 @@ export const SCENE_ACCENT: Record<string, string> = {
   "multi-error-games": "#f9a8d4",
   "inning-after-inning": "#c7d2fe",
   "called-early": "#94a3b8",
+  "combined-shutouts": "#a3e635",
 };

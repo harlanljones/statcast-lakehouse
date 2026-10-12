@@ -86,6 +86,16 @@ INNING_AFTER_INNING_GAMES = (744954, 745734, 776533, 777331, 824354, 824089)
 # five for rain, one (Blue Jays at Royals 2024-04-25) for wet grounds. The
 # shortest lasted 93 minutes and 143 pitches; 37 innings in all.
 CALLED_EARLY_GAMES = (746320, 745890, 778370, 777474, 778189, 824807)
+
+# Twelve games in which a team was shut out, four per season and one per date.
+# Every one of them was a *combined* shutout (no starter went the distance),
+# including five 1-0 finals, and each needed fewer pitches than a typical game
+# because a shutout means fewer baserunners.
+SHUTOUT_GAMES = (
+    746329, 746654, 745195, 745029,
+    778468, 778416, 778402, 778352,
+    825106, 824459, 823886, 823235,
+)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -103,6 +113,7 @@ GAME_IDS = (
     *MULTI_ERROR_GAMES,
     *INNING_AFTER_INNING_GAMES,
     *CALLED_EARLY_GAMES,
+    *SHUTOUT_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -140,6 +151,7 @@ SWEEP_SCENARIOS = {
     "multi-error-games": MULTI_ERROR_GAMES,
     "inning-after-inning": INNING_AFTER_INNING_GAMES,
     "called-early": CALLED_EARLY_GAMES,
+    "combined-shutouts": SHUTOUT_GAMES,
 }
 
 
