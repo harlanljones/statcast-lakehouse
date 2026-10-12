@@ -69,10 +69,17 @@ export function flightTime(p: PitchKinematics, yEnd = PLATE_Y): number {
     if (t <= 0 || b > 0) throw new Error("plane crossing not in the future");
     return t;
   }
-  const roots = [(-b - Math.sqrt(disc)) / (2 * a), (-b + Math.sqrt(disc)) / (2 * a)];
-  const t = Math.min(...roots.filter((r) => r > 0 && b + 2 * a * r < 0));
-  if (!Number.isFinite(t)) throw new Error("plane crossing not in the future");
-  return t;
+  // Earliest positive root at which the ball is still approaching the plate.
+  // Scanned without an array/filter/spread: this runs several times per pitch
+  // (path, ghost, break vector, commitment plane) on the load path.
+  const root = Math.sqrt(disc);
+  const t1 = (-b - root) / (2 * a);
+  const t2 = (-b + root) / (2 * a);
+  let best = Infinity;
+  if (t1 > 0 && b + 2 * a * t1 < 0) best = t1;
+  if (t2 > 0 && b + 2 * a * t2 < 0 && t2 < best) best = t2;
+  if (!Number.isFinite(best)) throw new Error("plane crossing not in the future");
+  return best;
 }
 
 /** Position at time t (seconds since release). */
@@ -94,9 +101,19 @@ export function trajectory(p: PitchKinematics, n = 60): Array<[number, number, n
 
 /** Path as a flat Float32Array [x0,y0,z0, x1,y1,z1, ...] for zero-copy GPU upload. */
 export function trajectoryFlat(p: PitchKinematics, n = 60): Float32Array {
-  const path = trajectory(p, n);
+  // Same closed form and same expression order as positionAt, written straight
+  // into the typed array: the GPU path needs the flat buffer, never the tuple
+  // list, and the intermediate array of 60 points is the loader's biggest
+  // per-pitch allocation.
+  const tEnd = flightTime(p);
+  const { x0, y0, z0, vx0, vy0, vz0, ax, ay, az } = p;
   const flat = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) flat.set(path[i], i * 3);
+  for (let i = 0, j = 0; i < n; i++, j += 3) {
+    const t = (tEnd * i) / (n - 1);
+    flat[j] = x0 + vx0 * t + 0.5 * ax * t * t;
+    flat[j + 1] = y0 + vy0 * t + 0.5 * ay * t * t;
+    flat[j + 2] = z0 + vz0 * t + 0.5 * az * t * t;
+  }
   return flat;
 }
 
