@@ -31,7 +31,8 @@ export type ScenarioId =
   | "multi-error-games"
   | "inning-after-inning"
   | "called-early"
-  | "combined-shutouts";
+  | "combined-shutouts"
+  | "blowouts";
 
 export type LayerKey =
   | "tunneling"
@@ -648,6 +649,26 @@ export const SCENARIOS: readonly Scenario[] = [
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true },
       heatmapMode: "whiff_rate",
+    }),
+  },
+  {
+    id: "blowouts",
+    title: "Blowouts",
+    dateLabel: "Apr 4, 2024 – Apr 17, 2026",
+    gameLabel: "Twelve games · 179 runs",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/825105/feed/live",
+    synthetic: false,
+    hook: "Twelve games decided by nine runs or more — where the late innings stopped looking like baseball.",
+    lookFor:
+      "3,680 tracked pitches, 1,732 swings and 338 whiffs across twelve blowouts from April 2024 to April 2026, four per season: 179 runs in all and margins from nine to sixteen, including 18-7 in Boston, 17-1 in San Francisco and 17-2 in Arizona. Four of the twelve had an arm that never topped 75 mph as the game ran away — the slowest 43.8 mph with Atlanta already 17 ahead. 723 pitches were put in play with measured contact data.",
+    tryThis:
+      "Step into the late innings and watch the pitch speeds fall away.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Batter",
+      layers: { plateCrossings: true, heatmap: true },
+      heatmapMode: "hard_hit",
     }),
   },
 ];

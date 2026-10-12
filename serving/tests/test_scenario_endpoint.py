@@ -37,6 +37,7 @@ SCENARIO_ROWS = {
     "inning-after-inning": 2090,
     "called-early": 1341,
     "combined-shutouts": 3152,
+    "blowouts": 3680,
 }
 
 

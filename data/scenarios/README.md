@@ -7,8 +7,8 @@ network. To refresh them from the same public feeds, run
 
 The same files also back `GET /pitches/sample` and `python3 -m ingestion.worker
 --dry-run`: `ingestion.scenarios.real_pitches()` returns every pitch here once
-(the Ohtani slices repeat pitches from the full game), in game order. Twenty-five
-slices across one hundred and fifteen games and game dates (34,673 pitches),
+(the Ohtani slices repeat pitches from the full game), in game order. Twenty-six
+slices across one hundred and twenty-seven games and game dates (38,353 pitches),
 from the 2024 regular season and World Series to the 2025 and 2026 seasons. The
 `season-sweep` slice carries one game per period across all three seasons,
 `strikeout-nights` the six games with 20+ combined strikeouts (132 in all),
@@ -25,8 +25,9 @@ came back from three or four runs down in regulation, `multi-error-games`
 the six games in which a team made three or more errors (24 in all), `,
 `inning-after-inning` the six games in which one team scored in seven or more
 different innings (93 runs in all), `called-early` the six games called
-before nine innings (five for rain, one for wet grounds), and `combined-shutouts`
-twelve shutouts, none of them a complete game (five ended 1-0).
+before nine innings (five for rain, one for wet grounds), `combined-shutouts`
+twelve shutouts, none of them a complete game (five ended 1-0), and `blowouts`
+twelve games decided by nine runs or more (179 runs in all).
 
 | Scenario | Source game | Selected pitches | Story reference |
 |---|---|---:|---|
@@ -40,6 +41,7 @@ twelve shutouts, none of them a complete game (five ended 1-0).
 | `yankees-athletics-2025` | Yankees at Athletics, 2025-05-10, game 777972 | All 323 tracked pitches | [Athletics 11, Yankees 7](https://www.mlb.com/gameday/yankees-vs-athletics/2025/05/10/777972/final) |
 | `twins-blue-jays-2026` | Twins at Blue Jays, 2026-04-10, game 822829 | All 311 tracked pitches | [Blue Jays 10, Twins 4](https://www.mlb.com/gameday/twins-vs-blue-jays/2026/04/10/822829/final) |
 | `strikeout-starts` | Six games whose starting pitcher struck out 10+, one per date: Tigers at Reds 2024-07-07 (746691, Tarik Skubal 13), Rays at Astros 2024-08-04 (746356, Spencer Arrighetti 12), Red Sox at Braves 2025-06-01 (777692, Garrett Crochet 12), Reds at Phillies 2025-07-06 (777217, Zack Wheeler 12), Angels at Mariners 2025-09-14 (776317, George Kirby 14), Red Sox at Orioles 2026-09-06 (824794, Payton Tolle 12) | All 1,681 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
+| `blowouts` | Twelve games decided by 9+ runs, four per season and one per date: White Sox at Royals 2024-04-04 (746327, 1-10), Astros at Royals 2024-04-10 (746323, 2-11), Giants at Rays 2024-04-13 (745110, 11-2), Diamondbacks at Giants 2024-04-19 (745352, 17-1), Cardinals at Red Sox 2025-04-06 (778432, 7-18), Angels at Rays 2025-04-10 (778382, 11-1), Red Sox at Rays 2025-04-14 (778328, 1-16), Athletics at White Sox 2025-04-15 (778309, 12-3), Braves at Diamondbacks 2026-04-02 (825105, 17-2), Guardians at Braves 2026-04-12 (824938, 1-13), Cubs at Phillies 2026-04-15 (823477, 11-2), Braves at Phillies 2026-04-17 (823476, 9-0) | All 3,680 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `combined-shutouts` | Twelve shutouts, four per season and one per date, every one combined: White Sox at Royals 2024-04-06 (746329, 0-3), White Sox at Guardians 2024-04-08 (746654, 0-4), Phillies at Cardinals 2024-04-09 (745195, 0-3), Athletics at Rangers 2024-04-11 (745029, 1-0), Reds at Brewers 2025-04-03 (778468, 0-1), Marlins at Mets 2025-04-07 (778416, 0-2), White Sox at Guardians 2025-04-08 (778402, 0-1), Rockies at Padres 2025-04-12 (778352, 0-2), Tigers at Diamondbacks 2026-04-01 (825106, 0-1), Cubs at Guardians 2026-04-05 (824459, 1-0), Reds at Marlins 2026-04-06 (823886, 2-0), Phillies at Giants 2026-04-07 (823235, 0-6) | All 3,152 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `called-early` | Six games called before nine innings, one per date: Blue Jays at Royals 2024-04-25 (746320, 5 innings, wet grounds), Tigers at Twins 2024-07-04 (745890, 7, rain), Giants at Yankees 2025-04-11 (778370, 6, rain), Cubs at Reds 2025-06-18 (777474, 6, rain), White Sox at Twins 2025-04-24 (778189, 7, rain), Phillies at Orioles 2026-08-02 (824807, 6, rain) | All 1,341 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `inning-after-inning` | Six games in which one team scored in 7+ different innings, one per date: Rockies at Blue Jays 2024-04-12 (744954, 7 innings), Orioles at Yankees 2024-06-20 (745734, 8), Nationals at Angels 2025-06-27 (777331, 7), Orioles at Giants 2025-08-29 (776533, 7), Giants at Rockies 2026-05-31 (824354, 8), Phillies at Royals 2026-07-06 (824089, 8) | All 2,090 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |

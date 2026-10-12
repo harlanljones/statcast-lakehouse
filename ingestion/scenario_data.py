@@ -96,6 +96,16 @@ SHUTOUT_GAMES = (
     778468, 778416, 778402, 778352,
     825106, 824459, 823886, 823235,
 )
+
+# Twelve games decided by nine runs or more, four per season and one per date
+# (179 runs in all, margins 9-16). Four of them had an arm that never topped
+# 75 mph as the game ran away — the slowest a 43.8 mph pitch with the Braves
+# 17 runs ahead at Arizona on 2026-04-02.
+BLOWOUT_GAMES = (
+    746327, 746323, 745110, 745352,
+    778432, 778382, 778328, 778309,
+    825105, 824938, 823477, 823476,
+)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -114,6 +124,7 @@ GAME_IDS = (
     *INNING_AFTER_INNING_GAMES,
     *CALLED_EARLY_GAMES,
     *SHUTOUT_GAMES,
+    *BLOWOUT_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -152,6 +163,7 @@ SWEEP_SCENARIOS = {
     "inning-after-inning": INNING_AFTER_INNING_GAMES,
     "called-early": CALLED_EARLY_GAMES,
     "combined-shutouts": SHUTOUT_GAMES,
+    "blowouts": BLOWOUT_GAMES,
 }
 
 

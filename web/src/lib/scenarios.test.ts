@@ -39,6 +39,7 @@ const SERVER_IDS = [
   "inning-after-inning",
   "called-early",
   "combined-shutouts",
+  "blowouts",
 ];
 
 describe("real-game story catalog", () => {

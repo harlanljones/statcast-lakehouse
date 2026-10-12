@@ -49,6 +49,7 @@ SCENARIO_FILES = {
     "inning-after-inning": "inning-after-inning.arrow",
     "called-early": "called-early.arrow",
     "combined-shutouts": "combined-shutouts.arrow",
+    "blowouts": "blowouts.arrow",
 }
 
 
