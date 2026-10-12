@@ -27,7 +27,8 @@ export type ScenarioId =
   | "grand-slams"
   | "big-innings"
   | "strikeout-starts"
-  | "comeback-wins";
+  | "comeback-wins"
+  | "multi-error-games";
 
 export type LayerKey =
   | "tunneling"
@@ -566,6 +567,25 @@ export const SCENARIOS: readonly Scenario[] = [
     preset: preset({
       view: "Batter",
       layers: { plateCrossings: true, ghostBreak: true },
+    }),
+  },
+  {
+    id: "multi-error-games",
+    title: "Multi-Error Games",
+    dateLabel: "Apr 2, 2024 – Apr 13, 2026",
+    gameLabel: "Six games · 24 errors",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/745598/feed/live",
+    synthetic: false,
+    hook: "Six regulation games in which a team made three or more errors — 24 in all.",
+    lookFor:
+      "1,866 tracked pitches, 877 swings and 192 whiffs across six regulation games from April 2024 to April 2026 in which a team made three or more errors: four by the Rockies in a 17-2 loss at Coors Field, three each behind the White Sox, Red Sox, Diamondbacks and Phillies, and five across the Reds and Phillies in the same game. 352 pitches were put in play with measured contact data.",
+    tryThis:
+      "Scrub through an inning with an error and watch where the next pitches went.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Catcher",
+      layers: { plateCrossings: true, heatmap: true },
     }),
   },
 ];

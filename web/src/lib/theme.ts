@@ -41,4 +41,5 @@ export const SCENE_ACCENT: Record<string, string> = {
   "big-innings": "#38bdf8",
   "strikeout-starts": "#a78bfa",
   "comeback-wins": "#5eead4",
+  "multi-error-games": "#f9a8d4",
 };

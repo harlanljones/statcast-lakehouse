@@ -7,8 +7,8 @@ network. To refresh them from the same public feeds, run
 
 The same files also back `GET /pitches/sample` and `python3 -m ingestion.worker
 --dry-run`: `ingestion.scenarios.real_pitches()` returns every pitch here once
-(the Ohtani slices repeat pitches from the full game), in game order. Twenty-one
-slices across eighty-five games and eighty-five game dates (26,224 pitches),
+(the Ohtani slices repeat pitches from the full game), in game order. Twenty-two
+slices across ninety-one games and ninety-one game dates (28,090 pitches),
 from the 2024 regular season and World Series to the 2025 and 2026 seasons. The
 `season-sweep` slice carries one game per period across all three seasons,
 `strikeout-nights` the six games with 20+ combined strikeouts (132 in all),
@@ -20,8 +20,9 @@ runs or fewer (eight in all), `multi-homer-nights` the six games with a
 multi-homer hitter (34 home runs in all), `grand-slams` the six games with a
 grand slam (seven in all), `big-innings` the six games turned by a 6+ run
 inning (43 runs in those six innings), `strikeout-starts` the six games whose
-starter struck out 10+ (75 in all), and `comeback-wins` the six games the winner
-came back from three or four runs down in regulation.
+starter struck out 10+ (75 in all), `comeback-wins` the six games the winner
+came back from three or four runs down in regulation, and `multi-error-games`
+the six games in which a team made three or more errors (24 in all).
 
 | Scenario | Source game | Selected pitches | Story reference |
 |---|---|---:|---|
@@ -35,6 +36,7 @@ came back from three or four runs down in regulation.
 | `yankees-athletics-2025` | Yankees at Athletics, 2025-05-10, game 777972 | All 323 tracked pitches | [Athletics 11, Yankees 7](https://www.mlb.com/gameday/yankees-vs-athletics/2025/05/10/777972/final) |
 | `twins-blue-jays-2026` | Twins at Blue Jays, 2026-04-10, game 822829 | All 311 tracked pitches | [Blue Jays 10, Twins 4](https://www.mlb.com/gameday/twins-vs-blue-jays/2026/04/10/822829/final) |
 | `strikeout-starts` | Six games whose starting pitcher struck out 10+, one per date: Tigers at Reds 2024-07-07 (746691, Tarik Skubal 13), Rays at Astros 2024-08-04 (746356, Spencer Arrighetti 12), Red Sox at Braves 2025-06-01 (777692, Garrett Crochet 12), Reds at Phillies 2025-07-06 (777217, Zack Wheeler 12), Angels at Mariners 2025-09-14 (776317, George Kirby 14), Red Sox at Orioles 2026-09-06 (824794, Payton Tolle 12) | All 1,681 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
+| `multi-error-games` | Six regulation games with a team making 3+ errors, one per date: Reds at Phillies 2024-04-02 (745598, 2+3 errors), White Sox at Royals 2024-04-07 (746330, 3), Cardinals at Red Sox 2025-04-04 (778463, 3), Brewers at Rockies 2025-04-09 (778379, 4), Diamondbacks at Mets 2026-04-08 (823646, 3), Cubs at Phillies 2026-04-13 (823481, 3+1) | All 1,866 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `comeback-wins` | Six games the winner trailed by 3-4 runs and won in nine innings, one per date: Angels at Marlins 2024-04-01 (746085, 7-4 from 0-4), Royals at Orioles 2024-04-03 (747059, 4-3), Twins at White Sox 2025-04-01 (778490, 8-3), Braves at Dodgers 2025-04-02 (778472, 6-5), Dodgers at Nationals 2026-04-03 (822758, 13-6), Marlins at Yankees 2026-04-04 (823569, 9-7) | All 1,903 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `big-innings` | Six games with a 6+ run inning, one per date: Yankees at Brewers 2024-04-28 (746001, 7 in the 6th), Padres at Orioles 2024-07-28 (747008, 6 in the 3rd), Braves at Rockies 2024-08-11 (746517, 7 in the 8th), Rockies at Diamondbacks 2025-08-10 (776794, 8 in the 5th), Mariners at Braves 2025-09-07 (776428, 8 in the 3rd), Orioles at Rays 2026-08-16 (822940, 7 in the 6th) | All 2,012 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |
 | `grand-slams` | Six games featuring a grand slam, one per date: Yankees at Rays 2024-05-12 (745092, Jose Siri), Guardians at Blue Jays 2024-06-16 (744926, Daulton Varsho), Padres at Nationals 2025-07-20 (777077, Xander Bogaerts), Giants at Athletics 2026-05-17 (825006, Harrison Bader), Cubs at Pirates 2026-07-26 (823354, Ryan O'Hearn), Cubs at Mariners 2026-08-23 (823099, Ian Happ and Pedro Ramirez — two in one game) | All 1,906 tracked pitches | [MLB schedule](https://www.mlb.com/schedule) |

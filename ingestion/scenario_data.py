@@ -73,6 +73,10 @@ STRIKEOUT_START_GAMES = (746691, 746356, 777692, 777217, 776317, 824794)
 # Six games in which the winning team trailed by three or four runs and still
 # won inside nine innings, one per date across the 2024, 2025 and 2026 seasons.
 COMEBACK_GAMES = (746085, 747059, 778490, 778472, 822758, 823569)
+
+# Six regulation games in which a team made three or more errors, one per date
+# across the 2024, 2025 and 2026 seasons (24 errors in all).
+MULTI_ERROR_GAMES = (745598, 746330, 778463, 778379, 823646, 823481)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -87,6 +91,7 @@ GAME_IDS = (
     *BIG_INNING_GAMES,
     *STRIKEOUT_START_GAMES,
     *COMEBACK_GAMES,
+    *MULTI_ERROR_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -121,6 +126,7 @@ SWEEP_SCENARIOS = {
     "big-innings": BIG_INNING_GAMES,
     "strikeout-starts": STRIKEOUT_START_GAMES,
     "comeback-wins": COMEBACK_GAMES,
+    "multi-error-games": MULTI_ERROR_GAMES,
 }
 
 

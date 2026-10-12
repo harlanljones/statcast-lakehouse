@@ -45,6 +45,7 @@ SCENARIO_FILES = {
     "big-innings": "big-innings.arrow",
     "strikeout-starts": "strikeout-starts.arrow",
     "comeback-wins": "comeback-wins.arrow",
+    "multi-error-games": "multi-error-games.arrow",
 }
 
 
