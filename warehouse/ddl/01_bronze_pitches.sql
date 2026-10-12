@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS `statcast_analytics.bronze_pitches` (
   az FLOAT64,
   plate_x FLOAT64,
   plate_z FLOAT64,
+  zone INT64,
   sz_top FLOAT64,
   sz_bot FLOAT64,
   stand STRING,

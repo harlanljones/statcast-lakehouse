@@ -293,6 +293,9 @@ def _to_row(
         "az": coordinates["aZ"],
         "plate_x": coordinates["pX"],
         "plate_z": coordinates["pZ"],
+        # MLB's own zone number (1-9 in the zone, 11-14 around it), carried
+        # rather than derived: the league's cell edges are not published.
+        "zone": pitch.get("zone"),
         "sz_top": pitch.get("strikeZoneTop"),
         "sz_bot": pitch.get("strikeZoneBottom"),
         # Savant semantics: batter/pitcher hand and the count before this pitch.

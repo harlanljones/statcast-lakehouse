@@ -6,7 +6,7 @@ USING (
     pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type,
     release_speed, release_spin_rate,
     x0, y0, z0, vx0, vy0, vz0, ax, ay, az,
-    plate_x, plate_z, sz_top, sz_bot,
+    plate_x, plate_z, zone, sz_top, sz_bot,
     stand, p_throws, balls, strikes, at_bat_number, pitch_number,
     is_swing, is_whiff, launch_speed, launch_angle, hit_distance, bb_type, hc_x, hc_y, extension,
     -- TDD §3.3 spatial index; GIS on the ingest transform, not at query time.
@@ -28,7 +28,7 @@ WHEN NOT MATCHED THEN
     pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type,
     release_speed, release_spin_rate,
     x0, y0, z0, vx0, vy0, vz0, ax, ay, az,
-    plate_x, plate_z, sz_top, sz_bot,
+    plate_x, plate_z, zone, sz_top, sz_bot,
     stand, p_throws, balls, strikes, at_bat_number, pitch_number,
     is_swing, is_whiff, launch_speed, launch_angle, hit_distance, bb_type, hc_x, hc_y, extension, plate_location
   )
@@ -36,7 +36,7 @@ WHEN NOT MATCHED THEN
     pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type,
     release_speed, release_spin_rate,
     x0, y0, z0, vx0, vy0, vz0, ax, ay, az,
-    plate_x, plate_z, sz_top, sz_bot,
+    plate_x, plate_z, zone, sz_top, sz_bot,
     stand, p_throws, balls, strikes, at_bat_number, pitch_number,
     is_swing, is_whiff, launch_speed, launch_angle, hit_distance, bb_type, hc_x, hc_y, extension, plate_location
   )

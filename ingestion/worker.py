@@ -56,6 +56,11 @@ SCHEMA = pa.schema(
         ("az", pa.float64()),
         ("plate_x", pa.float64()),
         ("plate_z", pa.float64()),
+# MLB's own zone number for the pitch, straight from the feed: 1-9 are the
+# nine cells of the strike zone, 11-14 the four cells around it. Present on
+# every tracked pitch and NOT derivable from plate_x/plate_z (the league's cell
+# edges are not published), which is why it is carried rather than computed.
+        ("zone", pa.int64()),
         ("sz_top", pa.float64()),
         ("sz_bot", pa.float64()),
         # Plate-appearance context (Savant stand/p_throws/balls/strikes are

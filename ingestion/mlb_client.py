@@ -81,6 +81,7 @@ COLUMN_MAP = {
     "az": "az",
     "plate_x": "plate_x",
     "plate_z": "plate_z",
+    "zone": "zone",
     "sz_top": "sz_top",
     "sz_bot": "sz_bot",
     "stand": "stand",
