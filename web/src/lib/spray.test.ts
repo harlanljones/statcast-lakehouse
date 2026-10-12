@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { HIT_CHART_PLATE_X, HIT_CHART_PLATE_Y, sprayColor, sprayPoint } from "./spray";
+import {
+  HIT_CHART_PLATE_X,
+  HIT_CHART_PLATE_Y,
+  sprayColor,
+  sprayDirection,
+  sprayPoint,
+} from "./spray";
 
 describe("sprayPoint", () => {
   it("puts a ball hit straight up the middle straight out from the plate", () => {
@@ -45,5 +51,30 @@ describe("sprayColor", () => {
   it("gives bunts and unknown classes a shared neutral colour", () => {
     expect(sprayColor("bunt_popup")).toEqual(sprayColor("bunt_grounder"));
     expect(sprayColor(undefined)).toEqual(sprayColor("never_seen"));
+  });
+});
+
+describe("sprayDirection", () => {
+  const at = (dx: number, dy: number) =>
+    sprayDirection(HIT_CHART_PLATE_X + dx, HIT_CHART_PLATE_Y - dy);
+
+  it("names the five field sectors from the grounded chart orientation", () => {
+    expect(at(0, 200)).toBe("centre field");
+    expect(at(20, 200)).toBe("centre field"); // ~5.7 degrees
+    expect(at(70, 200)).toBe("right-centre"); // ~19 degrees
+    expect(at(140, 200)).toBe("right field"); // ~35 degrees
+    expect(at(-70, 200)).toBe("left-centre");
+    expect(at(-140, 200)).toBe("left field");
+  });
+
+  it("is null without both chart coordinates, and for a point on the anchor", () => {
+    expect(sprayDirection(undefined, 150)).toBeNull();
+    expect(sprayDirection(180, undefined)).toBeNull();
+    expect(sprayDirection(HIT_CHART_PLATE_X, HIT_CHART_PLATE_Y)).toBeNull();
+  });
+
+  it("has no direction for a ball recorded behind the plate", () => {
+    expect(at(20, -30)).toBeNull();
+    expect(at(0, -5)).toBeNull();
   });
 });

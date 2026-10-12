@@ -44,6 +44,30 @@ export function sprayPoint(
   return { x: (distanceFt * dx) / r, y: (-distanceFt * dy) / r };
 }
 
+/**
+ * Field direction of a batted ball, or null without chart coordinates.
+ *
+ * The sectors are stated as field names because the chart's orientation was
+ * grounded rather than assumed: grouping the corpus by the feed's fielder code
+ * puts left field at a mean chart x of 66, centre field at 124 and right field
+ * at 187, so a larger x really is further toward right field. Centred on the
+ * line from home through second base (x = 125), the sectors are within 10°,
+ * 10-25° and beyond 25° either way.
+ */
+export function sprayDirection(hcX?: number, hcY?: number): string | null {
+  if (hcX == null || hcY == null) return null;
+  const dx = hcX - HIT_CHART_PLATE_X;
+  const dy = HIT_CHART_PLATE_Y - hcY;
+  // Only the outfield side of the plate has a field direction; a ball recorded
+  // behind home (a popup into the backstop) does not.
+  if (!(dy > 0)) return null;
+  const degrees = (Math.atan2(dx, dy) * 180) / Math.PI;
+  const side = Math.abs(degrees) <= 10 ? "centre" : degrees < 0 ? "left" : "right";
+  if (side === "centre") return "centre field";
+  const depth = Math.abs(degrees) < 25 ? "-centre" : " field";
+  return `${side}${depth}`;
+}
+
 /** Dot colours by batted-ball class — the same classes the player card reports. */
 const SPRAY_COLORS: Record<string, [number, number, number]> = {
   ground_ball: [110, 200, 120],

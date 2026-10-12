@@ -2,6 +2,7 @@ import { For, Show, type JSX } from "solid-js";
 import { pitchColor, type PitchDatum } from "../lib/deck-layers";
 import { mlbLinks, pitchResult, playerLabel, summarizeBatter, summarizePitcher } from "../lib/player-card";
 import type { PlayerFilter } from "../lib/deck-layers";
+import { sprayDirection } from "../lib/spray";
 import { storylinesForPitcher, type PitcherStoryline } from "../lib/storylines";
 import { CloseButton, THEME } from "./ui";
 
@@ -30,6 +31,13 @@ const muted: JSX.CSSProperties = { color: THEME.muted };
 export default function PlayerCard(props: PlayerCardProps): JSX.Element {
   const summary = () => (props.pitch.pitcherId != null ? summarizePitcher(props.pitches, props.pitch.pitcherId) : null);
   const atBat = () => (props.pitch.batterId != null ? summarizeBatter(props.pitches, props.pitch.batterId) : null);
+  /** Where this batted ball landed, when the data carries both halves of it. */
+  const sprayLine = () => {
+    const direction = sprayDirection(props.pitch.hcX, props.pitch.hcY);
+    const distance = props.pitch.hitDistance;
+    if (!direction || distance == null || !(distance > 0)) return null;
+    return `Spray: ${Math.round(distance)} ft to ${direction}`;
+  };
   const isolated = (role: "pitcher" | "batter", id: number | undefined) =>
     id != null && props.playerFilter?.role === role && props.playerFilter.id === id;
   const isolateButton = (role: "pitcher" | "batter", id: number | undefined) => (
@@ -231,6 +239,9 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
         <div style={muted}>
           {pitchResult(props.pitch)} · plate ({props.pitch.plateX.toFixed(2)}, {props.pitch.plateZ.toFixed(2)}) ft
         </div>
+        <Show when={sprayLine()}>
+          <div style={muted}>{sprayLine()}</div>
+        </Show>
       </div>
 
       <div role="group" aria-label="MLB links" style={{ display: "flex", "flex-wrap": "wrap", gap: "6px" }}>
