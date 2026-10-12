@@ -21,16 +21,70 @@ export interface DatePartition {
   rows: number;
 }
 
+/**
+ * Pure-JS zstd decode, the always-available default. fzstd can return a view
+ * at an unaligned offset, and arrow-js builds BigInt64Array/Float64Array views
+ * straight onto it, so realign when needed.
+ */
+const fzstdDecode = (bytes: Uint8Array): Uint8Array => {
+  const out = zstdDecompress(bytes);
+  return out.byteOffset % 8 === 0 ? out : out.slice();
+};
+
 // The server and export_batch.py write zstd-compressed IPC bodies; arrow-js
 // decodes them only with a registered codec (decode-only is all we need).
-// fzstd can return a view at an unaligned offset, and arrow-js builds
-// BigInt64Array/Float64Array views straight onto it, so realign when needed.
-compressionRegistry.set(CompressionType.ZSTD, {
-  decode: (bytes) => {
-    const out = zstdDecompress(bytes);
-    return out.byteOffset % 8 === 0 ? out : out.slice();
-  },
-});
+compressionRegistry.set(CompressionType.ZSTD, { decode: fzstdDecode });
+
+/** A zstd decoder that can replace the pure-JS default. */
+export interface ZstdCodec {
+  decode(bytes: Uint8Array): Uint8Array;
+}
+
+/** Builds the WASM decoder; injectable so tests can exercise the failure path. */
+export type ZstdCodecFactory = () => Promise<ZstdCodec>;
+
+const wasmZstdCodec: ZstdCodecFactory = async () => {
+  const { ZSTDDecoder } = await import("zstddec");
+  const decoder = new ZSTDDecoder();
+  await decoder.init();
+  return { decode: (bytes) => decoder.decode(bytes) };
+};
+
+let decoderReady: Promise<boolean> | null = null;
+
+/**
+ * Install the WASM zstd codec, once. Resolves true when the fast decoder is
+ * registered and false when it could not be (the pure-JS codec stays in place,
+ * so decoding always works — the WASM path is a speed choice, not a
+ * correctness one). Memoized: concurrent callers share one init, and
+ * `fetchPitches` overlaps it with the first request.
+ */
+export function ensureZstdDecoder(factory: ZstdCodecFactory = wasmZstdCodec): Promise<boolean> {
+  if (!decoderReady) {
+    decoderReady = factory()
+      .then((codec) => {
+        compressionRegistry.set(CompressionType.ZSTD, { decode: (bytes) => codec.decode(bytes) });
+        return true;
+      })
+      .catch(() => false);
+  }
+  return decoderReady;
+}
+
+/** True once the WASM decoder is registered (inspection/test helper). */
+export function zstdDecoderActive(): boolean {
+  const codec = compressionRegistry.get(CompressionType.ZSTD) as { decode?: unknown } | null;
+  return typeof codec?.decode === "function" && codec.decode !== fzstdDecode;
+}
+
+/**
+ * Restore the pure-JS codec and forget the init result (test isolation; the
+ * inverse of ensureZstdDecoder).
+ */
+export function resetZstdDecoder(): void {
+  decoderReady = null;
+  compressionRegistry.set(CompressionType.ZSTD, { decode: fzstdDecode });
+}
 
 /** Arrow int64 ids arrive as bigint; the UI only needs plain numbers (MLB ids are far below 2^53). */
 function idNumber(v: unknown): number | undefined {
@@ -220,9 +274,12 @@ export function clearEtagCache(): void {
 
 export async function fetchPitches(url: string): Promise<PitchTable> {
   const cached = etagCache.get(url);
-  const res = cached
-    ? await fetch(url, { headers: { "If-None-Match": cached.etag } })
-    : await fetch(url);
+  // Warm the WASM decoder while the body is in flight; a failed init just
+  // leaves the pure-JS codec in place.
+  const [res] = await Promise.all([
+    cached ? fetch(url, { headers: { "If-None-Match": cached.etag } }) : fetch(url),
+    ensureZstdDecoder(),
+  ]);
   if (res.status === 304 && cached) {
     return cached.parsed;
   }
