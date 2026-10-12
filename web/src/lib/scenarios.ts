@@ -28,7 +28,8 @@ export type ScenarioId =
   | "big-innings"
   | "strikeout-starts"
   | "comeback-wins"
-  | "multi-error-games";
+  | "multi-error-games"
+  | "inning-after-inning";
 
 export type LayerKey =
   | "tunneling"
@@ -586,6 +587,26 @@ export const SCENARIOS: readonly Scenario[] = [
     preset: preset({
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true },
+    }),
+  },
+  {
+    id: "inning-after-inning",
+    title: "Inning After Inning",
+    dateLabel: "Apr 12, 2024 – Jul 6, 2026",
+    gameLabel: "Six games · 93 runs",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/824354/feed/live",
+    synthetic: false,
+    hook: "Six games in which one team scored in seven or more different innings.",
+    lookFor:
+      "2,090 tracked pitches, 1,008 swings and 214 whiffs across six regulation games from April 2024 to July 2026 in which one team scored in seven or more different innings — three of them in eight — for 93 runs in all: the Giants put up 19 at Coors Field, the Orioles 17 at Yankee Stadium, and the Royals 15 while holding the Phillies to a single run. 395 pitches were put in play with measured contact data.",
+    tryThis:
+      "Step through the innings and watch how the pitch mix changes once a lead is built.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Batter",
+      layers: { plateCrossings: true, heatmap: true },
+      heatmapMode: "hard_hit",
     }),
   },
 ];

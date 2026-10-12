@@ -34,6 +34,7 @@ SCENARIO_ROWS = {
     "strikeout-starts": 1681,
     "comeback-wins": 1903,
     "multi-error-games": 1866,
+    "inning-after-inning": 2090,
 }
 
 

@@ -77,6 +77,10 @@ COMEBACK_GAMES = (746085, 747059, 778490, 778472, 822758, 823569)
 # Six regulation games in which a team made three or more errors, one per date
 # across the 2024, 2025 and 2026 seasons (24 errors in all).
 MULTI_ERROR_GAMES = (745598, 746330, 778463, 778379, 823646, 823481)
+
+# Six games in which one team scored in seven or more different innings
+# (three of them in eight), one per date across the three seasons.
+INNING_AFTER_INNING_GAMES = (744954, 745734, 776533, 777331, 824354, 824089)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -92,6 +96,7 @@ GAME_IDS = (
     *STRIKEOUT_START_GAMES,
     *COMEBACK_GAMES,
     *MULTI_ERROR_GAMES,
+    *INNING_AFTER_INNING_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -127,6 +132,7 @@ SWEEP_SCENARIOS = {
     "strikeout-starts": STRIKEOUT_START_GAMES,
     "comeback-wins": COMEBACK_GAMES,
     "multi-error-games": MULTI_ERROR_GAMES,
+    "inning-after-inning": INNING_AFTER_INNING_GAMES,
 }
 
 
