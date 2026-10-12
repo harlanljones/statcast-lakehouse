@@ -96,13 +96,21 @@ def solve_flight_time(y0: float, vy0: float, ay: float, y_end: float = PLATE_Y_F
         if t <= 0 or b > 0:
             raise ValueError("pitch plane crossing is not in the future")
         return t
-    roots = sorted(
-        t for t in ((-b - math.sqrt(disc)) / (2.0 * a), (-b + math.sqrt(disc)) / (2.0 * a))
-        if t > 0 and b + 2.0 * a * t < 0
-    )
-    if not roots:
+    # Earliest positive root at which the ball is still approaching the plate,
+    # scanned without building and sorting a list: this runs several times per
+    # pitch (path, ghost, break vector, commitment plane) on the export path.
+    # Mirrors the same scan in web/src/lib/kinematics.ts flightTime.
+    root = math.sqrt(disc)
+    t1 = (-b - root) / (2.0 * a)
+    t2 = (-b + root) / (2.0 * a)
+    best = math.inf
+    if t1 > 0 and b + 2.0 * a * t1 < 0:
+        best = t1
+    if t2 > 0 and b + 2.0 * a * t2 < 0 and t2 < best:
+        best = t2
+    if best == math.inf:
         raise ValueError("pitch plane crossing is not in the future")
-    return roots[0]
+    return best
 
 
 def position_at(pitch: dict[str, float], t: float) -> tuple[float, float, float]:
