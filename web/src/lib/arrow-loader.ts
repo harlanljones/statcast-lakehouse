@@ -67,6 +67,12 @@ type Getter = (i: number) => unknown;
  * representation is read straight from `toArray()` (zero-copy for a single
  * chunk); anything else (nullable columns, strings, int64) goes through the
  * Vector's `get`, because `toArray()` would silently turn NULLs into 0/NaN.
+ *
+ * No-null Utf8 columns also get an array fast path: `toArray()` hands back a
+ * plain array of strings, while `Vector.get()` re-decodes the string on every
+ * call (about 60x slower per row on a real corpus). Other plain-array columns
+ * (timestamps as epoch milliseconds) keep the Vector path so the value type a
+ * caller sees never changes.
  */
 function columnGetter(table: Table, name: string): Getter | null {
   const vec = table.getChild(name);
@@ -76,6 +82,10 @@ function columnGetter(table: Table, name: string): Getter | null {
     if (ArrayBuffer.isView(arr) && !(arr instanceof DataView)) {
       const typed = arr as unknown as ArrayLike<unknown>;
       return (i) => typed[i];
+    }
+    if (Array.isArray(arr) && typeof arr[0] === "string") {
+      const strings = arr as string[];
+      return (i) => strings[i];
     }
   }
   return (i) => vec.get(i);
