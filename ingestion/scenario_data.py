@@ -14,6 +14,7 @@ from typing import Any
 
 import pyarrow as pa
 
+from ingestion.mlb_client import SWING_RESULTS, WHIFF_RESULTS, canonical_result
 from ingestion.scenarios import DATA_DIR, SCENARIO_FILES, SLICE_SCHEMA
 
 # One game per period across the 2024, 2025 and 2026 seasons: the sweep slice
@@ -210,6 +211,15 @@ SWEEP_SCENARIOS = {
 }
 
 
+class UnmappedPitchResult(RuntimeError):
+    """The feed described a pitch in words this build does not know.
+
+    Deliberately NOT caught by the refresh loop (unlike UntrackedPitch, which
+    skips one pitch): a changed vocabulary would otherwise silently drop or
+    mislabel pitches, so the refresh stops until the mapping is extended.
+    """
+
+
 class UntrackedPitch(ValueError):
     """A pitch the feed lists without Statcast tracking coordinates.
 
@@ -263,9 +273,14 @@ def _to_row(
     # Savant contact columns: the feed attaches hitData to the pitch event that
     # was put in play (NULL on every other pitch).
     hit = event.get("hitData") or {}
-    description = (details.get("description") or "").casefold()
-    swing = description.startswith(("foul", "in play", "swinging strike", "missed bunt"))
-    whiff = description.startswith(("swinging strike", "missed bunt"))
+    result = canonical_result(details.get("description"))
+    if result is None:
+        raise UnmappedPitchResult(
+            f"game {game_id} play {event.get('playId')} has an unmapped pitch description "
+            f"{details.get('description')!r}; add it to FEED_DESCRIPTION_TO_RESULT"
+        )
+    swing = result in SWING_RESULTS
+    whiff = result in WHIFF_RESULTS
     required = ("x0", "y0", "z0", "vX0", "vY0", "vZ0", "aX", "aY", "aZ", "pX", "pZ")
     missing = [name for name in required if coordinates.get(name) is None]
     if missing:
@@ -280,6 +295,7 @@ def _to_row(
         "pitcher_id": play["matchup"]["pitcher"]["id"],
         "batter_id": play["matchup"]["batter"]["id"],
         "pitch_type": (details.get("type") or {}).get("code") or "UN",
+        "pitch_result": result,
         "release_speed": pitch.get("startSpeed"),
         "release_spin_rate": (pitch.get("breaks") or {}).get("spinRate"),
         "x0": coordinates["x0"],

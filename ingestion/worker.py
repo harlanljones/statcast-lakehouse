@@ -43,6 +43,11 @@ SCHEMA = pa.schema(
         ("pitcher_id", pa.int64()),
         ("batter_id", pa.int64()),
         ("pitch_type", pa.string()),
+        # The pitch's outcome as one canonical code (mlb_client.PITCH_RESULTS):
+        # Savant's vocabulary, into which the game feed's prose descriptions are
+        # mapped. is_swing/is_whiff are derived from it and cannot recover it —
+        # a called strike and a ball share (0, 0), which is half the corpus.
+        ("pitch_result", pa.string()),
         ("release_speed", pa.float64()),
         ("release_spin_rate", pa.float64()),
         ("x0", pa.float64()),

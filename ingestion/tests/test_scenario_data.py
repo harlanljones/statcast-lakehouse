@@ -1,5 +1,8 @@
 """Scenario refresh maps MLB feed context to Savant semantics (offline)."""
+from datetime import date
+
 import pyarrow as pa
+import pytest
 
 from ingestion import scenario_data
 from ingestion.scenarios import SLICE_SCHEMA
@@ -58,6 +61,24 @@ def feed():
             ],
         }]}},
     }
+
+
+def test_pitch_result_is_the_canonical_code_not_the_feed_prose():
+    play = feed()["liveData"]["plays"]["allPlays"][0]
+    game = date(2024, 9, 4)
+    in_play = scenario_data._to_row(1, game, play, play["playEvents"][0])
+    assert in_play["pitch_result"] == "hit_into_play"
+    assert (in_play["is_swing"], in_play["is_whiff"]) == (1, 0)
+    called = scenario_data._to_row(1, game, play, pitch(3, 0, 1, "Called Strike"))
+    assert called["pitch_result"] == "called_strike"
+    assert (called["is_swing"], called["is_whiff"]) == (0, 0)
+    assert scenario_data._to_row(1, game, play, pitch(4, 0, 0, "Pitchout"))["pitch_result"] == "pitchout"
+
+
+def test_an_unseen_description_stops_the_refresh():
+    play = feed()["liveData"]["plays"]["allPlays"][0]
+    with pytest.raises(scenario_data.UnmappedPitchResult):
+        scenario_data._to_row(1, date(2024, 9, 4), play, pitch(5, 0, 0, "Some New Wording"))
 
 
 def test_refresh_writes_pre_pitch_count_and_hands(tmp_path, monkeypatch):
