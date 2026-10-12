@@ -25,4 +25,8 @@ export const SCENE_ACCENT: Record<string, string> = {
   "ohtani-50th-home-run": "#c4b5fd",
   "freeman-walk-off": "#f87171",
   "snell-no-hitter": "#4ade80",
+  "cardinals-dodgers-opener": "#a78bfa",
+  "tigers-astros-june": "#facc15",
+  "yankees-athletics-2025": "#22d3ee",
+  "twins-blue-jays-2026": "#f472b6",
 };

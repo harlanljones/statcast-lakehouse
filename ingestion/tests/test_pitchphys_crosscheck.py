@@ -3,7 +3,7 @@
 worker.ghost_kinematics keeps gravity plus the drag part of the measured
 acceleration (its component along the mid-flight velocity) and the fitted
 ay. The reference crossings come from pitchphys (Lyu 2022 drag, spin = 0)
-for all 497 checked-in real pitches; regenerate with
+for every checked-in real pitch; regenerate with
 ``python -m ingestion.pitchphys_reference``.
 
 Measured 2026-09-25: before the drag correction the ghost landed about

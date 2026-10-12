@@ -11,7 +11,11 @@ export type ScenarioId =
   | "ohtani-50-50"
   | "ohtani-50th-home-run"
   | "freeman-walk-off"
-  | "snell-no-hitter";
+  | "snell-no-hitter"
+  | "cardinals-dodgers-opener"
+  | "tigers-astros-june"
+  | "yankees-athletics-2025"
+  | "twins-blue-jays-2026";
 
 export type LayerKey =
   | "tunneling"
@@ -238,6 +242,84 @@ export const SCENARIOS: readonly Scenario[] = [
     preset: preset({
       view: "Side",
       layers: { dispersion: true, fatigue: true, releasePoints: true },
+    }),
+  },
+  {
+    id: "cardinals-dodgers-opener",
+    title: "Opening Day at Dodger Stadium",
+    dateLabel: "Mar 28, 2024",
+    gameLabel: "Cardinals at Dodgers · 1–7",
+    storyUrl: "https://www.mlb.com/gameday/cardinals-vs-dodgers/2024/03/28/746165/final",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/746165/feed/live",
+    synthetic: false,
+    hook: "All 259 tracked pitches of the 2024 home opener in Los Angeles.",
+    lookFor:
+      "Tyler Glasnow's 81 pitches for the Dodgers against Miles Mikolas's 74 for St. Louis: 137 swings, 32 whiffs, and a mix that runs from four-seamers to 41 sinkers, 27 sweepers and a slurve. Speeds span 69.0 to 98.5 mph.",
+    tryThis:
+      "Isolate the sinkers and sweepers, then open the break chart to compare their movement with the four-seamers.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    preset: preset({
+      view: "Catcher",
+      layers: { plateCrossings: true, ghostBreak: true, breakChart: true },
+    }),
+  },
+  {
+    id: "tigers-astros-june",
+    title: "Thirteen Runs in Houston",
+    dateLabel: "Jun 15, 2024",
+    gameLabel: "Tigers at Astros · 13–5",
+    storyUrl: "https://www.mlb.com/gameday/tigers-vs-astros/2024/06/15/746381/final",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/746381/feed/live",
+    synthetic: false,
+    hook: "A 13–5 Detroit win with the widest arsenal in the catalog.",
+    lookFor:
+      "357 tracked pitches from Minute Maid Park — Jack Flaherty's 73 plus nine more arms — 163 swings and 36 whiffs across ten pitch types, including two slurves.",
+    tryThis:
+      "Open pitch pairs, choose the four-seamer and the slider, and compare where the two separate between the commitment plane and the plate.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    preset: preset({
+      view: "Catcher",
+      layers: { tunneling: true, pairComparison: true, plateCrossings: true },
+      pairedTypes: ["FF", "SL"],
+    }),
+  },
+  {
+    id: "yankees-athletics-2025",
+    title: "Forty-Six Whiffs in Sacramento",
+    dateLabel: "May 10, 2025",
+    gameLabel: "Yankees at Athletics · 7–11",
+    storyUrl: "https://www.mlb.com/gameday/yankees-vs-athletics/2025/05/10/777972/final",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/777972/feed/live",
+    synthetic: false,
+    hook: "The 2025 slice: 323 pitches and the catalog's highest whiff count.",
+    lookFor:
+      "Carlos Rodón's 98 pitches against JP Sears's 82, with Mason Miller out of the bullpen; 148 swings produced 46 whiffs. Speeds span 75.5 to 102.1 mph.",
+    tryThis:
+      "Turn on release points and compare Rodón's and Sears's release spread pitch type by pitch type.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    preset: preset({
+      view: "Side",
+      layers: { releasePoints: true, dispersion: true, heatmap: true },
+    }),
+  },
+  {
+    id: "twins-blue-jays-2026",
+    title: "Toronto's Ten-Run Night",
+    dateLabel: "Apr 10, 2026",
+    gameLabel: "Twins at Blue Jays · 4–10",
+    storyUrl: "https://www.mlb.com/gameday/twins-vs-blue-jays/2026/04/10/822829/final",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/822829/feed/live",
+    synthetic: false,
+    hook: "The 2026 slice: 311 pitches from Rogers Centre.",
+    lookFor:
+      "Sliders (92) outnumber four-seamers (48) in this game, with Patrick Corbin's 85 pitches leading the staff; 147 swings produced 23 whiffs.",
+    tryThis:
+      "Set the whiff-rate heatmap, then compare where sliders missed bats with where sinkers were put in play.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Batter",
+      layers: { plateCrossings: true, heatmap: true, fatigue: true },
+      heatmapMode: "whiff_rate",
     }),
   },
 ];

@@ -82,7 +82,10 @@ BOUNDS = {
     "release_speed": (35.0, 110.0),
     "release_spin_rate": (0.0, 4000.0),
     "x0": (-6.0, 6.0),
-    "y0": (45.0, 55.0),
+    # y0 is either the 50 ft measurement plane (slices with a NULL extension)
+    # or, once the loader back-extrapolates with the feed's extension, the
+    # release plane 60.5 - extension ft, so the window spans both.
+    "y0": (45.0, 61.0),
     "z0": (2.0, 10.0),
     "vx0": (-30.0, 30.0),
     "vy0": (-175.0, -40.0),

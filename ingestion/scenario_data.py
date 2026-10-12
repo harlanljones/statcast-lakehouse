@@ -7,6 +7,7 @@ and do not use the network.
 from __future__ import annotations
 
 import json
+import sys
 import urllib.request
 from datetime import date, datetime, time, timezone
 from typing import Any
@@ -15,11 +16,35 @@ import pyarrow as pa
 
 from ingestion.scenarios import DATA_DIR, SCENARIO_FILES, SLICE_SCHEMA
 
-GAME_IDS = (746011, 775300, 746679)
+GAME_IDS = (746011, 775300, 746679, 746165, 746381, 777972, 822829)
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
 SNELL_GAME = 746679
+CARDINALS_DODGERS_GAME = 746165
+TIGERS_ASTROS_GAME = 746381
+YANKEES_ATHLETICS_GAME = 777972
+TWINS_BLUE_JAYS_GAME = 822829
 API = "https://statsapi.mlb.com/api/v1.1/game/{game_id}/feed/live"
+
+# Slices that take every tracked pitch of their game (breadth across seasons,
+# dates, pitchers and pitch types); the rest select a batter or pitcher.
+WHOLE_GAME_SCENARIOS = {
+    "twenty-run-night": OHTANI_GAME,
+    "cardinals-dodgers-opener": CARDINALS_DODGERS_GAME,
+    "tigers-astros-june": TIGERS_ASTROS_GAME,
+    "yankees-athletics-2025": YANKEES_ATHLETICS_GAME,
+    "twins-blue-jays-2026": TWINS_BLUE_JAYS_GAME,
+}
+
+
+class UntrackedPitch(ValueError):
+    """A pitch the feed lists without Statcast tracking coordinates.
+
+    The feed carries a handful of these per season (a pitch that was not
+    tracked, e.g. a position player's lob). They carry no 9-parameter fit, so
+    the refresh skips them and reports the count instead of failing the whole
+    game.
+    """
 
 
 def _fetch(game_id: int) -> dict[str, Any]:
@@ -35,8 +60,8 @@ def _selected(scenario_id: str, game_id: int, play: dict) -> bool:
     pitcher = play.get("matchup", {}).get("pitcher", {}).get("fullName")
     about = play.get("about", {})
     result = play.get("result", {})
-    if scenario_id == "twenty-run-night":
-        return game_id == 746011
+    if scenario_id in WHOLE_GAME_SCENARIOS:
+        return game_id == WHOLE_GAME_SCENARIOS[scenario_id]
     if scenario_id == "ohtani-50-50":
         return game_id == OHTANI_GAME and batter == "Shohei Ohtani"
     if scenario_id == "ohtani-50th-home-run":
@@ -66,7 +91,9 @@ def _to_row(
     required = ("x0", "y0", "z0", "vX0", "vY0", "vZ0", "aX", "aY", "aZ", "pX", "pZ")
     missing = [name for name in required if coordinates.get(name) is None]
     if missing:
-        raise ValueError(f"game {game_id} play {event.get('playId')} is missing {missing}")
+        raise UntrackedPitch(
+            f"game {game_id} play {event.get('playId')} is missing {missing}"
+        )
     day = datetime.combine(game_date, time.min, tzinfo=timezone.utc)
     return {
         "pitch_id": event["playId"],
@@ -109,6 +136,7 @@ def _to_row(
 def refresh() -> dict[str, int]:
     feeds = {game_id: _fetch(game_id) for game_id in GAME_IDS}
     tables: dict[str, list[dict]] = {scenario_id: [] for scenario_id in SCENARIO_FILES}
+    untracked: dict[str, int] = {}
     for game_id, feed in feeds.items():
         game_date = date.fromisoformat(feed["gameData"]["datetime"]["officialDate"])
         for play in feed["liveData"]["plays"]["allPlays"]:
@@ -119,10 +147,19 @@ def refresh() -> dict[str, int]:
                 if event.get("isPitch") and "pitchData" in event:
                     for scenario_id in SCENARIO_FILES:
                         if _selected(scenario_id, game_id, play):
-                            tables[scenario_id].append(
-                                _to_row(game_id, game_date, play, event, pre_count)
-                            )
+                            try:
+                                row = _to_row(game_id, game_date, play, event, pre_count)
+                            except UntrackedPitch as exc:
+                                untracked[scenario_id] = untracked.get(scenario_id, 0) + 1
+                                print(f"skipping untracked pitch: {exc}", file=sys.stderr)
+                                continue
+                            tables[scenario_id].append(row)
                 pre_count = event.get("count") or pre_count
+    for scenario_id, count in sorted(untracked.items()):
+        print(
+            f"note: {scenario_id} skipped {count} pitch(es) with no tracking coordinates",
+            file=sys.stderr,
+        )
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     counts = {}
     for scenario_id, rows in tables.items():

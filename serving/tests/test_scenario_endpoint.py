@@ -17,6 +17,10 @@ SCENARIO_ROWS = {
     "ohtani-50th-home-run": 4,
     "freeman-walk-off": 13,
     "snell-no-hitter": 114,
+    "cardinals-dodgers-opener": 259,
+    "tigers-astros-june": 357,
+    "yankees-athletics-2025": 323,
+    "twins-blue-jays-2026": 311,
 }
 
 

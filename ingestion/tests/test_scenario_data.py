@@ -63,3 +63,25 @@ def test_refresh_writes_pre_pitch_count_and_hands(tmp_path, monkeypatch):
     # Feed extension is carried when present and NULL when absent; names ride along.
     assert [r["extension"] for r in rows] == [None, 6.4]
     assert {(r["pitcher_name"], r["batter_name"]) for r in rows} == {("Blake Snell", "Someone")}
+
+
+def test_refresh_skips_pitches_without_tracking_coordinates(tmp_path, monkeypatch, capsys):
+    # The feed carries a few pitches with no 9-parameter fit (untracked, e.g. a
+    # position player's lob); they are skipped with a count, not fatal.
+    def feed_with_untracked():
+        payload = feed()
+        events = payload["liveData"]["plays"]["allPlays"][0]["playEvents"]
+        untracked = pitch(3, 2, 1)
+        untracked["pitchData"]["coordinates"] = {"pX": 0.1, "pZ": 2.5}
+        events.append(untracked)
+        return payload
+
+    monkeypatch.setattr(scenario_data, "GAME_IDS", (scenario_data.SNELL_GAME,))
+    monkeypatch.setattr(scenario_data, "SCENARIO_FILES", {"snell-no-hitter": "snell.arrow"})
+    monkeypatch.setattr(scenario_data, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(scenario_data, "_fetch", lambda game_id: feed_with_untracked())
+
+    assert scenario_data.refresh() == {"snell-no-hitter": 2}
+    table = pa.ipc.open_file(tmp_path / "snell.arrow").read_all()
+    assert [r["pitch_number"] for r in table.to_pylist()] == [1, 2]
+    assert "skipped 1 pitch(es) with no tracking coordinates" in capsys.readouterr().err

@@ -29,6 +29,10 @@ SCENARIO_FILES = {
     "ohtani-50th-home-run": "ohtani-50th-home-run.arrow",
     "freeman-walk-off": "freeman-walk-off.arrow",
     "snell-no-hitter": "snell-no-hitter.arrow",
+    "cardinals-dodgers-opener": "cardinals-dodgers-opener.arrow",
+    "tigers-astros-june": "tigers-astros-june.arrow",
+    "yankees-athletics-2025": "yankees-athletics-2025.arrow",
+    "twins-blue-jays-2026": "twins-blue-jays-2026.arrow",
 }
 
 

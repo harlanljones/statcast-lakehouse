@@ -19,6 +19,10 @@ const SERVER_IDS = [
   "ohtani-50th-home-run",
   "freeman-walk-off",
   "snell-no-hitter",
+  "cardinals-dodgers-opener",
+  "tigers-astros-june",
+  "yankees-athletics-2025",
+  "twins-blue-jays-2026",
 ];
 
 describe("real-game story catalog", () => {
@@ -32,7 +36,7 @@ describe("real-game story catalog", () => {
       expect(s.hook.length).toBeGreaterThan(0);
       expect(s.lookFor.length).toBeGreaterThan(0);
       expect(s.tryThis.length).toBeGreaterThan(0);
-      expect(s.dateLabel).toMatch(/\w{3} \d{1,2}, 2024/);
+      expect(s.dateLabel).toMatch(/^\w{3} \d{1,2}, \d{4}$/);
       expect(s.storyUrl).toMatch(/^https:\/\/www\.mlb\.com\//);
       expect(s.feedUrl).toMatch(/^https:\/\/statsapi\.mlb\.com\/api\/v1\.1\/game\//);
       expect(s.synthetic).toBe(false);

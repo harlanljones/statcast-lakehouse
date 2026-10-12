@@ -13,6 +13,10 @@ EXPECTED_ROWS = {
     "ohtani-50th-home-run": (746011, 4),
     "freeman-walk-off": (775300, 13),
     "snell-no-hitter": (746679, 114),
+    "cardinals-dodgers-opener": (746165, 259),
+    "tigers-astros-june": (746381, 357),
+    "yankees-athletics-2025": (777972, 323),
+    "twins-blue-jays-2026": (822829, 311),
 }
 
 
@@ -32,22 +36,33 @@ def test_scenario_is_a_stable_schema_valid_slice_of_its_real_game(scenario_id, i
 
 
 def test_slices_without_extension_or_name_columns_are_filled_with_null(tmp_path, monkeypatch):
-    # The checked-in files predate extension / pitcher_name / batter_name.
+    # Slices written before a column existed load with NULL in its place, and a
+    # slice that carries the column keeps its measured values.
     table = scenarios.SCENARIOS["freeman-walk-off"]()
-    for column in ("extension", "pitcher_name", "batter_name"):
-        assert table.column(column).null_count == table.num_rows
-    # A file that has them keeps its values.
+    legacy = table.drop_columns(["extension", "pitcher_name", "batter_name"])
+    legacy_path = tmp_path / "legacy.arrow"
+    with pa.ipc.new_file(str(legacy_path), legacy.schema) as writer:
+        writer.write_table(legacy)
+
     full = table.set_column(
         table.schema.get_field_index("extension"), "extension",
         pa.array([6.5] * table.num_rows, pa.float64()),
     )
-    path = tmp_path / "full.arrow"
-    with pa.ipc.new_file(str(path), full.schema) as writer:
+    full_path = tmp_path / "full.arrow"
+    with pa.ipc.new_file(str(full_path), full.schema) as writer:
         writer.write_table(full)
-    monkeypatch.setitem(scenarios.SCENARIO_FILES, "freeman-walk-off", "full.arrow")
+
     monkeypatch.setattr(scenarios, "DATA_DIR", tmp_path)
     scenarios.scenario_table.cache_clear()
     try:
+        monkeypatch.setitem(scenarios.SCENARIO_FILES, "freeman-walk-off", "legacy.arrow")
+        scenarios.scenario_table.cache_clear()
+        filled = scenarios.scenario_table("freeman-walk-off")
+        for column in ("extension", "pitcher_name", "batter_name"):
+            assert filled.column(column).null_count == filled.num_rows
+
+        monkeypatch.setitem(scenarios.SCENARIO_FILES, "freeman-walk-off", "full.arrow")
+        scenarios.scenario_table.cache_clear()
         assert set(scenarios.scenario_table("freeman-walk-off").column("extension").to_pylist()) == {6.5}
     finally:
         scenarios.scenario_table.cache_clear()
@@ -70,8 +85,16 @@ def test_real_pitches_are_every_checked_in_pitch_once_in_game_order():
     table = scenarios.real_pitches()
     rows = table.to_pylist()
     assert table.schema.equals(SCHEMA)
-    # The Ohtani slices are subsets of the twenty-run-night game feed.
-    assert table.num_rows == 370 + 13 + 114
+    # Every checked-in pitch exactly once: the Ohtani slices repeat pitches that
+    # the full twenty-run-night slice already carries, and overlapping slices
+    # must collapse rather than double-count.
+    checked_in = [
+        pitch_id
+        for scenario_id in scenarios.SCENARIO_FILES
+        for pitch_id in scenarios.SCENARIOS[scenario_id]().column("pitch_id").to_pylist()
+    ]
+    assert len(checked_in) > table.num_rows  # the slices really do overlap
+    assert table.num_rows == len(set(checked_in))
     assert len({row["pitch_id"] for row in rows}) == table.num_rows
     dates = [row["game_date"] for row in rows]
     assert dates == sorted(dates)

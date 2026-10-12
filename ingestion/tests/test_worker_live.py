@@ -134,9 +134,10 @@ class TestWriteBqSerialization:
             json.dumps(call.rows)
 
     def test_dates_and_datetimes_become_iso_strings(self):
-        write_bq(iter(_sample_rows(3)), "proj-x", "bronze_pitches")
-        for obj in _FAKE_STATE.load_calls[0].rows:
-            assert obj["game_date"] == "2024-08-02"
+        rows = _sample_rows(3)
+        write_bq(iter(rows), "proj-x", "bronze_pitches")
+        for obj, row in zip(_FAKE_STATE.load_calls[0].rows, rows):
+            assert obj["game_date"] == row["game_date"].isoformat()
             # datetime ISO format, UTC offset preserved
             parsed = dt.datetime.fromisoformat(obj["ingestion_time"])
             assert parsed.utcoffset() == dt.timedelta(0)
