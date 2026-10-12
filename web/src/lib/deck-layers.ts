@@ -328,6 +328,18 @@ export type OutcomeFilter = "all" | "swings" | "whiffs";
 /** Game state when the pitch was thrown, as a disjoint cut of the count. */
 export type CountBucket = "first" | "pitcher_ahead" | "hitter_ahead" | "even";
 
+/** The four buckets in display order, phrased from the pitcher's point of view. */
+export const COUNT_BUCKETS: readonly { bucket: CountBucket; label: string; title: string }[] = [
+  { bucket: "first", label: "First pitch", title: "First pitch of the at-bat (0-0)" },
+  { bucket: "pitcher_ahead", label: "Pitcher ahead", title: "More strikes than balls (0-1, 0-2, 1-2)" },
+  {
+    bucket: "hitter_ahead",
+    label: "Hitter ahead",
+    title: "More balls than strikes (1-0, 2-0, 3-0, 2-1, 3-1, 3-2)",
+  },
+  { bucket: "even", label: "Even", title: "Level count, not the first pitch (1-1, 2-2)" },
+];
+
 /**
  * Which side the count favours, or null when the row carries no count.
  * 0-0 is its own bucket: the first pitch of an at-bat is a different decision

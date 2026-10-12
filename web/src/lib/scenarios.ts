@@ -47,6 +47,7 @@ export type LayerKey =
   | "contactSim"
   | "dispersion"
   | "fatigue"
+  | "countMix"
   | "heatmap";
 
 export type LensId =
@@ -87,6 +88,7 @@ export const LAYER_TOGGLES: readonly { key: LayerKey; label: string }[] = [
   { key: "contactSim", label: "Contact sim" },
   { key: "dispersion", label: "Release dispersion" },
   { key: "fatigue", label: "Fatigue" },
+  { key: "countMix", label: "Count mix" },
   { key: "heatmap", label: "Zone heatmap" },
 ];
 
@@ -132,6 +134,7 @@ const NO_LAYERS: Record<LayerKey, boolean> = {
   contactSim: false,
   dispersion: false,
   fatigue: false,
+  countMix: false,
   heatmap: false,
 };
 
@@ -694,7 +697,7 @@ export const SCENARIOS: readonly Scenario[] = [
     lens: ["camera", "flight", "types", "speed", "plate", "zone", "count", "outcome"],
     preset: preset({
       view: "Pitcher",
-      layers: { plateCrossings: true, fatigue: true },
+      layers: { plateCrossings: true, fatigue: true, countMix: true },
     }),
   },
   {

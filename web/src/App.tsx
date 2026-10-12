@@ -52,6 +52,7 @@ import {
   type ScenarioPreset,
 } from "./lib/scenarios";
 import { applyPresetFiltersTo, applyPresetTo } from "./lib/scenario-state";
+import { countMix } from "./lib/count-mix";
 import type { CountBucket, PlayerFilter } from "./lib/deck-layers";
 import { nextPlayState, prefersReducedMotion } from "./lib/playback";
 import type { DragMode } from "./lib/camera";
@@ -97,6 +98,7 @@ export default function App() {
   const [attackAngleDeg, setAttackAngleDeg] = createSignal<number>(10.0);
   const [showDispersion, setShowDispersion] = createSignal<boolean>(false);
   const [showFatigue, setShowFatigue] = createSignal<boolean>(false);
+  const [showCountMix, setShowCountMix] = createSignal<boolean>(false);
   const [showHeatmap, setShowHeatmap] = createSignal<boolean>(false);
   // "Isolate this player": set from the card, cleared by a scenario change or Reset filters.
   const [playerFilter, setPlayerFilter] = createSignal<PlayerFilter | null>(null);
@@ -164,6 +166,12 @@ export default function App() {
       count: distinctPitcherCount(vis),
     };
   });
+  // The count mix follows the same pitcher as the fatigue panel: a count plan is per arm.
+  const countRows = createMemo(() => {
+    if (!showCountMix()) return [];
+    return countMix(visiblePitches(), fatigueInfo().id);
+  });
+
   const fatigueBuckets = createMemo(() => {
     if (!showFatigue()) return [];
     return computeFatigueBuckets(visiblePitches(), 25, fatigueInfo().id);
@@ -254,6 +262,7 @@ export default function App() {
     contactSim: setShowContactSim,
     dispersion: setShowDispersion,
     fatigue: setShowFatigue,
+    countMix: setShowCountMix,
     heatmap: setShowHeatmap,
   };
 
@@ -375,6 +384,7 @@ export default function App() {
     contactSim: showContactSim(),
     dispersion: showDispersion(),
     fatigue: showFatigue(),
+    countMix: showCountMix(),
     heatmap: showHeatmap(),
   });
   // A scenario shows its own lenses; "All controls" (and Live data) show every lens plus the layer toggles.
@@ -461,6 +471,9 @@ export default function App() {
             showDispersion={showDispersion()}
             releaseDispersion={releaseDispersion()}
             showFatigue={showFatigue()}
+            showCountMix={showCountMix()}
+            countRows={countRows()}
+            onToggleCountMix={setShowCountMix}
             fatigueBuckets={fatigueBuckets()}
             fatiguePitcherLabel={fatigueInfo().label}
             fatiguePitcherCount={fatigueInfo().count}

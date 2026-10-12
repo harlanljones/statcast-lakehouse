@@ -24,6 +24,7 @@ import {
 } from "../lib/camera";
 import { keyboardCameraStep, stepPitch } from "../lib/keyboard";
 import PlayerCard from "./PlayerCard";
+import type { CountRow } from "../lib/count-mix";
 import type { CountBucket, PlayerFilter } from "../lib/deck-layers";
 import { THEME } from "./ui";
 import type { ArsenalCentroid } from "../lib/arsenal";
@@ -35,6 +36,7 @@ import type { PitcherStoryline } from "../lib/storylines";
 const BreakChart = lazy(() => import("./BreakChart"));
 const PairComparisonPanel = lazy(() => import("./PairComparisonPanel"));
 const FatiguePanel = lazy(() => import("./FatiguePanel"));
+const CountPanel = lazy(() => import("./CountPanel"));
 
 export interface VisualizerProps {
   data: PitchTable | null;
@@ -86,6 +88,9 @@ export interface VisualizerProps {
   fatigueBuckets?: FatigueBucket[];
   fatiguePitcherLabel?: string;
   fatiguePitcherCount?: number;
+  showCountMix?: boolean;
+  countRows?: CountRow[];
+  onToggleCountMix?: (on: boolean) => void;
   onToggleFatigue?: (v: boolean) => void;
   showHeatmap?: boolean;
   heatmapCells?: HeatmapCell[] | null;
@@ -407,6 +412,13 @@ export default function Visualizer(props: VisualizerProps) {
               onSelectPairedTypes={(pair) => props.onSelectPairedTypes?.(pair)}
               centroids={props.arsenalCentroids!}
               onClose={() => props.onTogglePairComparison?.(false)}
+            />
+          </Show>
+          <Show when={props.showCountMix && props.countRows}>
+            <CountPanel
+              rows={props.countRows!}
+              pitcherLabel={props.fatiguePitcherLabel}
+              onClose={() => props.onToggleCountMix?.(false)}
             />
           </Show>
           <Show when={props.showFatigue && props.fatigueBuckets}>

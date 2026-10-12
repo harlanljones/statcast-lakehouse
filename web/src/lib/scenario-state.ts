@@ -36,6 +36,7 @@ export const LAYER_KEYS: readonly LayerKey[] = [
   "contactSim",
   "dispersion",
   "fatigue",
+  "countMix",
   "heatmap",
 ];
 

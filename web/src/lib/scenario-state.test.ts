@@ -5,7 +5,7 @@ import type { CountBucket, PlayerFilter } from "./deck-layers";
 
 const LAYER_KEYS: LayerKey[] = [
   "tunneling", "ghostBreak", "releasePoints", "plateCrossings", "spray", "breakChart",
-  "pairComparison", "contactSim", "dispersion", "fatigue", "heatmap",
+  "pairComparison", "contactSim", "dispersion", "fatigue", "countMix", "heatmap",
 ];
 
 /** In-memory stand-in for App's signals: records the last value written to each. */

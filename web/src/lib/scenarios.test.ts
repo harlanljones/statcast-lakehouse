@@ -87,7 +87,7 @@ describe("real-game story catalog", () => {
     expect(LAYER_TOGGLES.map((t) => t.key).sort()).toEqual(Object.keys(LIVE_PRESET.layers).sort());
     expect(LAYER_TOGGLES.map((t) => t.label)).toEqual([
       "Tunneling plane", "Ghost break", "Release points", "Plate crossings", "Spray landings", "Break chart",
-      "Pitch pairs", "Contact sim", "Release dispersion", "Fatigue", "Zone heatmap",
+      "Pitch pairs", "Contact sim", "Release dispersion", "Fatigue", "Count mix", "Zone heatmap",
     ]);
   });
 

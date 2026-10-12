@@ -1,6 +1,7 @@
 import { For, Show, type JSX } from "solid-js";
 import {
   CAMERA_VIEWS,
+  COUNT_BUCKETS,
   pitchColor,
   type CameraViewName,
   type CountBucket,
@@ -54,13 +55,6 @@ export interface LensPanelProps {
 
 const VIEWS = (Object.keys(CAMERA_VIEWS) as CameraViewName[]).map((v) => ({ value: v, label: v }));
 
-/** The count cut, phrased from the pitcher's point of view and stated in titles. */
-const COUNT_CHIPS: readonly { bucket: CountBucket; label: string; title: string }[] = [
-  { bucket: "first", label: "First pitch", title: "First pitch of the at-bat (0-0)" },
-  { bucket: "pitcher_ahead", label: "Pitcher ahead", title: "More strikes than balls (0-1, 1-2, 0-2)" },
-  { bucket: "hitter_ahead", label: "Hitter ahead", title: "More balls than strikes (1-0, 2-0, 3-0, 3-1, 2-1, 3-2)" },
-  { bucket: "even", label: "Even", title: "Level count, not the first pitch (1-1, 2-2)" },
-];
 
 /**
  * The one control surface. A scenario picks which lenses to show; the header's
@@ -193,7 +187,7 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
 
       <Show when={has("count") && props.countBuckets && props.onToggleCount}>
         <div role="group" aria-label="count" style={{ display: "flex", "flex-wrap": "wrap", gap: "4px", "align-items": "center" }}>
-          <For each={COUNT_CHIPS}>
+          <For each={COUNT_BUCKETS}>
             {(chip) => (
               <button
                 class="ui-ctl ui-chip"
