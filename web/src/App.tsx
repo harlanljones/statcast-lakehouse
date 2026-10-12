@@ -104,6 +104,12 @@ export default function App() {
   const [showHeatmap, setShowHeatmap] = createSignal<boolean>(false);
   // "Isolate this player": set from the card, cleared by a scenario change or Reset filters.
   const [playerFilter, setPlayerFilter] = createSignal<PlayerFilter | null>(null);
+  /**
+   * The player the card's deltas read against instead of "the rest", per role.
+   * A view setting like the pinned pitch, not a filter: a preset or "Reset
+   * filters" leaves it alone, and only a change of loaded pitches clears it.
+   */
+  const [benchmark, setBenchmark] = createSignal<PlayerFilter | null>(null);
   // Count cut: empty means every count is shown, mirroring the pitch-type chips.
   const [countBuckets, setCountBuckets] = createSignal<ReadonlySet<CountBucket>>(new Set());
   // In-zone cell cut: empty means every cell (and every pitch outside the zone) shows.
@@ -377,6 +383,7 @@ export default function App() {
     void pitchData();
     setPinned(null);
     setPlayerFilter(null);
+    setBenchmark(null);
     setCountBuckets(new Set<CountBucket>());
     setZoneCells(new Set<ZoneCell>());
   });
@@ -466,6 +473,8 @@ export default function App() {
             selectedTypes={selectedTypes()}
             playerFilter={playerFilter()}
             onPlayerFilter={setPlayerFilter}
+            benchmark={benchmark()}
+            onBenchmark={setBenchmark}
             countBuckets={countBuckets()}
             zoneCells={zoneCells()}
             viewState={CAMERA_VIEWS[view()]}

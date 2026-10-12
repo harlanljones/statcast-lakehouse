@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PitchDatum } from "./deck-layers";
 import {
+  comparisonAgainst,
   formatRateDelta,
   isSyntheticSource,
   mlbLinks,
@@ -246,6 +247,53 @@ describe("summarizeOthers", () => {
     expect(summarizeOthers([group[0], group[1]], "pitcher", 1)).toBeNull();
     expect(summarizeOthers([], "batter", 10)).toBeNull();
   });
+
+describe("comparisonAgainst", () => {
+  const group = [
+    pitch({ pitcherId: 1, pitcherName: "Ace One", batterId: 10, batterName: "Bat Ten", isSwing: 1, isWhiff: 1 }),
+    pitch({ pitcherId: 1, pitcherName: "Ace One", batterId: 11, batterName: "Bat Eleven", isSwing: 1 }),
+    pitch({ pitcherId: 2, pitcherName: "Ace Two", batterId: 10, batterName: "Bat Ten" }),
+  ];
+
+  it("defaults to every other player in the loaded pitches", () => {
+    const c = comparisonAgainst(group, "pitcher", 1, null);
+    expect(c.label).toBe("other pitchers in the loaded pitches");
+    expect(c.short).toBe("rest");
+    expect(c.stats!.count).toBe(1);
+  });
+
+  it("reads against the pinned player and names it", () => {
+    const c = comparisonAgainst(group, "pitcher", 1, { pitcher: 2 });
+    expect(c.label).toBe("Ace Two");
+    expect(c.short).toBe("Ace Two");
+    expect(c.stats!.count).toBe(1);
+    expect(c.stats!.whiffRate).toBeNull();
+  });
+
+  it("names a pinned batter from the other side of the same card", () => {
+    const c = comparisonAgainst(group, "batter", 11, { batter: 10 });
+    expect(c.short).toBe("Bat Ten");
+    expect(c.stats!.count).toBe(2);
+  });
+
+  it("keeps the roles apart: a pitcher pin never rewrites a batter's yardstick", () => {
+    const c = comparisonAgainst(group, "batter", 10, { pitcher: 2 });
+    expect(c.label).toBe("other batters in the loaded pitches");
+    expect(c.stats!.count).toBe(1);
+  });
+
+  it("falls back to the rest for a self-pin or a player with nothing loaded", () => {
+    expect(comparisonAgainst(group, "pitcher", 1, { pitcher: 1 }).short).toBe("rest");
+    expect(comparisonAgainst(group, "batter", 10, { batter: 99 }).short).toBe("rest");
+    expect(comparisonAgainst(group, "batter", 10, { batter: 99 }).stats!.count).toBe(1);
+  });
+
+  it("has no yardstick without a player id", () => {
+    const c = comparisonAgainst(group, "pitcher", undefined, null);
+    expect(c.stats).toBeNull();
+    expect(c.short).toBe("rest");
+  });
+});
 });
 
 describe("formatRateDelta", () => {

@@ -53,6 +53,9 @@ export interface VisualizerProps {
   /** Isolate one player's pitches (set from the player card). */
   playerFilter?: PlayerFilter | null;
   onPlayerFilter?: (f: PlayerFilter | null) => void;
+  /** Pinned comparison players, per role: what the card's deltas read against instead of the rest. */
+  benchmark?: PlayerFilter | null;
+  onBenchmark?: (b: PlayerFilter | null) => void;
   /** Count cut from the chip row: empty means every count shows. */
   countBuckets?: ReadonlySet<CountBucket>;
   zoneCells?: ReadonlySet<ZoneCell>;
@@ -457,6 +460,8 @@ export default function Visualizer(props: VisualizerProps) {
             <PlayerCard
               playerFilter={props.playerFilter ?? null}
               onPlayerFilter={props.onPlayerFilter}
+              benchmark={props.benchmark ?? null}
+              onBenchmark={props.onBenchmark}
               pitch={p()}
               pitches={visible()}
               synthetic={props.synthetic ?? true}

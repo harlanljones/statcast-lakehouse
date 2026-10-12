@@ -1,6 +1,7 @@
 import { For, Show, type JSX } from "solid-js";
 import { pitchColor, type PitchDatum } from "../lib/deck-layers";
 import {
+  comparisonAgainst,
   formatRateDelta,
   mlbLinks,
   pitchResult,
@@ -19,6 +20,9 @@ export interface PlayerCardProps {
   /** Set by the isolate buttons; the same player pressed again clears it. */
   playerFilter?: PlayerFilter | null;
   onPlayerFilter?: (f: PlayerFilter | null) => void;
+  /** Pinned comparison players, per role: the yardstick this card's deltas use instead of "the rest". */
+  benchmark?: PlayerFilter | null;
+  onBenchmark?: (b: PlayerFilter | null) => void;
   /** The pitches currently visible (after filters), for the pitcher summary. */
   pitches: readonly PitchDatum[];
   synthetic: boolean;
@@ -40,12 +44,13 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
   const summary = () => (props.pitch.pitcherId != null ? summarizePitcher(props.pitches, props.pitch.pitcherId) : null);
   const atBat = () => (props.pitch.batterId != null ? summarizeBatter(props.pitches, props.pitch.batterId) : null);
   /**
-   * The yardstick the card's deltas use: every OTHER pitcher (or batter) in the
-   * loaded pitches. Labelled "vs rest" on screen, never as a league baseline —
-   * the loaded slices are a handful of real games picked for their stories.
+   * The yardstick each role's deltas use: every OTHER pitcher (or batter) in the
+   * loaded pitches, labelled "vs rest" on screen and never as a league baseline —
+   * the loaded slices are a handful of real games picked for their stories — or
+   * the player the user pinned as the comparison, labelled with their name.
    */
-  const restAgainst = (role: "pitcher" | "batter", id: number | undefined) =>
-    id == null ? null : summarizeOthers(props.pitches, role, id);
+  const pitcherAgainst = () => comparisonAgainst(props.pitches, "pitcher", props.pitch.pitcherId, props.benchmark);
+  const batterAgainst = () => comparisonAgainst(props.pitches, "batter", props.pitch.batterId, props.benchmark);
   const restValue = (rate: number | null, other: number | null) =>
     rate == null || other == null ? undefined : `${Math.round(other * 100)}%`;
 
@@ -56,8 +61,6 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
     if (!direction || distance == null || !(distance > 0)) return null;
     return `Spray: ${Math.round(distance)} ft to ${direction}`;
   };
-  const isolated = (role: "pitcher" | "batter", id: number | undefined) =>
-    id != null && props.playerFilter?.[role] === id;
   /** Setting one role never clears the other, so both together is the matchup. */
   const toggleIsolate = (role: "pitcher" | "batter", id: number) => {
     const next: PlayerFilter = { ...(props.playerFilter ?? {}) };
@@ -67,6 +70,18 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
   };
   const matchup = () =>
     props.playerFilter?.pitcher != null && props.playerFilter.batter != null;
+  const isolated = (role: "pitcher" | "batter", id: number | undefined) =>
+    id != null && props.playerFilter?.[role] === id;
+  const ctlStyle = (on: boolean): JSX.CSSProperties => ({
+    "margin-top": "4px",
+    padding: "2px 8px",
+    "font-size": "11px",
+    color: on ? THEME.accent : THEME.muted,
+    background: "transparent",
+    border: `1px ${on ? "solid" : "dashed"} ${on ? THEME.accent : THEME.border}`,
+    "border-radius": "4px",
+    cursor: "pointer",
+  });
   const isolateButton = (role: "pitcher" | "batter", id: number | undefined) => (
     <Show when={id != null}>
       <button
@@ -83,20 +98,36 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
               : "Filter the scene to this player's pitches"
         }
         onClick={() => toggleIsolate(role, id as number)}
-        style={{
-          "margin-top": "4px",
-          padding: "2px 8px",
-          "font-size": "11px",
-          color: isolated(role, id) ? THEME.accent : THEME.muted,
-          background: "transparent",
-          border: `1px ${isolated(role, id) ? "solid" : "dashed"} ${
-            isolated(role, id) ? THEME.accent : THEME.border
-          }`,
-          "border-radius": "4px",
-          cursor: "pointer",
-        }}
+        style={ctlStyle(isolated(role, id))}
       >
         {isolated(role, id) ? "Isolated — show all" : `Only this ${role}`}
+      </button>
+    </Show>
+  );
+  /** Pins this player as the yardstick the deltas read against, for their role. */
+  const benchmarked = (role: "pitcher" | "batter", id: number | undefined) =>
+    id != null && props.benchmark?.[role] === id;
+  const toggleBenchmark = (role: "pitcher" | "batter", id: number) => {
+    const next: PlayerFilter = { ...(props.benchmark ?? {}) };
+    if (next[role] === id) delete next[role];
+    else next[role] = id;
+    props.onBenchmark?.(next.pitcher == null && next.batter == null ? null : next);
+  };
+  const benchmarkButton = (role: "pitcher" | "batter", id: number | undefined) => (
+    <Show when={id != null}>
+      <button
+        class="ui-ctl"
+        type="button"
+        aria-pressed={benchmarked(role, id)}
+        title={
+          benchmarked(role, id)
+            ? `Read this ${role}'s deltas against the rest of the loaded pitches again`
+            : `Read this ${role}'s deltas against this player instead of the rest`
+        }
+        onClick={() => toggleBenchmark(role, id as number)}
+        style={{ ...ctlStyle(benchmarked(role, id)), "margin-left": "6px" }}
+      >
+        {benchmarked(role, id) ? "Comparing — clear" : "Compare with"}
       </button>
     </Show>
   );
@@ -158,17 +189,17 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
               {s().count} pitches · avg {s().avgSpeed.toFixed(1)} mph ·{" "}
               {s().whiffRate == null ? "no swings" : `${Math.round(s().whiffRate! * 100)}% whiff`}
               <Show
-                when={formatRateDelta(s().whiffRate, restAgainst("pitcher", props.pitch.pitcherId)?.whiffRate ?? null)}
+                when={formatRateDelta(s().whiffRate, pitcherAgainst().stats?.whiffRate ?? null)}
               >
                 {(delta) => (
                   <span
-                    title={`other pitchers in the loaded pitches: ${restValue(
+                    title={`${pitcherAgainst().label}: ${restValue(
                       s().whiffRate,
-                      restAgainst("pitcher", props.pitch.pitcherId)?.whiffRate ?? null,
+                      pitcherAgainst().stats?.whiffRate ?? null,
                     ) ?? "—"} whiff`}
                   >
                     {" "}
-                    · {delta()} vs rest
+                    · {delta()} vs {pitcherAgainst().short}
                   </span>
                 )}
               </Show>
@@ -199,18 +230,18 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
                     <Show
                       when={formatRateDelta(
                         c().hardHitRate,
-                        restAgainst("pitcher", props.pitch.pitcherId)?.contact?.hardHitRate ?? null,
+                        pitcherAgainst().stats?.contact?.hardHitRate ?? null,
                       )}
                     >
                       {(delta) => (
                         <span
-                          title={`other pitchers in the loaded pitches: ${restValue(
+                          title={`${pitcherAgainst().label}: ${restValue(
                             c().hardHitRate,
-                            restAgainst("pitcher", props.pitch.pitcherId)?.contact?.hardHitRate ?? null,
+                            pitcherAgainst().stats?.contact?.hardHitRate ?? null,
                           ) ?? "—"} hard-hit`}
                         >
                           {" "}
-                          · {delta()} vs rest
+                          · {delta()} vs {pitcherAgainst().short}
                         </span>
                       )}
                     </Show>
@@ -229,6 +260,7 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
               )}
             </Show>
             {isolateButton("pitcher", props.pitch.pitcherId)}
+            {benchmarkButton("pitcher", props.pitch.pitcherId)}
           </>
         )}
       </Show>
@@ -249,17 +281,17 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
               {b().swingRate == null ? "no swing data" : `${Math.round(b().swingRate! * 100)}% swings`} ·{" "}
               {b().whiffRate == null ? "no swings" : `${Math.round(b().whiffRate! * 100)}% whiff`}
               <Show
-                when={formatRateDelta(b().whiffRate, restAgainst("batter", props.pitch.batterId)?.whiffRate ?? null)}
+                when={formatRateDelta(b().whiffRate, batterAgainst().stats?.whiffRate ?? null)}
               >
                 {(delta) => (
                   <span
-                    title={`other batters in the loaded pitches: ${restValue(
+                    title={`${batterAgainst().label}: ${restValue(
                       b().whiffRate,
-                      restAgainst("batter", props.pitch.batterId)?.whiffRate ?? null,
+                      batterAgainst().stats?.whiffRate ?? null,
                     ) ?? "—"} whiff`}
                   >
                     {" "}
-                    · {delta()} vs rest
+                    · {delta()} vs {batterAgainst().short}
                   </span>
                 )}
               </Show>{" "}
@@ -273,18 +305,18 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
                   <Show
                     when={formatRateDelta(
                       c().hardHitRate,
-                      restAgainst("batter", props.pitch.batterId)?.contact?.hardHitRate ?? null,
+                      batterAgainst().stats?.contact?.hardHitRate ?? null,
                     )}
                   >
                     {(delta) => (
                       <span
-                        title={`other batters in the loaded pitches: ${restValue(
+                        title={`${batterAgainst().label}: ${restValue(
                           c().hardHitRate,
-                          restAgainst("batter", props.pitch.batterId)?.contact?.hardHitRate ?? null,
+                          batterAgainst().stats?.contact?.hardHitRate ?? null,
                         ) ?? "—"} hard-hit`}
                       >
                         {" "}
-                        · {delta()} vs rest
+                        · {delta()} vs {batterAgainst().short}
                       </span>
                     )}
                   </Show>
@@ -292,6 +324,7 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
               )}
             </Show>
             {isolateButton("batter", props.pitch.batterId)}
+            {benchmarkButton("batter", props.pitch.batterId)}
           </div>
         )}
       </Show>

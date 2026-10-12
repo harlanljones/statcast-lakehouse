@@ -161,6 +161,55 @@ export function summarizeBatter(pitches: readonly PitchDatum[], batterId: number
   return t && { batterId, ...finish(t) };
 }
 
+/** One role's comparison line: the stats to read the deltas against, and what to call them. */
+export interface Comparison {
+  stats: RoleStats | null;
+  /** Reader-facing name of the yardstick, e.g. "other pitchers in the loaded pitches" or "Seth Lugo". */
+  label: string;
+  /** Short form for inline text, e.g. "rest" or "Seth Lugo". */
+  short: string;
+}
+
+/**
+ * The yardstick a card's deltas are read against. By default every OTHER player
+ * in the loaded pitches; when the user pins a comparison player for that role,
+ * that player's own line instead. Pinning is per role, so a card that shows both
+ * a pitcher and a batter can compare each against a different player — a named
+ * yardstick, never a league baseline. A pinned player who plays the other role,
+ * who is the player being described, or who threw/saw nothing in the loaded
+ * pitches, falls back to "the rest" rather than showing an empty comparison.
+ */
+export function comparisonAgainst(
+  pitches: readonly PitchDatum[],
+  role: "pitcher" | "batter",
+  id: number | undefined,
+  pinned?: { pitcher?: number; batter?: number } | null,
+): Comparison {
+  const pinnedId = pinned?.[role] ?? null;
+  if (pinnedId != null && pinnedId !== id) {
+    const stats = role === "pitcher" ? summarizePitcher(pitches, pinnedId) : summarizeBatter(pitches, pinnedId);
+    if (stats) {
+      const name = nameOf(pitches, role, pinnedId);
+      return { stats, label: name ?? `the compared ${role}`, short: name ?? "the compared player" };
+    }
+  }
+  return {
+    stats: id == null ? null : summarizeOthers(pitches, role, id),
+    label: `other ${role}s in the loaded pitches`,
+    short: "rest",
+  };
+}
+
+/** The first name the loaded pitches carry for a player, if any. */
+function nameOf(pitches: readonly PitchDatum[], role: "pitcher" | "batter", id: number): string | null {
+  for (const p of pitches) {
+    if ((role === "pitcher" ? p.pitcherId : p.batterId) !== id) continue;
+    const name = role === "pitcher" ? p.pitcherName : p.batterName;
+    if (name) return name;
+  }
+  return null;
+}
+
 export interface CardLink {
   label: string;
   /** null when the link cannot be built; `reason` then says why. */
