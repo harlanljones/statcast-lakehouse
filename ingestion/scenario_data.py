@@ -51,6 +51,11 @@ ONE_RUN_SLUGFEST_GAMES = (745505, 746362, 746108, 778247, 777701, 823776)
 # across the 2024, 2025 and 2026 seasons: eight runs in all, the pitching end of
 # the corpus.
 PITCHERS_DUEL_GAMES = (745192, 746472, 776669, 825091, 823780, 824394)
+
+# Six games in which at least one hitter homered twice, one per date across the
+# 2024, 2025 and 2026 seasons (34 home runs in all, including two nine-homer
+# games and two three-homer performances).
+MULTI_HOMER_GAMES = (745113, 745551, 778339, 777403, 777129, 823463)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -60,6 +65,7 @@ GAME_IDS = (
     *WALK_OFF_GAMES,
     *ONE_RUN_SLUGFEST_GAMES,
     *PITCHERS_DUEL_GAMES,
+    *MULTI_HOMER_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -89,6 +95,7 @@ SWEEP_SCENARIOS = {
     "walk-off-wins": WALK_OFF_GAMES,
     "one-run-slugfests": ONE_RUN_SLUGFEST_GAMES,
     "pitchers-duels": PITCHERS_DUEL_GAMES,
+    "multi-homer-nights": MULTI_HOMER_GAMES,
 }
 
 

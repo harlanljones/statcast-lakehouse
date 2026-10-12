@@ -22,7 +22,8 @@ export type ScenarioId =
   | "power-nights"
   | "walk-off-wins"
   | "one-run-slugfests"
-  | "pitchers-duels";
+  | "pitchers-duels"
+  | "multi-homer-nights";
 
 export type LayerKey =
   | "tunneling"
@@ -463,6 +464,26 @@ export const SCENARIOS: readonly Scenario[] = [
     preset: preset({
       view: "Side",
       layers: { dispersion: true, releasePoints: true, tunneling: true },
+    }),
+  },
+  {
+    id: "multi-homer-nights",
+    title: "Multi-Homer Nights",
+    dateLabel: "Apr 14, 2024 – May 10, 2026",
+    gameLabel: "Six games · 34 home runs",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/745551/feed/live",
+    synthetic: false,
+    hook: "Six games where a hitter went deep at least twice — two of them nine-homer games.",
+    lookFor:
+      "1,731 tracked pitches, 860 swings and 191 whiffs across six games from April 2024 to May 2026 in which at least one hitter homered twice, including two nine-home-run games and two three-homer performances. 331 of the pitches were put in play with measured contact data, 79 of them at 100 mph or harder.",
+    tryThis:
+      "Set the heatmap to Hard Hit % and compare where the Athletics' 18-run game was pitched with the Rockies' 6–0 shutout.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome", "heatmapMode"],
+    preset: preset({
+      view: "Catcher",
+      layers: { plateCrossings: true, heatmap: true },
+      heatmapMode: "hard_hit",
     }),
   },
 ];

@@ -40,6 +40,7 @@ SCENARIO_FILES = {
     "walk-off-wins": "walk-off-wins.arrow",
     "one-run-slugfests": "one-run-slugfests.arrow",
     "pitchers-duels": "pitchers-duels.arrow",
+    "multi-homer-nights": "multi-homer-nights.arrow",
 }
 
 

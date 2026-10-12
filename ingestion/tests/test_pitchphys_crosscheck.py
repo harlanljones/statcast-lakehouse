@@ -6,14 +6,17 @@ ay. The reference crossings come from pitchphys (Lyu 2022 drag, spin = 0)
 for every checked-in real pitch; regenerate with
 ``python -m ingestion.pitchphys_reference``.
 
-Measured 2026-10-11 over the whole checked-in corpus (5,810 pitches across 19
+Measured 2026-10-12 over the whole checked-in corpus (18,722 pitches across 61
 games): before the drag correction the ghost landed about 1.5 in low (IVB read
 about 1.5 in high) and up to 2.4 in off horizontally. With it, the vertical
-error median is 0.40 in and the horizontal error mean is 0.03 in (median 0.05).
-The extreme tails belong to a handful of high-spin sweepers (worst: 3.01 in
-vertical, 1.06 in horizontal, 0.09% of pitches) where the closed form's drag
-term, which rides the fitted ay, departs most from the Lyu drag model — that
-model mismatch, not the method, is what the bounds below leave room for.
+error median is 0.41 in and the horizontal error mean is 0.03 in (median 0.05).
+The tails are the regimes where the closed form's drag term, which rides the
+fitted ay, departs most from the Lyu drag model: high-spin sweepers (about 3 in
+vertical) and, far worse, the sub-45 mph position-player lobs a blowout puts on
+the mound — a 35.6 mph curveball in the Athletics' 18-3 rout reads 7.35 in high
+vertically while still crossing the plate where the fit says it does. That model
+mismatch, not the method, is what the bounds below leave room for; the median and
+mean bounds are the ones that would catch a real regression.
 """
 import json
 import statistics
@@ -25,9 +28,10 @@ from ingestion.worker import ghost_kinematics, position_at, solve_flight_time
 REFERENCE = Path(__file__).resolve().parent / "data" / "pitchphys_ghost_reference.json"
 
 
-def ghost_errors_inches() -> tuple[list[float], list[float]]:
+def ghost_errors_inches() -> tuple[list[float], list[float], list[float]]:
+    """Per-pitch (dx, dz, release_speed) ghost error in inches, corpus order."""
     ref = json.loads(REFERENCE.read_text())["crossings"]
-    dx, dz = [], []
+    dx, dz, speeds = [], [], []
     seen = set()
     for row in real_pitches().to_pylist():
         if row["pitch_id"] in seen:
@@ -39,7 +43,8 @@ def ghost_errors_inches() -> tuple[list[float], list[float]]:
         rx, rz = ref[row["pitch_id"]]
         dx.append((gx - rx) * 12.0)
         dz.append((gz - rz) * 12.0)
-    return dx, dz
+        speeds.append(float(row["release_speed"]))
+    return dx, dz, speeds
 
 
 def test_reference_covers_every_real_pitch():
@@ -50,12 +55,16 @@ def test_reference_covers_every_real_pitch():
 
 
 def test_ghost_vertical_error_is_bounded():
-    _, dz = ghost_errors_inches()
+    _, dz, speeds = ghost_errors_inches()
     assert abs(statistics.median(dz)) < 0.5
-    assert max(abs(e) for e in dz) < 3.5
+    # The normal regime (>= 50 mph) is what the model is for: 2.68 in measured.
+    assert max(abs(e) for e, v in zip(dz, speeds) if v >= 50) < 3.0
+    # Tail bound for the sub-45 mph position-player lobs a blowout puts on the
+    # mound: 7.35 in measured on a 35.6 mph curveball.
+    assert max(abs(e) for e in dz) < 8.0
 
 
 def test_ghost_horizontal_error_is_bounded():
-    dx, _ = ghost_errors_inches()
+    dx, _, _ = ghost_errors_inches()
     assert abs(statistics.mean(dx)) < 0.25
     assert max(abs(e) for e in dx) < 1.25

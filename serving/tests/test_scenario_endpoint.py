@@ -28,6 +28,7 @@ SCENARIO_ROWS = {
     "walk-off-wins": 2010,
     "one-run-slugfests": 1965,
     "pitchers-duels": 1532,
+    "multi-homer-nights": 1731,
 }
 
 
