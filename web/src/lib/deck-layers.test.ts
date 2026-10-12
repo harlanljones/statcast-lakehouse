@@ -8,6 +8,7 @@ import {
   effectiveViewState,
   FALLBACK_COLOR,
   FILTER_SIZE,
+  filteredLayerProps,
   PITCH_COLORS,
   STRIKE_ZONE,
   battersBoxesSegments,
@@ -1182,5 +1183,46 @@ describe("spray landings layer", () => {
     const props = layer.props as unknown as { getRadius: (d: PitchDatum) => number };
     expect(props.getRadius(contact({}))).toBe(0);                      // not in play at all
     expect(props.getRadius(contact({ hcX: 180, hcY: 150 }))).toBe(0);  // in play, distance never measured
+  });
+});
+
+describe("isolating one player", () => {
+  const datum = (over: Partial<PitchDatum>): PitchDatum => ({
+    path: new Float32Array(3),
+    releaseSpeed: 92,
+    pfxX: 0,
+    pfxZ: 0,
+    plateX: 0,
+    plateZ: 2.5,
+    pitchType: "FF",
+    ...over,
+  });
+
+  it("keeps only that pitcher's or batter's pitches, and treats a missing id as a miss", () => {
+    const opts = { speedRange: [40, 105] as [number, number], playerFilter: { role: "batter" as const, id: 7 } };
+    expect(passesFilters(datum({ batterId: 7 }), opts)).toBe(true);
+    expect(passesFilters(datum({ batterId: 8 }), opts)).toBe(false);
+    expect(passesFilters(datum({}), opts)).toBe(false);
+    const byPitcher = { speedRange: [40, 105] as [number, number], playerFilter: { role: "pitcher" as const, id: 3 } };
+    expect(passesFilters(datum({ pitcherId: 3, batterId: 99 }), byPitcher)).toBe(true);
+    expect(passesFilters(datum({ pitcherId: 4, batterId: 99 }), byPitcher)).toBe(false);
+  });
+
+  it("changes nothing when no player filter is set", () => {
+    const plain = { speedRange: [40, 105] as [number, number] };
+    expect(passesFilters(datum({ batterId: 7 }), plain)).toBe(true);
+    expect(passesFilters(datum({}), plain)).toBe(true);
+  });
+
+  it("re-derives the GPU filter values when the isolated player changes", () => {
+    const pitches = [datum({ pitcherId: 1, batterId: 7 }), datum({ pitcherId: 2, batterId: 8 })];
+    const none = filteredLayerProps({ pitches, speedRange: [40, 105] });
+    const first = filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { role: "batter", id: 7 } });
+    const second = filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { role: "batter", id: 8 } });
+    const mask = (p: ReturnType<typeof filteredLayerProps>) =>
+      pitches.map((d) => (p.getFilterValue as unknown as (x: PitchDatum) => number[])(d)[3]);
+    expect(mask(none)).toEqual([1, 1]);
+    expect(mask(first)).toEqual([1, 0]);
+    expect(mask(second)).toEqual([0, 1]);
   });
 });

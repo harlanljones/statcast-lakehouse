@@ -52,6 +52,7 @@ import {
   type ScenarioPreset,
 } from "./lib/scenarios";
 import { applyPresetFiltersTo, applyPresetTo } from "./lib/scenario-state";
+import type { PlayerFilter } from "./lib/deck-layers";
 import { nextPlayState, prefersReducedMotion } from "./lib/playback";
 import type { DragMode } from "./lib/camera";
 import { isSyntheticSource, playerLabel, type DataSource } from "./lib/player-card";
@@ -97,6 +98,8 @@ export default function App() {
   const [showDispersion, setShowDispersion] = createSignal<boolean>(false);
   const [showFatigue, setShowFatigue] = createSignal<boolean>(false);
   const [showHeatmap, setShowHeatmap] = createSignal<boolean>(false);
+  // "Isolate this player": set from the card, cleared by a scenario change or Reset filters.
+  const [playerFilter, setPlayerFilter] = createSignal<PlayerFilter | null>(null);
   const [heatmapMode, setHeatmapMode] = createSignal<HeatmapMode>("density");
   const [activeScenarioId, setActiveScenarioId] = createSignal<ScenarioId | null>(null);
   const [showAllControls, setShowAllControls] = createSignal<boolean>(false);
@@ -120,6 +123,7 @@ export default function App() {
       zoneFilter: zoneFilter(),
       outcomeFilter: outcomeFilter(),
       selectedTypes: selectedTypes(),
+      playerFilter: playerFilter(),
     };
     return all.filter((p) => passesFilters(p, opts));
   });
@@ -259,6 +263,7 @@ export default function App() {
       setZoneFilter,
       setOutcomeFilter,
       setSelectedTypes,
+    setPlayerFilter,
       setLayer: (key, on) => layerSetters[key](on),
       setHeatmapMode,
       setBatSpeed,
@@ -330,6 +335,7 @@ export default function App() {
       setZoneFilter,
       setOutcomeFilter,
       setSelectedTypes,
+          setPlayerFilter,
     });
 
   onMount(() => {
@@ -342,6 +348,7 @@ export default function App() {
   createEffect(() => {
     void pitchData();
     setPinned(null);
+    setPlayerFilter(null);
   });
 
   const layerState = (): Record<LayerKey, boolean> => ({
@@ -411,6 +418,8 @@ export default function App() {
             zoneFilter={zoneFilter()}
             outcomeFilter={outcomeFilter()}
             selectedTypes={selectedTypes()}
+            playerFilter={playerFilter()}
+            onPlayerFilter={setPlayerFilter}
             viewState={CAMERA_VIEWS[view()]}
             dragMode={dragMode()}
             resetKey={resetKey()}

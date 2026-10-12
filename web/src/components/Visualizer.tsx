@@ -24,6 +24,7 @@ import {
 } from "../lib/camera";
 import { keyboardCameraStep, stepPitch } from "../lib/keyboard";
 import PlayerCard from "./PlayerCard";
+import type { PlayerFilter } from "../lib/deck-layers";
 import { THEME } from "./ui";
 import type { ArsenalCentroid } from "../lib/arsenal";
 import type { FatigueBucket, ReleaseDispersion } from "../lib/dispersion";
@@ -45,6 +46,9 @@ export interface VisualizerProps {
   zoneFilter?: ZoneFilter;
   outcomeFilter?: OutcomeFilter;
   selectedTypes?: ReadonlySet<string> | null;
+  /** Isolate one player's pitches (set from the player card). */
+  playerFilter?: PlayerFilter | null;
+  onPlayerFilter?: (f: PlayerFilter | null) => void;
   viewState?: OrbitViewState | null;
   /** What a plain drag does; shift/right-drag does the other one. */
   dragMode?: DragMode;
@@ -239,6 +243,7 @@ export default function Visualizer(props: VisualizerProps) {
           zoneFilter: props.zoneFilter,
           outcomeFilter: props.outcomeFilter,
           selectedTypes: props.selectedTypes ?? null,
+          playerFilter: props.playerFilter ?? null,
           onHover: handleHover,
           flightProgress,
           isPlaying: playing,
@@ -422,6 +427,8 @@ export default function Visualizer(props: VisualizerProps) {
         <Show when={pinned()}>
           {(p) => (
             <PlayerCard
+              playerFilter={props.playerFilter ?? null}
+              onPlayerFilter={props.onPlayerFilter}
               pitch={p()}
               pitches={visible()}
               synthetic={props.synthetic ?? true}

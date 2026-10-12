@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyPresetFiltersTo, applyPresetTo, type PresetSetters } from "./scenario-state";
 import { LIVE_PRESET, SCENARIOS, scenarioById, type LayerKey, type ScenarioPreset } from "./scenarios";
+import type { PlayerFilter } from "./deck-layers";
 
 const LAYER_KEYS: LayerKey[] = [
   "tunneling", "ghostBreak", "releasePoints", "plateCrossings", "spray", "breakChart",
@@ -17,6 +18,7 @@ function fakeApp() {
     zoneFilter: "" as ScenarioPreset["zoneFilter"] | "",
     outcomeFilter: "" as ScenarioPreset["outcomeFilter"] | "",
     selectedTypes: null as ReadonlySet<string> | null,
+    playerFilter: null as PlayerFilter | null,
     heatmapMode: "" as ScenarioPreset["heatmapMode"] | "",
     batSpeed: NaN,
     attackAngleDeg: NaN,
@@ -32,6 +34,7 @@ function fakeApp() {
     setZoneFilter: (v) => { state.zoneFilter = v; },
     setOutcomeFilter: (v) => { state.outcomeFilter = v; },
     setSelectedTypes: (v) => { state.selectedTypes = v; },
+    setPlayerFilter: (v) => { state.playerFilter = v; },
     setLayer: (k, on) => { state.layers[k] = on; state.layerWrites++; },
     setHeatmapMode: (v) => { state.heatmapMode = v; },
     setBatSpeed: (v) => { state.batSpeed = v; },
@@ -63,6 +66,17 @@ describe("applyPresetTo", () => {
       for (const k of LAYER_KEYS) expect(state.layers[k]).toBe(preset.layers[k]);
     },
   );
+
+  it("clears a player isolate when a preset or the reset lands", () => {
+    const app = fakeApp();
+    app.setters.setPlayerFilter({ role: "batter", id: 42 });
+    expect(app.state.playerFilter).toEqual({ role: "batter", id: 42 });
+    applyPresetFiltersTo(LIVE_PRESET, app.setters);
+    expect(app.state.playerFilter).toBeNull();
+    app.setters.setPlayerFilter({ role: "pitcher", id: 7 });
+    applyPresetTo(SCENARIOS[0].preset, app.setters);
+    expect(app.state.playerFilter).toBeNull();
+  });
 
   it("switching scenarios leaves nothing from the previous one behind", () => {
     const { state, setters } = fakeApp();

@@ -1,11 +1,15 @@
 import { For, Show, type JSX } from "solid-js";
 import { pitchColor, type PitchDatum } from "../lib/deck-layers";
 import { mlbLinks, pitchResult, playerLabel, summarizeBatter, summarizePitcher } from "../lib/player-card";
+import type { PlayerFilter } from "../lib/deck-layers";
 import { storylinesForPitcher, type PitcherStoryline } from "../lib/storylines";
 import { CloseButton, THEME } from "./ui";
 
 export interface PlayerCardProps {
   pitch: PitchDatum;
+  /** Set by the isolate buttons; the same player pressed again clears it. */
+  playerFilter?: PlayerFilter | null;
+  onPlayerFilter?: (f: PlayerFilter | null) => void;
   /** The pitches currently visible (after filters), for the pitcher summary. */
   pitches: readonly PitchDatum[];
   synthetic: boolean;
@@ -26,6 +30,35 @@ const muted: JSX.CSSProperties = { color: THEME.muted };
 export default function PlayerCard(props: PlayerCardProps): JSX.Element {
   const summary = () => (props.pitch.pitcherId != null ? summarizePitcher(props.pitches, props.pitch.pitcherId) : null);
   const atBat = () => (props.pitch.batterId != null ? summarizeBatter(props.pitches, props.pitch.batterId) : null);
+  const isolated = (role: "pitcher" | "batter", id: number | undefined) =>
+    id != null && props.playerFilter?.role === role && props.playerFilter.id === id;
+  const isolateButton = (role: "pitcher" | "batter", id: number | undefined) => (
+    <Show when={id != null}>
+      <button
+        class="ui-ctl"
+        type="button"
+        aria-pressed={isolated(role, id)}
+        title={isolated(role, id) ? "Show every player again" : "Filter the scene to this player's pitches"}
+        onClick={() =>
+          props.onPlayerFilter?.(isolated(role, id) ? null : { role, id: id as number })
+        }
+        style={{
+          "margin-top": "4px",
+          padding: "2px 8px",
+          "font-size": "11px",
+          color: isolated(role, id) ? THEME.accent : THEME.muted,
+          background: "transparent",
+          border: `1px ${isolated(role, id) ? "solid" : "dashed"} ${
+            isolated(role, id) ? THEME.accent : THEME.border
+          }`,
+          "border-radius": "4px",
+          cursor: "pointer",
+        }}
+      >
+        {isolated(role, id) ? "Isolated — show all" : `Only this ${role}`}
+      </button>
+    </Show>
+  );
   const links = () =>
     mlbLinks({
       synthetic: props.synthetic,
@@ -121,6 +154,7 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
                 </div>
               )}
             </Show>
+            {isolateButton("pitcher", props.pitch.pitcherId)}
           </>
         )}
       </Show>
@@ -150,6 +184,7 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
                 </div>
               )}
             </Show>
+            {isolateButton("batter", props.pitch.batterId)}
           </div>
         )}
       </Show>

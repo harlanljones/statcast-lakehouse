@@ -3,7 +3,7 @@
  * "one preset = one atomic state change" rule is testable without a DOM or
  * Solid runtime. App.tsx supplies its real signal setters; tests supply fakes.
  */
-import type { CameraViewName, OutcomeFilter, ZoneFilter } from "./deck-layers";
+import type { CameraViewName, OutcomeFilter, PlayerFilter, ZoneFilter } from "./deck-layers";
 import type { HeatmapMode } from "./heatmap";
 import type { LayerKey, ScenarioPreset } from "./scenarios";
 
@@ -15,6 +15,7 @@ export interface PresetSetters {
   setZoneFilter: (v: ZoneFilter) => void;
   setOutcomeFilter: (v: OutcomeFilter) => void;
   setSelectedTypes: (v: ReadonlySet<string>) => void;
+  setPlayerFilter: (v: PlayerFilter | null) => void;
   setLayer: (key: LayerKey, on: boolean) => void;
   setHeatmapMode: (v: HeatmapMode) => void;
   setBatSpeed: (v: number) => void;
@@ -40,7 +41,13 @@ export const LAYER_KEYS: readonly LayerKey[] = [
 /** The filter subset of PresetSetters (what "Reset filters" rewrites). */
 export type FilterSetters = Pick<
   PresetSetters,
-  "setSpeedRange" | "setPlateXRange" | "setPlateZRange" | "setZoneFilter" | "setOutcomeFilter" | "setSelectedTypes"
+  | "setSpeedRange"
+  | "setPlateXRange"
+  | "setPlateZRange"
+  | "setZoneFilter"
+  | "setOutcomeFilter"
+  | "setSelectedTypes"
+  | "setPlayerFilter"
 >;
 
 /**
@@ -54,6 +61,7 @@ export function applyPresetFiltersTo(p: ScenarioPreset, s: FilterSetters): void 
   s.setZoneFilter(p.zoneFilter);
   s.setOutcomeFilter(p.outcomeFilter);
   s.setSelectedTypes(new Set(p.selectedTypes));
+  s.setPlayerFilter(null);
 }
 
 export function applyPresetTo(p: ScenarioPreset, s: PresetSetters): void {
@@ -64,6 +72,7 @@ export function applyPresetTo(p: ScenarioPreset, s: PresetSetters): void {
   s.setZoneFilter(p.zoneFilter);
   s.setOutcomeFilter(p.outcomeFilter);
   s.setSelectedTypes(new Set(p.selectedTypes));
+  s.setPlayerFilter(null);
   for (const key of LAYER_KEYS) s.setLayer(key, p.layers[key]);
   s.setHeatmapMode(p.heatmapMode);
   s.setBatSpeed(p.batSpeed);

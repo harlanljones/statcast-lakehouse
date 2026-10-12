@@ -322,8 +322,15 @@ export type ZoneFilter = "all" | "in_zone" | "out_of_zone";
 export type OutcomeFilter = "all" | "swings" | "whiffs";
 
 /** The filter state shared by the GPU masks (buildLayers) and the CPU counts/panels (App). */
+/** Narrows the view to one player's pitches — what the card's isolate action sets. */
+export interface PlayerFilter {
+  role: "pitcher" | "batter";
+  id: number;
+}
+
 export interface FilterOpts {
   speedRange: [number, number];
+  playerFilter?: PlayerFilter | null;
   plateXRange?: [number, number];
   plateZRange?: [number, number];
   zoneFilter?: ZoneFilter;
@@ -331,7 +338,7 @@ export interface FilterOpts {
   selectedTypes?: ReadonlySet<string> | null;
 }
 
-type CriteriaOpts = Pick<FilterOpts, "zoneFilter" | "outcomeFilter" | "selectedTypes">;
+type CriteriaOpts = Pick<FilterOpts, "zoneFilter" | "outcomeFilter" | "selectedTypes" | "playerFilter">;
 
 /**
  * Categorical criteria (type set, zone, outcome): the part of the filter that
@@ -342,6 +349,13 @@ function passesCriteria(d: PitchDatum, opts: CriteriaOpts): boolean {
   // Options are read lazily: this runs once per pitch per filter change, the
   // categorical options are usually inactive, and destructuring all three up
   // front costs more than the comparisons that reject most pitches.
+  // One player's pitches first: it rejects almost everything, so it pays to run
+  // it before the other criteria.
+  const playerFilter = opts.playerFilter;
+  if (playerFilter) {
+    const id = playerFilter.role === "pitcher" ? d.pitcherId : d.batterId;
+    if (id !== playerFilter.id) return false;
+  }
   const selectedTypes = opts.selectedTypes;
   if (selectedTypes && selectedTypes.size > 0 && !selectedTypes.has(d.pitchType)) return false;
   const zoneFilter = opts.zoneFilter;
@@ -414,6 +428,7 @@ export interface BuildLayersOpts {
   showReleasePoints?: boolean;
   showPlateCrossings?: boolean;
   showSpray?: boolean;
+  playerFilter?: PlayerFilter | null;
   pairedTypes?: [string, string] | null;
   arsenalCentroids?: Map<string, ArsenalCentroid> | null;
   showContactSim?: boolean;
@@ -485,10 +500,13 @@ let lastFiltered: { key: unknown[]; props: FilteredLayerProps } | null = null;
 export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
   const { speedRange, hBreakRange, vBreakRange, plateXRange, plateZRange, zoneFilter, outcomeFilter } = opts;
   const selectedTypes = opts.selectedTypes ?? null;
+  const playerFilter = opts.playerFilter ?? null;
   const hasTypeFilter = Boolean(selectedTypes && selectedTypes.size > 0);
   const hasZoneFilter = zoneFilter === "in_zone" || zoneFilter === "out_of_zone";
   const hasOutcomeFilter = outcomeFilter === "swings" || outcomeFilter === "whiffs";
-  const typeRange: [number, number] = hasTypeFilter || hasZoneFilter || hasOutcomeFilter ? [0.5, 1.5] : OPEN_RANGE;
+  const hasPlayerFilter = playerFilter !== null;
+  const typeRange: [number, number] =
+    hasTypeFilter || hasZoneFilter || hasOutcomeFilter || hasPlayerFilter ? [0.5, 1.5] : OPEN_RANGE;
   const xRange = plateXRange ?? hBreakRange ?? OPEN_RANGE;
   const zRange = plateZRange ?? vBreakRange ?? OPEN_RANGE;
 
@@ -496,10 +514,11 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
     speedRange[0], speedRange[1], xRange[0], xRange[1], zRange[0], zRange[1],
     typeRange[0], typeRange[1], selectedTypes, zoneFilter ?? "all", outcomeFilter ?? "all",
     selectedTypes ? selectedTypes.size : 0,
+    playerFilter ? `${playerFilter.role}:${playerFilter.id}` : "",
   ];
   if (lastFiltered && lastFiltered.key.every((v, i) => v === key[i])) return lastFiltered.props;
 
-  const criteria: CriteriaOpts = { zoneFilter, outcomeFilter, selectedTypes };
+  const criteria: CriteriaOpts = { zoneFilter, outcomeFilter, selectedTypes, playerFilter };
   const props: FilteredLayerProps = {
     getFilterValue: (d) => [
       d.releaseSpeed,
