@@ -27,6 +27,7 @@ export interface PresetSetters {
   setZoneCells: (v: ReadonlySet<ZoneCell>) => void;
   setLeagueZones: (v: ReadonlySet<number>) => void;
   setPlayEvent: (v: string | null) => void;
+  setInnings: (v: ReadonlySet<number>) => void;
   setLayer: (key: LayerKey, on: boolean) => void;
   setHeatmapMode: (v: HeatmapMode) => void;
   setBatSpeed: (v: number) => void;
@@ -65,6 +66,7 @@ export type FilterSetters = Pick<
   | "setZoneCells"
   | "setLeagueZones"
   | "setPlayEvent"
+  | "setInnings"
 >;
 
 /**
@@ -83,6 +85,7 @@ export function applyPresetFiltersTo(p: ScenarioPreset, s: FilterSetters): void 
   s.setZoneCells(new Set());
   s.setLeagueZones(new Set());
   s.setPlayEvent(null);
+  s.setInnings(new Set());
 }
 
 export function applyPresetTo(p: ScenarioPreset, s: PresetSetters): void {
@@ -98,6 +101,7 @@ export function applyPresetTo(p: ScenarioPreset, s: PresetSetters): void {
   s.setZoneCells(new Set());
   s.setLeagueZones(new Set());
   s.setPlayEvent(null);
+  s.setInnings(new Set());
   for (const key of LAYER_KEYS) s.setLayer(key, p.layers[key]);
   s.setHeatmapMode(p.heatmapMode);
   s.setBatSpeed(p.batSpeed);

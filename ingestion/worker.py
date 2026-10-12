@@ -84,6 +84,8 @@ SCHEMA = pa.schema(
         ("balls", pa.int64()),
         ("strikes", pa.int64()),
         ("at_bat_number", pa.int64()),
+        # Inning the play belongs to (1-based, extras included); 100% present.
+        ("inning", pa.int64()),
         ("pitch_number", pa.int64()),
         ("is_swing", pa.int64()),
         ("is_whiff", pa.int64()),

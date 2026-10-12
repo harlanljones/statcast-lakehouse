@@ -23,6 +23,7 @@ import {
   type OutcomeFilter,
   type PitchDatum,
   passesFilters,
+  distinctInnings,
   distinctPlayEvents,
 } from "./lib/deck-layers";
 import { computeArsenalCentroids } from "./lib/arsenal";
@@ -72,6 +73,8 @@ export default function App() {
    * outcomes actually present in the loaded pitches.
    */
   const [playEvent, setPlayEvent] = createSignal<string | null>(null);
+  /** Innings to keep, empty for every inning. A filter, cleared like the other cuts. */
+  const [innings, setInnings] = createSignal<ReadonlySet<number>>(new Set());
   const [view, setView] = createSignal<CameraViewName>("Catcher");
   const [dragMode, setDragMode] = createSignal<DragMode>("rotate");
   // Where the loaded pitches came from; the player card links out only for real data.
@@ -152,6 +155,7 @@ export default function App() {
       zoneFilter: zoneFilter(),
       outcomeFilter: outcomeFilter(),
       playEvent: playEvent(),
+      innings: innings(),
       selectedTypes: selectedTypes(),
       playerFilter: playerFilter(),
       countBuckets: countBuckets(),
@@ -167,6 +171,7 @@ export default function App() {
   // panels follow the filters.
   const availableTypes = createMemo(() => distinctPitchTypes(pitchData()?.pitches ?? []));
   const availablePlayEvents = createMemo(() => distinctPlayEvents(pitchData()?.pitches ?? []));
+  const availableInnings = createMemo(() => distinctInnings(pitchData()?.pitches ?? []));
   const gameDate = createMemo(() => {
     const d = pitchData();
     return d ? extractGameDate(d.table) : null;
@@ -315,6 +320,7 @@ export default function App() {
     setCountBuckets,
     setZoneCells,
     setPlayEvent,
+    setInnings,
     setLeagueZones,
       setLayer: (key, on) => layerSetters[key](on),
       setHeatmapMode,
@@ -391,6 +397,7 @@ export default function App() {
     setCountBuckets,
           setZoneCells,
     setPlayEvent,
+    setInnings,
     setLeagueZones,
     });
 
@@ -409,6 +416,13 @@ export default function App() {
     setCountBuckets(new Set<CountBucket>());
     setZoneCells(new Set<ZoneCell>());
   });
+
+  const toggleInning = (inning: number) => {
+    const next = new Set(innings());
+    if (next.has(inning)) next.delete(inning);
+    else next.add(inning);
+    setInnings(next);
+  };
 
   const toggleLeagueZone = (zone: number) => {
     const next = new Set(leagueZones());
@@ -500,6 +514,7 @@ export default function App() {
             zoneFilter={zoneFilter()}
             outcomeFilter={outcomeFilter()}
             playEvent={playEvent()}
+            innings={innings()}
             selectedTypes={selectedTypes()}
             playerFilter={playerFilter()}
             onPlayerFilter={setPlayerFilter}
@@ -581,6 +596,9 @@ export default function App() {
               outcomeFilter={outcomeFilter()}
               playEvents={availablePlayEvents()}
               playEvent={playEvent()}
+              innings={availableInnings()}
+              selectedInnings={innings()}
+              onToggleInning={toggleInning}
               onPlayEvent={setPlayEvent}
               onOutcomeFilter={setOutcomeFilter}
               heatmapMode={heatmapMode()}

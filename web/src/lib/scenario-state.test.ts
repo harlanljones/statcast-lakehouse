@@ -23,6 +23,7 @@ function fakeApp() {
     zoneCells: new Set<ZoneCell>() as ReadonlySet<ZoneCell>,
     leagueZones: new Set<number>() as ReadonlySet<number>,
     playEvent: null as string | null,
+    innings: new Set<number>() as ReadonlySet<number>,
     heatmapMode: "" as ScenarioPreset["heatmapMode"] | "",
     batSpeed: NaN,
     attackAngleDeg: NaN,
@@ -43,6 +44,7 @@ function fakeApp() {
     setZoneCells: (v) => { state.zoneCells = v; },
     setLeagueZones: (v) => { state.leagueZones = v; },
     setPlayEvent: (v) => { state.playEvent = v; },
+    setInnings: (v) => { state.innings = v; },
     setLayer: (k, on) => { state.layers[k] = on; state.layerWrites++; },
     setHeatmapMode: (v) => { state.heatmapMode = v; },
     setBatSpeed: (v) => { state.batSpeed = v; },
@@ -89,6 +91,14 @@ describe("applyPresetTo", () => {
     expect([...app.state.leagueZones]).toEqual([14]);
     applyPresetFiltersTo(LIVE_PRESET, app.setters);
     expect(app.state.leagueZones.size).toBe(0);
+  });
+
+  it("clears the inning cut when a preset or the reset lands", () => {
+    const app = fakeApp();
+    app.setters.setInnings(new Set([7]));
+    expect([...app.state.innings]).toEqual([7]);
+    applyPresetFiltersTo(LIVE_PRESET, app.setters);
+    expect(app.state.innings.size).toBe(0);
   });
 
   it("clears the at-bat cut when a preset or the reset lands", () => {

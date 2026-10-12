@@ -9,6 +9,7 @@ import {
   FALLBACK_COLOR,
   FILTER_SIZE,
   countBucket,
+  distinctInnings,
   distinctPlayEvents,
   filteredLayerProps,
   zoneCell,
@@ -1419,5 +1420,21 @@ describe("in-zone cells", () => {
     const group = [datum({ playEvent: "Strikeout" }), datum({ playEvent: "Home Run" }), datum({ playEvent: "Strikeout" }), datum({})];
     expect(distinctPlayEvents(group)).toEqual(["Home Run", "Strikeout"]);
     expect(distinctPlayEvents([])).toEqual([]);
+  });
+
+  it("cuts by inning, and offers only the innings the data carries", () => {
+    const seventh = { speedRange: [40, 105] as [number, number], innings: new Set([7]) };
+    expect(passesFilters(datum({ inning: 7 }), seventh)).toBe(true);
+    expect(passesFilters(datum({ inning: 8 }), seventh)).toBe(false);
+    // A pitch without an inning cannot satisfy the cut; with nothing selected
+    // everything shows, whether or not it carries one.
+    expect(passesFilters(datum({}), seventh)).toBe(false);
+    const late = { speedRange: [40, 105] as [number, number], innings: new Set([8, 9]) };
+    expect(passesFilters(datum({ inning: 9 }), late)).toBe(true);
+    expect(passesFilters(datum({ inning: 7 }), late)).toBe(false);
+    expect(passesFilters(datum({}), { speedRange: [40, 105] })).toBe(true);
+    expect(distinctInnings([datum({ inning: 9 }), datum({ inning: 1 }), datum({ inning: 9 }), datum({})]))
+      .toEqual([1, 9]);
+    expect(distinctInnings([])).toEqual([]);
   });
 });

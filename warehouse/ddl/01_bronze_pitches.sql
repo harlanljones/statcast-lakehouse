@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS `statcast_analytics.bronze_pitches` (
   balls INT64,
   strikes INT64,
   at_bat_number INT64,
+  inning INT64,
   pitch_number INT64,
   is_swing INT64,
   is_whiff INT64,

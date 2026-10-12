@@ -90,6 +90,7 @@ COLUMN_MAP = {
     "balls": "balls",
     "strikes": "strikes",
     "at_bat_number": "at_bat_number",
+    "inning": "inning",
     "pitch_number": "pitch_number",
     "release_extension": "extension",
     # Savant's batted-ball contact columns (NULL unless the ball was put in play).
@@ -119,7 +120,7 @@ def _to_int(v: Any) -> int | None:
 
 
 INT_FIELDS = frozenset(
-    {"game_id", "pitcher_id", "batter_id", "balls", "strikes", "at_bat_number", "pitch_number"}
+    {"game_id", "pitcher_id", "batter_id", "balls", "strikes", "at_bat_number", "inning", "pitch_number"}
 )
 TEXT_FIELDS = frozenset(
     {"pitch_type", "game_date", "pitch_result", "play_event", "stand", "p_throws", "bb_type"}

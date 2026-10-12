@@ -55,6 +55,10 @@ export interface LensPanelProps {
   playEvents?: readonly string[];
   playEvent?: string | null;
   onPlayEvent?: (v: string | null) => void;
+  /** Innings present in the loaded pitches; the picker offers only these. */
+  innings?: readonly number[];
+  selectedInnings?: ReadonlySet<number>;
+  onToggleInning?: (inning: number) => void;
   heatmapMode: HeatmapMode;
   onHeatmapMode: (m: HeatmapMode) => void;
   batSpeed: number;
@@ -316,6 +320,26 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
                 onClick={() => props.onPlayEvent!(props.playEvent === event ? null : event)}
               >
                 {event}
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      <Show when={has("outcome") && props.innings && props.innings.length > 0 && props.onToggleInning}>
+        <div role="group" aria-label="inning" style={{ display: "flex", "flex-wrap": "wrap", gap: "4px", "align-items": "center" }}>
+          <span style={{ color: THEME.muted, "font-size": "11px", width: "52px" }} aria-hidden="true">
+            Inning
+          </span>
+          <For each={props.innings}>
+            {(inning) => (
+              <button
+                class="ui-ctl ui-chip"
+                aria-pressed={!props.selectedInnings || props.selectedInnings.size === 0 || props.selectedInnings.has(inning)}
+                title={`Every pitch thrown in inning ${inning}`}
+                onClick={() => props.onToggleInning!(inning)}
+              >
+                {inning}
               </button>
             )}
           </For>

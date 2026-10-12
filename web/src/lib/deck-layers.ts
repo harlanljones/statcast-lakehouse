@@ -102,6 +102,12 @@ export interface PitchDatum {
    */
   playEvent?: string;
   /**
+   * Inning the play belongs to, 1-based (extras included). Only the integer is
+   * carried: the feed spells the half "top"/"bottom" and Savant's CSV "Top"/"Bot",
+   * so a half column would need canonicalising before anything consumed it.
+   */
+  inning?: number;
+  /**
    * Observed batted-ball data (MLB's contact columns): measured exit velocity
    * (mph), launch angle (degrees), projected distance (feet) and batted-ball
    * class. Undefined unless the pitch was put in play.
@@ -444,6 +450,13 @@ export function distinctPlayEvents(pitches: readonly PitchDatum[]): string[] {
   return [...seen].sort();
 }
 
+/** Every inning present in the loaded pitches, ascending (extras included). */
+export function distinctInnings(pitches: readonly PitchDatum[]): number[] {
+  const seen = new Set<number>();
+  for (const p of pitches) if (p.inning != null) seen.add(p.inning);
+  return [...seen].sort((a, b) => a - b);
+}
+
 export function countBucket(balls?: number, strikes?: number): CountBucket | null {
   if (balls == null || strikes == null) return null;
   if (balls === 0 && strikes === 0) return "first";
@@ -473,6 +486,8 @@ export interface FilterOpts {
   leagueZones?: ReadonlySet<number> | null;
   /** One plate-appearance outcome to keep every pitch of ("Strikeout", "Home Run", ...), or null for any. */
   playEvent?: string | null;
+  /** Empty or absent means every inning; selecting any restricts to them. */
+  innings?: ReadonlySet<number> | null;
   plateXRange?: [number, number];
   plateZRange?: [number, number];
   zoneFilter?: ZoneFilter;
@@ -483,7 +498,8 @@ export interface FilterOpts {
 type CriteriaOpts = Pick<
   FilterOpts,
   "zoneFilter" | "outcomeFilter" | "selectedTypes" | "playerFilter" | "countBuckets" | "zoneCells" | "leagueZones" |
-  "playEvent"
+  "playEvent" |
+  "innings"
 >;
 
 /**
@@ -536,6 +552,10 @@ function passesCriteria(d: PitchDatum, opts: CriteriaOpts): boolean {
   // ended in the chosen event, so the sequence that produced it stays together.
   const playEvent = opts.playEvent;
   if (playEvent != null && playEvent !== "" && d.playEvent !== playEvent) return false;
+  const innings = opts.innings;
+  if (innings && innings.size > 0) {
+    if (d.inning == null || !innings.has(d.inning)) return false;
+  }
   return true;
 }
 
@@ -601,6 +621,7 @@ export interface BuildLayersOpts {
   zoneCells?: ReadonlySet<ZoneCell> | null;
   leagueZones?: ReadonlySet<number> | null;
   playEvent?: string | null;
+  innings?: ReadonlySet<number> | null;
   pairedTypes?: [string, string] | null;
   arsenalCentroids?: Map<string, ArsenalCentroid> | null;
   showContactSim?: boolean;
@@ -677,6 +698,7 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
   const zoneCells = opts.zoneCells ?? null;
   const leagueZones = opts.leagueZones ?? null;
   const playEvent = opts.playEvent ?? null;
+  const innings = opts.innings ?? null;
   const hasTypeFilter = Boolean(selectedTypes && selectedTypes.size > 0);
   const hasZoneFilter = zoneFilter === "in_zone" || zoneFilter === "out_of_zone";
   const hasOutcomeFilter = outcomeFilter !== "all" && outcomeFilter != null;
@@ -685,9 +707,10 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
   const hasCellFilter = Boolean(zoneCells && zoneCells.size > 0);
   const hasLeagueFilter = Boolean(leagueZones && leagueZones.size > 0);
   const hasPlayEventFilter = playEvent != null && playEvent !== "";
+  const hasInningFilter = Boolean(innings && innings.size > 0);
   const typeRange: [number, number] =
     hasTypeFilter || hasZoneFilter || hasOutcomeFilter || hasPlayerFilter || hasCountFilter || hasCellFilter ||
-    hasLeagueFilter || hasPlayEventFilter
+    hasLeagueFilter || hasPlayEventFilter || hasInningFilter
       ? [0.5, 1.5]
       : OPEN_RANGE;
   const xRange = plateXRange ?? hBreakRange ?? OPEN_RANGE;
@@ -702,6 +725,7 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
     zoneCells ? [...zoneCells].sort((a, b) => a - b).join(",") : "",
     leagueZones ? [...leagueZones].sort((a, b) => a - b).join(",") : "",
     playEvent ?? "",
+    innings ? [...innings].sort((a, b) => a - b).join(",") : "",
   ];
   if (lastFiltered && lastFiltered.key.every((v, i) => v === key[i])) return lastFiltered.props;
 
@@ -714,6 +738,7 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
     zoneCells,
     leagueZones,
     playEvent,
+    innings,
   };
   const props: FilteredLayerProps = {
     getFilterValue: (d) => [

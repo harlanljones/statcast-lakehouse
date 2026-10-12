@@ -367,6 +367,11 @@ def _to_row(
         "balls": (pre_count or {}).get("balls", 0),
         "strikes": (pre_count or {}).get("strikes", 0),
         "at_bat_number": play["about"]["atBatIndex"] + 1,
+        # The inning the play belongs to (1-based, extras included). NOT derivable
+        # from the count fields, and 100% present. Only the integer is stored: the
+        # feed spells the half "top"/"bottom" and Savant's CSV "Top"/"Bot", so a
+        # half column would need canonicalising for no consumer yet.
+        "inning": (play.get("about") or {}).get("inning"),
         "pitch_number": event.get("pitchNumber"),
         "is_swing": int(swing),
         "is_whiff": int(swing and whiff),
