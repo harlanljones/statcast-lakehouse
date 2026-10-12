@@ -1,6 +1,14 @@
 import { For, Show, type JSX } from "solid-js";
 import { pitchColor, type PitchDatum } from "../lib/deck-layers";
-import { mlbLinks, pitchResult, playerLabel, summarizeBatter, summarizePitcher } from "../lib/player-card";
+import {
+  formatRateDelta,
+  mlbLinks,
+  pitchResult,
+  playerLabel,
+  summarizeBatter,
+  summarizeOthers,
+  summarizePitcher,
+} from "../lib/player-card";
 import type { PlayerFilter } from "../lib/deck-layers";
 import { sprayDirection } from "../lib/spray";
 import { storylinesForPitcher, type PitcherStoryline } from "../lib/storylines";
@@ -31,6 +39,16 @@ const muted: JSX.CSSProperties = { color: THEME.muted };
 export default function PlayerCard(props: PlayerCardProps): JSX.Element {
   const summary = () => (props.pitch.pitcherId != null ? summarizePitcher(props.pitches, props.pitch.pitcherId) : null);
   const atBat = () => (props.pitch.batterId != null ? summarizeBatter(props.pitches, props.pitch.batterId) : null);
+  /**
+   * The yardstick the card's deltas use: every OTHER pitcher (or batter) in the
+   * loaded pitches. Labelled "vs rest" on screen, never as a league baseline —
+   * the loaded slices are a handful of real games picked for their stories.
+   */
+  const restAgainst = (role: "pitcher" | "batter", id: number | undefined) =>
+    id == null ? null : summarizeOthers(props.pitches, role, id);
+  const restValue = (rate: number | null, other: number | null) =>
+    rate == null || other == null ? undefined : `${Math.round(other * 100)}%`;
+
   /** Where this batted ball landed, when the data carries both halves of it. */
   const sprayLine = () => {
     const direction = sprayDirection(props.pitch.hcX, props.pitch.hcY);
@@ -124,6 +142,21 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
             <div style={muted}>
               {s().count} pitches · avg {s().avgSpeed.toFixed(1)} mph ·{" "}
               {s().whiffRate == null ? "no swings" : `${Math.round(s().whiffRate! * 100)}% whiff`}
+              <Show
+                when={formatRateDelta(s().whiffRate, restAgainst("pitcher", props.pitch.pitcherId)?.whiffRate ?? null)}
+              >
+                {(delta) => (
+                  <span
+                    title={`other pitchers in the loaded pitches: ${restValue(
+                      s().whiffRate,
+                      restAgainst("pitcher", props.pitch.pitcherId)?.whiffRate ?? null,
+                    ) ?? "—"} whiff`}
+                  >
+                    {" "}
+                    · {delta()} vs rest
+                  </span>
+                )}
+              </Show>
             </div>
             <div aria-label="pitch mix" style={{ margin: "6px 0 10px" }}>
               <For each={s().mix}>
@@ -148,6 +181,24 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
                   <div style={muted}>
                     Contact · avg {c().avgExitVelocity.toFixed(1)} mph · hard-hit{" "}
                     {Math.round(c().hardHitRate * 100)}% of {c().measured}
+                    <Show
+                      when={formatRateDelta(
+                        c().hardHitRate,
+                        restAgainst("pitcher", props.pitch.pitcherId)?.contact?.hardHitRate ?? null,
+                      )}
+                    >
+                      {(delta) => (
+                        <span
+                          title={`other pitchers in the loaded pitches: ${restValue(
+                            c().hardHitRate,
+                            restAgainst("pitcher", props.pitch.pitcherId)?.contact?.hardHitRate ?? null,
+                          ) ?? "—"} hard-hit`}
+                        >
+                          {" "}
+                          · {delta()} vs rest
+                        </span>
+                      )}
+                    </Show>
                   </div>
                   <For each={c().mix}>
                     {(m) => (
@@ -181,14 +232,47 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
             <div style={muted}>
               {b().count} seen ·{" "}
               {b().swingRate == null ? "no swing data" : `${Math.round(b().swingRate! * 100)}% swings`} ·{" "}
-              {b().whiffRate == null ? "no swings" : `${Math.round(b().whiffRate! * 100)}% whiff`} ·{" "}
-              avg {b().avgSpeed.toFixed(1)} mph faced
+              {b().whiffRate == null ? "no swings" : `${Math.round(b().whiffRate! * 100)}% whiff`}
+              <Show
+                when={formatRateDelta(b().whiffRate, restAgainst("batter", props.pitch.batterId)?.whiffRate ?? null)}
+              >
+                {(delta) => (
+                  <span
+                    title={`other batters in the loaded pitches: ${restValue(
+                      b().whiffRate,
+                      restAgainst("batter", props.pitch.batterId)?.whiffRate ?? null,
+                    ) ?? "—"} whiff`}
+                  >
+                    {" "}
+                    · {delta()} vs rest
+                  </span>
+                )}
+              </Show>{" "}
+              · avg {b().avgSpeed.toFixed(1)} mph faced
             </div>
             <Show when={b().contact}>
               {(c) => (
                 <div style={muted}>
                   Contact · avg {c().avgExitVelocity.toFixed(1)} mph · hard-hit{" "}
                   {Math.round(c().hardHitRate * 100)}% of {c().measured}
+                  <Show
+                    when={formatRateDelta(
+                      c().hardHitRate,
+                      restAgainst("batter", props.pitch.batterId)?.contact?.hardHitRate ?? null,
+                    )}
+                  >
+                    {(delta) => (
+                      <span
+                        title={`other batters in the loaded pitches: ${restValue(
+                          c().hardHitRate,
+                          restAgainst("batter", props.pitch.batterId)?.contact?.hardHitRate ?? null,
+                        ) ?? "—"} hard-hit`}
+                      >
+                        {" "}
+                        · {delta()} vs rest
+                      </span>
+                    )}
+                  </Show>
                 </div>
               )}
             </Show>

@@ -139,6 +139,23 @@ export function summarizePitcher(pitches: readonly PitchDatum[], pitcherId: numb
   return t && { pitcherId, ...finish(t) };
 }
 
+/**
+ * The same stats for every OTHER player of that role in the loaded group.
+ *
+ * This is the yardstick the card compares a player against, and it is labelled
+ * that way on screen: the loaded slices are a handful of real games chosen for
+ * their stories, so they are not a league baseline and must never be shown as
+ * one. Returns null when the group holds nobody else.
+ */
+export function summarizeOthers(
+  pitches: readonly PitchDatum[],
+  role: "pitcher" | "batter",
+  id: number,
+): RoleStats | null {
+  const t = tallyFor(pitches, (p) => (role === "pitcher" ? p.pitcherId : p.batterId) !== id);
+  return t && finish(t);
+}
+
 export function summarizeBatter(pitches: readonly PitchDatum[], batterId: number): BatterSummary | null {
   const t = tallyFor(pitches, (p) => p.batterId === batterId);
   return t && { batterId, ...finish(t) };
@@ -191,6 +208,21 @@ export function mlbLinks(i: LinkInput): CardLink[] {
       "This pitch has no batter id in the data.",
     ),
   ];
+}
+
+/**
+ * A rate difference in percentage points, or a plain "even" when it is zero.
+ *
+ * Taken between the *displayed* whole percentages, not the underlying rates:
+ * the card shows each side rounded, so a delta computed from unrounded rates
+ * would not add up against what the reader can see ("36% … -10 vs 45%").
+ * A difference that rounds to zero reads as "even" rather than a misleading "+0".
+ */
+export function formatRateDelta(rate: number | null, other: number | null): string | null {
+  if (rate == null || other == null) return null;
+  const points = Math.round(rate * 100) - Math.round(other * 100);
+  if (points === 0) return "even";
+  return `${points > 0 ? "+" : "−"}${Math.abs(points)} pts`;
 }
 
 export function pitchResult(p: Pick<PitchDatum, "isSwing" | "isWhiff">): string {

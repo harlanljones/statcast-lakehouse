@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { PitchDatum } from "./deck-layers";
 import {
+  formatRateDelta,
   isSyntheticSource,
   mlbLinks,
   pitchResult,
   playerLabel,
   summarizeBatter,
+  summarizeOthers,
   summarizePitcher,
 } from "./player-card";
 
@@ -216,5 +218,49 @@ describe("isSyntheticSource", () => {
 
   it("treats a warehouse date partition as real data", () => {
     expect(isSyntheticSource({ kind: "partition", date: "2024-06-16" })).toBe(false);
+  });
+});
+
+describe("summarizeOthers", () => {
+  const group = [
+    pitch({ pitcherId: 1, batterId: 10, releaseSpeed: 96, isSwing: 1, isWhiff: 1 }),
+    pitch({ pitcherId: 1, batterId: 10, releaseSpeed: 94, isSwing: 1, isWhiff: 1 }),
+    pitch({ pitcherId: 2, batterId: 10, releaseSpeed: 88, isSwing: 1, isWhiff: 0 }),
+    pitch({ pitcherId: 3, batterId: 11, releaseSpeed: 84, isSwing: 0, isWhiff: 0 }),
+  ];
+
+  it("covers every pitcher except the one asked for", () => {
+    const others = summarizeOthers(group, "pitcher", 1)!;
+    expect(others.count).toBe(2);
+    expect(others.whiffRate).toBeCloseTo(0);
+    expect(summarizeOthers(group, "pitcher", 2)!.count).toBe(3);
+  });
+
+  it("covers every batter except the one asked for", () => {
+    const others = summarizeOthers(group, "batter", 10)!;
+    expect(others.count).toBe(1);
+    expect(others.avgSpeed).toBeCloseTo(84);
+  });
+
+  it("is null when the group holds nobody else", () => {
+    expect(summarizeOthers([group[0], group[1]], "pitcher", 1)).toBeNull();
+    expect(summarizeOthers([], "batter", 10)).toBeNull();
+  });
+});
+
+describe("formatRateDelta", () => {
+  it("states a difference in percentage points, signed", () => {
+    expect(formatRateDelta(0.33, 0.24)).toBe("+9 pts");
+    expect(formatRateDelta(0.24, 0.33)).toBe("−9 pts");
+  });
+
+  it("says even rather than a misleading +0", () => {
+    expect(formatRateDelta(0.241, 0.24)).toBe("even");
+    expect(formatRateDelta(0.5, 0.5)).toBe("even");
+  });
+
+  it("is null when either side is missing", () => {
+    expect(formatRateDelta(null, 0.3)).toBeNull();
+    expect(formatRateDelta(0.3, null)).toBeNull();
   });
 });
