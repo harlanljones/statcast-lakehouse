@@ -272,6 +272,41 @@ class TestArsenalCentroidsAndPairMetrics:
         assert math.isclose(centroids["FF"]["kinematics"]["x0"], -1.6, rel_tol=1e-6)
         assert math.isclose(centroids["FF"]["commitment_point"][1], 23.8, rel_tol=1e-6)
 
+    def test_compute_arsenal_centroids_skips_unmeasured_spin_rates(self):
+        """A pitch with no spin measurement is left out of the spin mean.
+
+        Real feeds omit ``breaks.spinRate`` for a share of pitches (one in the
+        checked-in corpus), and the API path can hand back NaN. The TS mirror
+        keeps a spin count for the same reason, so a missing value must not be
+        averaged in as zero rpm — and it must not crash the aggregate either.
+        """
+        base = {
+            "pitch_type": "FF", "x0": -1.5, "y0": 55.0, "z0": 6.0,
+            "vx0": 2.0, "vy0": -135.0, "vz0": -5.0,
+            "ax": 5.0, "ay": 0.0, "az": 15.0,
+            "plate_x": 0.2, "plate_z": 3.0,
+        }
+        pitches = [
+            {**base, "release_speed": 96.0, "release_spin_rate": 2400.0},
+            {**base, "release_speed": 95.0, "release_spin_rate": None},
+            {**base, "release_speed": 94.0, "release_spin_rate": float("nan")},
+        ]
+        centroids = compute_arsenal_centroids(pitches)
+        assert centroids["FF"]["count"] == 3
+        assert math.isclose(centroids["FF"]["release_spin_rate"], 2400.0, rel_tol=1e-6)
+        # Speed is measured on every pitch, so its mean still covers all three.
+        assert math.isclose(centroids["FF"]["release_speed"], 95.0, rel_tol=1e-6)
+
+    def test_compute_arsenal_centroids_without_any_spin_rates(self):
+        pitch = {
+            "pitch_type": "CH", "release_speed": 88.0, "release_spin_rate": None,
+            "x0": -1.5, "y0": 55.0, "z0": 6.0,
+            "vx0": 2.0, "vy0": -135.0, "vz0": -5.0,
+            "ax": 5.0, "ay": 0.0, "az": 15.0,
+            "plate_x": 0.2, "plate_z": 3.0,
+        }
+        assert compute_arsenal_centroids([pitch])["CH"]["release_spin_rate"] is None
+
     def test_compute_pitch_pair_metrics(self):
         pitches = [
             {

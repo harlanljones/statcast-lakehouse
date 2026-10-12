@@ -15,7 +15,7 @@ import pyarrow as pa
 import pytest
 
 from ingestion import worker
-from ingestion.scenarios import real_pitches
+from ingestion.scenarios import real_game_dates, real_pitches
 from ingestion.worker import SCHEMA, main, write_bq
 
 
@@ -285,11 +285,13 @@ class TestMainDateArg:
         assert set(table.column("game_id").to_pylist()) == {746011}
 
     def test_date_without_real_pitches_exits_2_and_lists_dates(self, tmp_path, capsys):
+        # Derived, not hardcoded: a slice may cover any fixed date later on.
+        uncovered = (min(real_game_dates()) - dt.timedelta(days=1)).isoformat()
         with pytest.raises(SystemExit) as exc:
-            main(["--dry-run", "--date", "2025-04-01", "--out", str(tmp_path / "d.arrow")])
+            main(["--dry-run", "--date", uncovered, "--out", str(tmp_path / "d.arrow")])
         assert exc.value.code == 2
         err = capsys.readouterr().err
-        assert "2025-04-01" in err
+        assert uncovered in err
         assert "2024-09-19" in err
         assert not (tmp_path / "d.arrow").exists()
 

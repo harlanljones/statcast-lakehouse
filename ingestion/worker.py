@@ -346,11 +346,19 @@ def compute_arsenal_centroids(pitches: list[dict[str, Any]]) -> dict[str, dict[s
             continue
         t = totals.get(pt)
         if t is None:
-            t = [0.0] * 14
+            t = [0.0] * 15  # index 14 counts the pitches that have a spin rate
             totals[pt] = t
         t[0] += 1.0
         t[1] += p.get("release_speed", 0.0)
-        t[2] += p.get("release_spin_rate", 0.0)
+        # A pitch without a measured spin rate (NULL in the corpus, NaN from the
+        # API path) is left out of the spin mean rather than counted as zero:
+        # `computeArsenalCentroids` in web/src/lib/arsenal.ts keeps a spin count
+        # for the same reason, so both mirrors report the mean over pitches that
+        # were measured, or None/undefined when none were.
+        spin = p.get("release_spin_rate")
+        if spin is not None and not math.isnan(spin):
+            t[2] += spin
+            t[14] += 1.0
         t[3] += p["x0"]
         t[4] += p["y0"]
         t[5] += p["z0"]
@@ -367,7 +375,7 @@ def compute_arsenal_centroids(pitches: list[dict[str, Any]]) -> dict[str, dict[s
     for pt, t in totals.items():
         n = int(t[0])
         mean_speed = t[1] / n
-        mean_spin = t[2] / n
+        mean_spin = t[2] / t[14] if t[14] > 0 else None
         mean_x0 = t[3] / n
         mean_y0 = t[4] / n
         mean_z0 = t[5] / n

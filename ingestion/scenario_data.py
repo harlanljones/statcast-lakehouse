@@ -69,6 +69,10 @@ BIG_INNING_GAMES = (746001, 747008, 746517, 776794, 776428, 822940)
 # Six games in which the starting pitcher struck out at least ten, one per date
 # across the 2024, 2025 and 2026 seasons: twelve to fourteen each, 75 in all.
 STRIKEOUT_START_GAMES = (746691, 746356, 777692, 777217, 776317, 824794)
+
+# Six games in which the winning team trailed by three or four runs and still
+# won inside nine innings, one per date across the 2024, 2025 and 2026 seasons.
+COMEBACK_GAMES = (746085, 747059, 778490, 778472, 822758, 823569)
 GAME_IDS = (
     746011, 775300, 746679, 746165, 746381, 777972, 822829,
     *SEASON_SWEEP_GAMES,
@@ -82,6 +86,7 @@ GAME_IDS = (
     *GRAND_SLAM_GAMES,
     *BIG_INNING_GAMES,
     *STRIKEOUT_START_GAMES,
+    *COMEBACK_GAMES,
 )
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
@@ -115,6 +120,7 @@ SWEEP_SCENARIOS = {
     "grand-slams": GRAND_SLAM_GAMES,
     "big-innings": BIG_INNING_GAMES,
     "strikeout-starts": STRIKEOUT_START_GAMES,
+    "comeback-wins": COMEBACK_GAMES,
 }
 
 

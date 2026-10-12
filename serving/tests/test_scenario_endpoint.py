@@ -32,6 +32,7 @@ SCENARIO_ROWS = {
     "grand-slams": 1906,
     "big-innings": 2012,
     "strikeout-starts": 1681,
+    "comeback-wins": 1903,
 }
 
 

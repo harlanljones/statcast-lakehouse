@@ -26,7 +26,8 @@ export type ScenarioId =
   | "multi-homer-nights"
   | "grand-slams"
   | "big-innings"
-  | "strikeout-starts";
+  | "strikeout-starts"
+  | "comeback-wins";
 
 export type LayerKey =
   | "tunneling"
@@ -546,6 +547,25 @@ export const SCENARIOS: readonly Scenario[] = [
       view: "Catcher",
       layers: { plateCrossings: true, heatmap: true },
       heatmapMode: "whiff_rate",
+    }),
+  },
+  {
+    id: "comeback-wins",
+    title: "Comeback Wins",
+    dateLabel: "Apr 1, 2024 – Apr 4, 2026",
+    gameLabel: "Six games · 3–4 run deficits",
+    storyUrl: "https://www.mlb.com/schedule",
+    feedUrl: "https://statsapi.mlb.com/api/v1.1/game/746085/feed/live",
+    synthetic: false,
+    hook: "Six games the winner trailed by three or four runs — and still won inside nine innings.",
+    lookFor:
+      "1,903 tracked pitches, 842 swings and 213 whiffs across six regulation games from April 2024 to April 2026 in which the winning team trailed by three or four runs: the Angels spotted the Marlins four runs on opening day, the Orioles and Dodgers each erased three, and the Dodgers turned a three-run deficit into a 13-6 win in Washington. 318 pitches were put in play with measured contact data.",
+    tryThis:
+      "Scrub to the inning the lead changed and compare where the pitches had to go.",
+    lens: ["camera", "flight", "types", "speed", "plate", "zone", "outcome"],
+    preset: preset({
+      view: "Batter",
+      layers: { plateCrossings: true, ghostBreak: true },
     }),
   },
 ];

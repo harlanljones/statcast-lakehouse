@@ -247,7 +247,14 @@ def validate(rows: list[dict], table: pa.Table, failures: Failures) -> None:
                 )
         for key, (lo, hi) in BOUNDS.items():
             value = row.get(key)
-            if value is None or not math.isfinite(value) or not (lo <= value <= hi):
+            if value is None:
+                # Columns the warehouse schema declares nullable (spin rate,
+                # strike-zone top/bottom) can be missing for a real pitch that
+                # was tracked without that measurement; `REQUIRED_COLUMNS` is
+                # what asserts a value must be there, this table only judges
+                # values that exist.
+                continue
+            if not math.isfinite(value) or not (lo <= value <= hi):
                 bound_errors[key] = bound_errors.get(key, 0) + 1
     failures.check(crossing_errors == 0, f"{crossing_errors} pitches fail the plate-crossing check")
     for key, count in sorted(bound_errors.items()):
