@@ -14,32 +14,27 @@ Anything already tried and refuted is listed at the end so it does not get re-sp
 
 ---
 
-## O1 — Cut the per-frame render cost (the TDD's 16 ms / 120 FPS SLA)
+## O1 — Render-loop frame cost: MEASURED AND REFUTED at current scene sizes
 
-**Evidence.** The scene draws **62,741 paths × 60 points = 3.76 M vertices every frame**, and a filter is applied
-as a *discard mask*, which "still draws every instance — the frame cost scales with total rows, not visible rows"
-(deck.gl [RFC #10781](https://github.com/visgl/deck.gl/issues/10781), open; measured there at 4 M rows / 5%
-survivors: mask 6.17 ms tick vs **1.80 ms** for compacted ids + `drawIndirect`). This is *not* the cause of the
-measured JS-stage regression (our `ts_layers_ms` is layer *construction*, ~103 ms) — it is a separate, real cost
-in the live app, and the only part of TDD.md's latency target that has never been profiled.
+**Measured 2026-10-13 in the browser**, during flight playback (the only time deck.gl re-renders per frame),
+sampling `requestAnimationFrame` deltas for 3 s on the largest slice (`short-centre-fields`):
 
-**Change.** First **measure** it: a browser frame profile of the 3D view at a fixed filter state (DevTools
-performance trace or `tab.profileStart`), recording frame time at 100% survivors vs ~5%. Then, in order of risk:
-1. **`filterShaderPlugin`** (luma.gl `shadertools` 9.4.2 — GLSL *and* WGSL sources) to do uniform-driven on-GPU
-   visibility in WebGL2 today, without waiting for `DataFilterExtension` to reach WebGPU. Lowest risk, no new
-   runtime.
-2. **Compaction** via `@luma.gl/gpgpu`'s `GPUCompaction`/`DrawCommandBuffer` (or `gpu-dataframe`), which needs a
-   WebGPU path. Experimental: subpaths ship without a semver promise.
+| visible pitches | frames | p50 | p95 | worst | fps |
+|---|---|---|---|---|---|
+| 3,687 (the whole slice) | 179 | **17 ms** | 18 ms | 18 ms | 58.8 |
+| 388 (inning 1) | 178 | **17 ms** | 18 ms | 20 ms | 58.8 |
 
-**Expected effect.** The RFC's own ratio (6.17 → 1.80 ms) is the upper bound; ours has to be measured, but the
-scaling law says the win grows with corpus size, which is exactly the axis this project keeps moving.
+A **9.5× reduction in visible rows changes nothing**: both states sit at the display's vsync ceiling (58.8 fps
+≈ 60 Hz), so the GPU is nowhere near the draw cost at the sizes this app actually renders. The scaling law from
+deck.gl [RFC #10781](https://github.com/visgl/deck.gl/issues/10781) (a discard mask costs *total* rows, 6.17 ms
+→ 1.80 ms with compaction at 4 M rows) is real, but it applies to the **full 62,741-pitch corpus — which the app
+never loads into one scene**: it loads one slice of at most ~3.7 k paths (222 k vertices), which is what the
+table above measures.
 
-**Acceptance.** A before/after frame-time table at two filter selectivities on the same slice; all existing CPU
-tests and the TS↔Py parity unchanged; the app's "no CPU-side per-frame filtering" invariant intact (assert no
-per-frame CPU pass over `pitches`).
-
-**Risk.** Compaction changes the draw path; the experimental subpaths would be the first WebGPU dependency in the
-repo. Do not adopt a WebGPU-only path while deck.gl calls WebGPU "not production ready".
+**Action now: none.** Revisit only if a single scene ever holds the whole corpus (e.g. a "load everything" mode);
+the candidates stay as recorded — `filterShaderPlugin` (GLSL+WGSL, WebGL2 today, low risk) before any experimental
+WebGPU compaction — and the idempotent check remains the same before/after frame table at two filter
+selectivities.
 
 ---
 
