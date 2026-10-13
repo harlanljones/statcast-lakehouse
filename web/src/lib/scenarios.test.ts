@@ -19,6 +19,34 @@ const SERVER_IDS = [
   "ohtani-50th-home-run",
   "freeman-walk-off",
   "snell-no-hitter",
+  "cardinals-dodgers-opener",
+  "tigers-astros-june",
+  "yankees-athletics-2025",
+  "twins-blue-jays-2026",
+  "season-sweep",
+  "strikeout-nights",
+  "extra-innings",
+  "power-nights",
+  "walk-off-wins",
+  "one-run-slugfests",
+  "pitchers-duels",
+  "multi-homer-nights",
+  "grand-slams",
+  "big-innings",
+  "strikeout-starts",
+  "comeback-wins",
+  "multi-error-games",
+  "inning-after-inning",
+  "called-early",
+  "combined-shutouts",
+  "blowouts",
+  "hundred-pitch-starts",
+  "unclassified-pitches",
+  "under-a-roof",
+  "short-left-lines",
+  "short-centre-fields",
+  "deep-centre-fields",
+  "turf-fields",
 ];
 
 describe("real-game story catalog", () => {
@@ -32,7 +60,7 @@ describe("real-game story catalog", () => {
       expect(s.hook.length).toBeGreaterThan(0);
       expect(s.lookFor.length).toBeGreaterThan(0);
       expect(s.tryThis.length).toBeGreaterThan(0);
-      expect(s.dateLabel).toMatch(/\w{3} \d{1,2}, 2024/);
+      expect(s.dateLabel).toMatch(/\w{3} \d{1,2}, \d{4}/);
       expect(s.storyUrl).toMatch(/^https:\/\/www\.mlb\.com\//);
       expect(s.feedUrl).toMatch(/^https:\/\/statsapi\.mlb\.com\/api\/v1\.1\/game\//);
       expect(s.synthetic).toBe(false);
@@ -63,8 +91,8 @@ describe("real-game story catalog", () => {
     for (const s of SCENARIOS) for (const l of s.lens) expect(ALL_LENSES).toContain(l);
     expect(LAYER_TOGGLES.map((t) => t.key).sort()).toEqual(Object.keys(LIVE_PRESET.layers).sort());
     expect(LAYER_TOGGLES.map((t) => t.label)).toEqual([
-      "Tunneling plane", "Ghost break", "Release points", "Plate crossings", "Break chart",
-      "Pitch pairs", "Contact sim", "Release dispersion", "Fatigue", "Zone heatmap",
+      "Tunneling plane", "Ghost break", "Release points", "Plate crossings", "Spray landings", "Break chart",
+      "Pitch pairs", "Contact sim", "Release dispersion", "Fatigue", "Count mix", "Spray profile", "Zone heatmap",
     ]);
   });
 

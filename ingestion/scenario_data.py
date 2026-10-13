@@ -7,19 +7,263 @@ and do not use the network.
 from __future__ import annotations
 
 import json
+import sys
 import urllib.request
 from datetime import date, datetime, time, timezone
 from typing import Any
 
 import pyarrow as pa
 
+from ingestion.mlb_client import SWING_RESULTS, WHIFF_RESULTS, canonical_result
 from ingestion.scenarios import DATA_DIR, SCENARIO_FILES, SLICE_SCHEMA
 
-GAME_IDS = (746011, 775300, 746679)
+# One game per period across the 2024, 2025 and 2026 seasons: the sweep slice
+# is the corpus-wide view (dates, teams, pitchers and pitch types at scale).
+SEASON_SWEEP_GAMES = (
+    747053, 745720, 747119, 745712, 778250, 776740,
+    777499, 776452, 823384, 822885, 823826, 823570,
+)
+
+# Six games where the two staffs combined for 20+ strikeouts, one per date and
+# one per period across the 2024, 2025 and 2026 seasons: the whiff-heavy end of
+# the corpus (20-24 strikeouts, 33-48 whiffs each).
+STRIKEOUT_NIGHTS_GAMES = (746576, 747029, 745042, 778440, 776190, 823525)
+
+# Six games that went past nine innings, one per date across the 2024, 2025 and
+# 2026 seasons (10 to 12 innings, 65 innings in all): the long-game end of the
+# corpus, where bullpens and late-inning leverage show up.
+EXTRA_INNINGS_GAMES = (745103, 745707, 745203, 777642, 777014, 824125)
+
+# Six games with four or more combined home runs, one per date across the 2024,
+# 2025 and 2026 seasons (32 home runs in all, including an eight-homer night):
+# the batted-ball end of the corpus, where the contact columns earn their keep.
+POWER_NIGHTS_GAMES = (745163, 746038, 777873, 825014, 823364, 824644)
+
+# Six games decided by the final swing, one per date across the 2024, 2025 and
+# 2026 seasons — all six went to extra innings, and four were one-run games.
+WALK_OFF_GAMES = (746447, 747072, 777415, 776347, 824516, 824669)
+
+# Six games decided by one run with both teams scoring six or more, one per date
+# across the 2024, 2025 and 2026 seasons: 104 runs in all, the slugfest end of
+# the one-run games.
+ONE_RUN_SLUGFEST_GAMES = (745505, 746362, 746108, 778247, 777701, 823776)
+
+# Six games with three runs or fewer — four 1-0 finals and two 2-0 — one per date
+# across the 2024, 2025 and 2026 seasons: eight runs in all, the pitching end of
+# the corpus.
+PITCHERS_DUEL_GAMES = (745192, 746472, 776669, 825091, 823780, 824394)
+
+# Six games in which at least one hitter homered twice, one per date across the
+# 2024, 2025 and 2026 seasons (34 home runs in all, including two nine-homer
+# games and two three-homer performances).
+MULTI_HOMER_GAMES = (745113, 745551, 778339, 777403, 777129, 823463)
+
+# Six games featuring a grand slam, one per date across the 2024, 2025 and 2026
+# seasons (one of them, the Cubs' 19-2 win in Seattle, had two).
+GRAND_SLAM_GAMES = (745092, 744926, 777077, 825006, 823354, 823099)
+
+# Six games turned by one big inning (six runs or more), one per date across the
+# 2024, 2025 and 2026 seasons: 43 runs in those six innings alone, including two
+# eight-run frames and a seven-run eighth that won a one-run game.
+BIG_INNING_GAMES = (746001, 747008, 746517, 776794, 776428, 822940)
+
+# Six games in which the starting pitcher struck out at least ten, one per date
+# across the 2024, 2025 and 2026 seasons: twelve to fourteen each, 75 in all.
+STRIKEOUT_START_GAMES = (746691, 746356, 777692, 777217, 776317, 824794)
+
+# Six games in which the winning team trailed by three or four runs and still
+# won inside nine innings, one per date across the 2024, 2025 and 2026 seasons.
+COMEBACK_GAMES = (746085, 747059, 778490, 778472, 822758, 823569)
+
+# Six regulation games in which a team made three or more errors, one per date
+# across the 2024, 2025 and 2026 seasons (24 errors in all).
+MULTI_ERROR_GAMES = (745598, 746330, 778463, 778379, 823646, 823481)
+
+# Six games in which one team scored in seven or more different innings
+# (three of them in eight), one per date across the three seasons.
+INNING_AFTER_INNING_GAMES = (744954, 745734, 776533, 777331, 824354, 824089)
+
+# Six games called before nine innings, one per date across the three seasons:
+# five for rain, one (Blue Jays at Royals 2024-04-25) for wet grounds. The
+# shortest lasted 93 minutes and 143 pitches; 37 innings in all.
+CALLED_EARLY_GAMES = (746320, 745890, 778370, 777474, 778189, 824807)
+
+# Twelve games in which a team was shut out, four per season and one per date.
+# Every one of them was a *combined* shutout (no starter went the distance),
+# including five 1-0 finals, and each needed fewer pitches than a typical game
+# because a shutout means fewer baserunners.
+SHUTOUT_GAMES = (
+    746329, 746654, 745195, 745029,
+    778468, 778416, 778402, 778352,
+    825106, 824459, 823886, 823235,
+)
+
+# Twelve games decided by nine runs or more, four per season and one per date
+# (179 runs in all, margins 9-16). Four of them had an arm that never topped
+# 75 mph as the game ran away — the slowest a 43.8 mph pitch with the Braves
+# 17 runs ahead at Arizona on 2026-04-02.
+# Twelve games with a starter who threw 100+ pitches, four per season and one
+# per date (105-112 pitches; Ranger Suarez's 112 was a complete-game shutout,
+# Parker Messick's 112 came in eight innings, Zack Wheeler and Michael King
+# each appear twice, and in two of the games both starters topped 100).
+# Ten games each holding exactly one pitch Statcast could not classify (the
+# feed's own UN code): 51.9-82.4 mph, and every one of them was called a ball.
+# With these the catalogue covers every pitch type the feed emits in these
+# seasons. 2024 has no unused ones — only two exist, both on used dates.
+UNCLASSIFIED_GAMES = (778560, 777928, 777581, 776852, 776351, 823649, 823562, 824116, 822799, 822716)
+
+HUNDRED_PITCH_GAMES = (
+    745593, 746005, 745590, 746319,
+    778279, 778218, 778203, 778176,
+    824453, 824047, 823236, 823232,
+)
+
+# Twelve games played under a roof, one per date across the three seasons and
+# covering every roofed park in MLB's venue data: Tropicana Field's fixed dome
+# plus the seven retractable roofs (Rogers Centre, Chase Field, American Family
+# Field, T-Mobile Park, loanDepot park, Globe Life Field, Daikin Park). The
+# mirror of the called-early slice: nothing here was rained on.
+ROOFED_GAMES = (
+    744949, 745026, 745099, 745104,
+    778147, 778162, 778230, 778269, 778295,
+    823155, 823882, 823884,
+)
+
+BLOWOUT_GAMES = (
+    746327, 746323, 745110, 745352,
+    778432, 778382, 778328, 778309,
+    825105, 824938, 823477, 823476,
+)
+# The five shortest left-field lines among the venues that hosted regular-
+# season games (MLB venue endpoint, fieldInfo.leftLine): Fenway Park 310 ft,
+# Tropicana Field 315, Minute Maid / Daikin Park 315, Yankee Stadium 318,
+# Progressive Field 325. Twelve games, one per date, every date unused.
+SHORT_LEFT_LINES_GAMES = (
+    745101, 745750, 746639, 746961, 746383, 746638,
+    746640, 745748, 745094, 746962, 746959, 745747,
+)
+# The seven shortest centre fields among the venues that hosted regular-season
+# games (MLB venue endpoint, fieldInfo.center): Oracle Park 391 ft, Dodger
+# Stadium 395, Angel Stadium 396, Petco Park 396, PNC Park 399, Rate Field 400
+# and Wrigley Field 400 — a different park set from the short-left-line slice.
+# Twelve games, one per date, every date unused.
+SHORT_CENTRE_GAMES = (
+    746804, 746882, 746880, 745503, 745502, 745500,
+    745501, 746794, 745333, 746225, 745409, 746136,
+)
+# The six deepest centre fields among the venues that hosted regular-season
+# games and whose centre distance the venue endpoint and the game feed AGREE on
+# (MLB venue endpoint fieldInfo.center): Fenway Park 420 ft, Comerica Park 420,
+# Coors Field 415, Kauffman Stadium 410, Daikin Park 409, Citi Field 408.
+# Oriole Park at Camden Yards is excluded: the venue endpoint says 410 and the
+# game feed says 400 for the same venue id, so its value is not settled enough
+# to be a criterion park for a distance theme. Twelve games, one per date, all unused.
+DEEP_CENTRE_GAMES = (
+    746469, 745818, 746382, 746949, 746950, 746466,
+    746300, 746463, 746947, 746543, 746542, 746538,
+)
+# The artificial-turf parks (MLB venue endpoint, fieldInfo.turfType != Grass):
+# Tropicana Field, Rogers Centre, Chase Field, loanDepot park, Globe Life Field
+# and Mexico City's Estadio Alfredo Harp Helu, which is the one that is NOT
+# roofed and was the only turf venue with no regular-season game to take. Both
+# sources agree on the turf for all five used here. Twelve games, one per date,
+# every date unused.
+TURF_GAMES = (
+    744946, 746073, 744939, 746070, 744928, 744923,
+    745077, 745079, 746052, 746051, 747185, 744995,
+)
+GAME_IDS = (
+    746011, 775300, 746679, 746165, 746381, 777972, 822829,
+    *SEASON_SWEEP_GAMES,
+    *STRIKEOUT_NIGHTS_GAMES,
+    *EXTRA_INNINGS_GAMES,
+    *POWER_NIGHTS_GAMES,
+    *WALK_OFF_GAMES,
+    *ONE_RUN_SLUGFEST_GAMES,
+    *PITCHERS_DUEL_GAMES,
+    *MULTI_HOMER_GAMES,
+    *GRAND_SLAM_GAMES,
+    *BIG_INNING_GAMES,
+    *STRIKEOUT_START_GAMES,
+    *COMEBACK_GAMES,
+    *MULTI_ERROR_GAMES,
+    *INNING_AFTER_INNING_GAMES,
+    *CALLED_EARLY_GAMES,
+    *SHUTOUT_GAMES,
+    *BLOWOUT_GAMES,
+    *HUNDRED_PITCH_GAMES,
+    *UNCLASSIFIED_GAMES,
+    *ROOFED_GAMES,
+    *SHORT_LEFT_LINES_GAMES,
+    *SHORT_CENTRE_GAMES,
+    *DEEP_CENTRE_GAMES,
+    *TURF_GAMES,
+)
 OHTANI_GAME = 746011
 FREEMAN_GAME = 775300
 SNELL_GAME = 746679
+CARDINALS_DODGERS_GAME = 746165
+TIGERS_ASTROS_GAME = 746381
+YANKEES_ATHLETICS_GAME = 777972
+TWINS_BLUE_JAYS_GAME = 822829
 API = "https://statsapi.mlb.com/api/v1.1/game/{game_id}/feed/live"
+
+# Slices that take every tracked pitch of their game (breadth across seasons,
+# dates, pitchers and pitch types); the rest select a batter or pitcher.
+WHOLE_GAME_SCENARIOS = {
+    "twenty-run-night": OHTANI_GAME,
+    "cardinals-dodgers-opener": CARDINALS_DODGERS_GAME,
+    "tigers-astros-june": TIGERS_ASTROS_GAME,
+    "yankees-athletics-2025": YANKEES_ATHLETICS_GAME,
+    "twins-blue-jays-2026": TWINS_BLUE_JAYS_GAME,
+}
+
+# Slices that span several games (every tracked pitch of each).
+SWEEP_SCENARIOS = {
+    "season-sweep": SEASON_SWEEP_GAMES,
+    "strikeout-nights": STRIKEOUT_NIGHTS_GAMES,
+    "extra-innings": EXTRA_INNINGS_GAMES,
+    "power-nights": POWER_NIGHTS_GAMES,
+    "walk-off-wins": WALK_OFF_GAMES,
+    "one-run-slugfests": ONE_RUN_SLUGFEST_GAMES,
+    "pitchers-duels": PITCHERS_DUEL_GAMES,
+    "multi-homer-nights": MULTI_HOMER_GAMES,
+    "grand-slams": GRAND_SLAM_GAMES,
+    "big-innings": BIG_INNING_GAMES,
+    "strikeout-starts": STRIKEOUT_START_GAMES,
+    "comeback-wins": COMEBACK_GAMES,
+    "multi-error-games": MULTI_ERROR_GAMES,
+    "inning-after-inning": INNING_AFTER_INNING_GAMES,
+    "called-early": CALLED_EARLY_GAMES,
+    "combined-shutouts": SHUTOUT_GAMES,
+    "blowouts": BLOWOUT_GAMES,
+    "hundred-pitch-starts": HUNDRED_PITCH_GAMES,
+    "unclassified-pitches": UNCLASSIFIED_GAMES,
+    "under-a-roof": ROOFED_GAMES,
+    "short-left-lines": SHORT_LEFT_LINES_GAMES,
+    "short-centre-fields": SHORT_CENTRE_GAMES,
+    "deep-centre-fields": DEEP_CENTRE_GAMES,
+    "turf-fields": TURF_GAMES,
+}
+
+
+class UnmappedPitchResult(RuntimeError):
+    """The feed described a pitch in words this build does not know.
+
+    Deliberately NOT caught by the refresh loop (unlike UntrackedPitch, which
+    skips one pitch): a changed vocabulary would otherwise silently drop or
+    mislabel pitches, so the refresh stops until the mapping is extended.
+    """
+
+
+class UntrackedPitch(ValueError):
+    """A pitch the feed lists without Statcast tracking coordinates.
+
+    The feed carries a handful of these per season (a pitch that was not
+    tracked, e.g. a position player's lob). They carry no 9-parameter fit, so
+    the refresh skips them and reports the count instead of failing the whole
+    game.
+    """
 
 
 def _fetch(game_id: int) -> dict[str, Any]:
@@ -35,8 +279,10 @@ def _selected(scenario_id: str, game_id: int, play: dict) -> bool:
     pitcher = play.get("matchup", {}).get("pitcher", {}).get("fullName")
     about = play.get("about", {})
     result = play.get("result", {})
-    if scenario_id == "twenty-run-night":
-        return game_id == 746011
+    if scenario_id in WHOLE_GAME_SCENARIOS:
+        return game_id == WHOLE_GAME_SCENARIOS[scenario_id]
+    if scenario_id in SWEEP_SCENARIOS:
+        return game_id in SWEEP_SCENARIOS[scenario_id]
     if scenario_id == "ohtani-50-50":
         return game_id == OHTANI_GAME and batter == "Shohei Ohtani"
     if scenario_id == "ohtani-50th-home-run":
@@ -60,13 +306,23 @@ def _to_row(
     details = event["details"]
     pitch = event["pitchData"]
     coordinates = pitch["coordinates"]
-    description = (details.get("description") or "").casefold()
-    swing = description.startswith(("foul", "in play", "swinging strike", "missed bunt"))
-    whiff = description.startswith(("swinging strike", "missed bunt"))
+    # Savant contact columns: the feed attaches hitData to the pitch event that
+    # was put in play (NULL on every other pitch).
+    hit = event.get("hitData") or {}
+    result = canonical_result(details.get("description"))
+    if result is None:
+        raise UnmappedPitchResult(
+            f"game {game_id} play {event.get('playId')} has an unmapped pitch description "
+            f"{details.get('description')!r}; add it to FEED_DESCRIPTION_TO_RESULT"
+        )
+    swing = result in SWING_RESULTS
+    whiff = result in WHIFF_RESULTS
     required = ("x0", "y0", "z0", "vX0", "vY0", "vZ0", "aX", "aY", "aZ", "pX", "pZ")
     missing = [name for name in required if coordinates.get(name) is None]
     if missing:
-        raise ValueError(f"game {game_id} play {event.get('playId')} is missing {missing}")
+        raise UntrackedPitch(
+            f"game {game_id} play {event.get('playId')} is missing {missing}"
+        )
     day = datetime.combine(game_date, time.min, tzinfo=timezone.utc)
     return {
         "pitch_id": event["playId"],
@@ -75,8 +331,20 @@ def _to_row(
         "pitcher_id": play["matchup"]["pitcher"]["id"],
         "batter_id": play["matchup"]["batter"]["id"],
         "pitch_type": (details.get("type") or {}).get("code") or "UN",
+        "pitch_result": result,
+        # The OUTCOME of the plate appearance this pitch belongs to ("Strikeout",
+        # "Single", "Home Run", ...), repeated on every pitch of that appearance
+        # exactly as Savant's own CSV does. It is the one thing the corpus could
+        # not tell apart at all: is_swing/is_whiff and bb_type say how the ball
+        # was met, never what the at-bat became.
+        "play_event": (play.get("result") or {}).get("event"),
         "release_speed": pitch.get("startSpeed"),
         "release_spin_rate": (pitch.get("breaks") or {}).get("spinRate"),
+        # MLB's spin-direction field (0-360 degrees), stored verbatim. Its relation to
+        # the induced break is NOT a fixed offset: a first attempt over one game looked
+        # like a clean 180 degrees, but over eight games and 2,382 pitches the median is
+        # -99.8 with a spread of +-175, so nothing here interprets the angle.
+        "spin_direction": (pitch.get("breaks") or {}).get("spinDirection"),
         "x0": coordinates["x0"],
         "y0": coordinates["y0"],
         "z0": coordinates["z0"],
@@ -88,6 +356,9 @@ def _to_row(
         "az": coordinates["aZ"],
         "plate_x": coordinates["pX"],
         "plate_z": coordinates["pZ"],
+        # MLB's own zone number (1-9 in the zone, 11-14 around it), carried
+        # rather than derived: the league's cell edges are not published.
+        "zone": pitch.get("zone"),
         "sz_top": pitch.get("strikeZoneTop"),
         "sz_bot": pitch.get("strikeZoneBottom"),
         # Savant semantics: batter/pitcher hand and the count before this pitch.
@@ -96,9 +367,22 @@ def _to_row(
         "balls": (pre_count or {}).get("balls", 0),
         "strikes": (pre_count or {}).get("strikes", 0),
         "at_bat_number": play["about"]["atBatIndex"] + 1,
+        # The inning the play belongs to (1-based, extras included). NOT derivable
+        # from the count fields, and 100% present. Only the integer is stored: the
+        # feed spells the half "top"/"bottom" and Savant's CSV "Top"/"Bot", so a
+        # half column would need canonicalising for no consumer yet.
+        "inning": (play.get("about") or {}).get("inning"),
         "pitch_number": event.get("pitchNumber"),
         "is_swing": int(swing),
         "is_whiff": int(swing and whiff),
+        "launch_speed": hit.get("launchSpeed"),
+        "launch_angle": hit.get("launchAngle"),
+        "hit_distance": hit.get("totalDistance"),
+        "bb_type": hit.get("trajectory"),
+        # Savant's hit-chart coordinates: the feed nests them under the pitch's
+        # hitData.coordinates as coordX/coordY.
+        "hc_x": (hit.get("coordinates") or {}).get("coordX"),
+        "hc_y": (hit.get("coordinates") or {}).get("coordY"),
         "extension": pitch.get("extension"),
         "ingestion_time": day,
         "pitcher_name": play["matchup"]["pitcher"].get("fullName"),
@@ -109,6 +393,7 @@ def _to_row(
 def refresh() -> dict[str, int]:
     feeds = {game_id: _fetch(game_id) for game_id in GAME_IDS}
     tables: dict[str, list[dict]] = {scenario_id: [] for scenario_id in SCENARIO_FILES}
+    untracked: dict[str, int] = {}
     for game_id, feed in feeds.items():
         game_date = date.fromisoformat(feed["gameData"]["datetime"]["officialDate"])
         for play in feed["liveData"]["plays"]["allPlays"]:
@@ -119,10 +404,19 @@ def refresh() -> dict[str, int]:
                 if event.get("isPitch") and "pitchData" in event:
                     for scenario_id in SCENARIO_FILES:
                         if _selected(scenario_id, game_id, play):
-                            tables[scenario_id].append(
-                                _to_row(game_id, game_date, play, event, pre_count)
-                            )
+                            try:
+                                row = _to_row(game_id, game_date, play, event, pre_count)
+                            except UntrackedPitch as exc:
+                                untracked[scenario_id] = untracked.get(scenario_id, 0) + 1
+                                print(f"skipping untracked pitch: {exc}", file=sys.stderr)
+                                continue
+                            tables[scenario_id].append(row)
                 pre_count = event.get("count") or pre_count
+    for scenario_id, count in sorted(untracked.items()):
+        print(
+            f"note: {scenario_id} skipped {count} pitch(es) with no tracking coordinates",
+            file=sys.stderr,
+        )
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     counts = {}
     for scenario_id, rows in tables.items():

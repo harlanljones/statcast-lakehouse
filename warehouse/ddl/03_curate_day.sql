@@ -3,12 +3,12 @@
 MERGE `statcast_analytics.fct_pitches` f
 USING (
   SELECT
-    pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type,
-    release_speed, release_spin_rate,
+    pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type, pitch_result, play_event,
+    release_speed, release_spin_rate, spin_direction,
     x0, y0, z0, vx0, vy0, vz0, ax, ay, az,
-    plate_x, plate_z, sz_top, sz_bot,
-    stand, p_throws, balls, strikes, at_bat_number, pitch_number,
-    is_swing, is_whiff, extension,
+    plate_x, plate_z, zone, sz_top, sz_bot,
+    stand, p_throws, balls, strikes, at_bat_number, inning, pitch_number,
+    is_swing, is_whiff, launch_speed, launch_angle, hit_distance, bb_type, hc_x, hc_y, extension,
     -- TDD §3.3 spatial index; GIS on the ingest transform, not at query time.
     ST_GEOGPOINT(plate_x, plate_z) AS plate_location
   FROM `statcast_analytics.bronze_pitches`
@@ -25,18 +25,18 @@ WHEN NOT MATCHED THEN
   -- Named columns, not INSERT ROW: 06_add_pitch_context.sql appends columns to
   -- existing tables, so live column order differs from 02_fct_pitches.sql.
   INSERT (
-    pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type,
-    release_speed, release_spin_rate,
+    pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type, pitch_result, play_event,
+    release_speed, release_spin_rate, spin_direction,
     x0, y0, z0, vx0, vy0, vz0, ax, ay, az,
-    plate_x, plate_z, sz_top, sz_bot,
-    stand, p_throws, balls, strikes, at_bat_number, pitch_number,
-    is_swing, is_whiff, extension, plate_location
+    plate_x, plate_z, zone, sz_top, sz_bot,
+    stand, p_throws, balls, strikes, at_bat_number, inning, pitch_number,
+    is_swing, is_whiff, launch_speed, launch_angle, hit_distance, bb_type, hc_x, hc_y, extension, plate_location
   )
   VALUES (
-    pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type,
-    release_speed, release_spin_rate,
+    pitch_id, game_id, game_date, pitcher_id, batter_id, pitch_type, pitch_result, play_event,
+    release_speed, release_spin_rate, spin_direction,
     x0, y0, z0, vx0, vy0, vz0, ax, ay, az,
-    plate_x, plate_z, sz_top, sz_bot,
-    stand, p_throws, balls, strikes, at_bat_number, pitch_number,
-    is_swing, is_whiff, extension, plate_location
+    plate_x, plate_z, zone, sz_top, sz_bot,
+    stand, p_throws, balls, strikes, at_bat_number, inning, pitch_number,
+    is_swing, is_whiff, launch_speed, launch_angle, hit_distance, bb_type, hc_x, hc_y, extension, plate_location
   )

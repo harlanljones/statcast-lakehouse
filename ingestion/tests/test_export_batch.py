@@ -54,11 +54,11 @@ class FakeBigQueryClient:
 
 @pytest.fixture
 def day_table() -> pa.Table:
-    # Full canonical schema from the checked-in real pitches; the real
+    # Full canonical schema from one day of checked-in real pitches; the real
     # BigQuery result carries every projected SCHEMA column.
-    from ingestion.scenarios import real_pitches
+    from ingestion.scenarios import real_game_dates, real_pitches
 
-    return real_pitches(limit=20)
+    return real_pitches(game_day=real_game_dates()[0]).slice(0, 20)
 
 
 class TestDayPartitionQuery:
@@ -70,22 +70,25 @@ class TestDayPartitionQuery:
 
 class TestExportDayPartition:
     def test_local_file_roundtrip_schema_and_rows(self, tmp_path, day_table):
+        # The fixture is one game day's real pitches, so the exported partition
+        # date comes from the data instead of a pinned corpus date.
+        game_day = day_table.column("game_date")[0].as_py()
         client = FakeBigQueryClient(day_table)
-        out = tmp_path / "2024-08-02.arrow"
+        out = tmp_path / f"{game_day.isoformat()}.arrow"
 
-        dest = export_day_partition(dt.date(2024, 8, 2), str(out), client=client)
+        dest = export_day_partition(game_day, str(out), client=client)
 
         assert dest == str(out)
         # Partition pruning: the query must carry the exact-day filter.
         assert len(client.queries) == 1
-        assert "game_date = DATE '2024-08-02'" in client.queries[0]
+        assert f"game_date = DATE '{game_day.isoformat()}'" in client.queries[0]
 
         with pa.memory_map(str(out)) as src:
             read_table = pa.ipc.open_file(src).read_all()
-        assert read_table.num_rows == 20
+        assert read_table.num_rows == day_table.num_rows
         # Exported batch conforms to the canonical Statcast schema.
         assert read_table.schema.equals(SCHEMA, check_metadata=False)
-        assert len(read_table.filter(pc.equal(read_table.column("game_date"), dt.date(2024, 8, 2)))) == 20
+        assert read_table.equals(day_table)
 
     def test_zstd_compresses_repeated_payload(self, tmp_path, day_table):
         # 1,000 identical rows: zstd must beat uncompressed IPC.

@@ -3,7 +3,14 @@
  * "one preset = one atomic state change" rule is testable without a DOM or
  * Solid runtime. App.tsx supplies its real signal setters; tests supply fakes.
  */
-import type { CameraViewName, OutcomeFilter, ZoneFilter } from "./deck-layers";
+import type {
+  CameraViewName,
+  CountBucket,
+  OutcomeFilter,
+  PlayerFilter,
+  ZoneCell,
+  ZoneFilter,
+} from "./deck-layers";
 import type { HeatmapMode } from "./heatmap";
 import type { LayerKey, ScenarioPreset } from "./scenarios";
 
@@ -15,6 +22,12 @@ export interface PresetSetters {
   setZoneFilter: (v: ZoneFilter) => void;
   setOutcomeFilter: (v: OutcomeFilter) => void;
   setSelectedTypes: (v: ReadonlySet<string>) => void;
+  setPlayerFilter: (v: PlayerFilter | null) => void;
+  setCountBuckets: (v: ReadonlySet<CountBucket>) => void;
+  setZoneCells: (v: ReadonlySet<ZoneCell>) => void;
+  setLeagueZones: (v: ReadonlySet<number>) => void;
+  setPlayEvent: (v: string | null) => void;
+  setInnings: (v: ReadonlySet<number>) => void;
   setLayer: (key: LayerKey, on: boolean) => void;
   setHeatmapMode: (v: HeatmapMode) => void;
   setBatSpeed: (v: number) => void;
@@ -28,18 +41,32 @@ export const LAYER_KEYS: readonly LayerKey[] = [
   "ghostBreak",
   "releasePoints",
   "plateCrossings",
+  "spray",
   "breakChart",
   "pairComparison",
   "contactSim",
   "dispersion",
   "fatigue",
+  "countMix",
+  "sprayProfile",
   "heatmap",
 ];
 
 /** The filter subset of PresetSetters (what "Reset filters" rewrites). */
 export type FilterSetters = Pick<
   PresetSetters,
-  "setSpeedRange" | "setPlateXRange" | "setPlateZRange" | "setZoneFilter" | "setOutcomeFilter" | "setSelectedTypes"
+  | "setSpeedRange"
+  | "setPlateXRange"
+  | "setPlateZRange"
+  | "setZoneFilter"
+  | "setOutcomeFilter"
+  | "setSelectedTypes"
+  | "setPlayerFilter"
+  | "setCountBuckets"
+  | "setZoneCells"
+  | "setLeagueZones"
+  | "setPlayEvent"
+  | "setInnings"
 >;
 
 /**
@@ -53,6 +80,12 @@ export function applyPresetFiltersTo(p: ScenarioPreset, s: FilterSetters): void 
   s.setZoneFilter(p.zoneFilter);
   s.setOutcomeFilter(p.outcomeFilter);
   s.setSelectedTypes(new Set(p.selectedTypes));
+  s.setPlayerFilter(null);
+  s.setCountBuckets(new Set());
+  s.setZoneCells(new Set());
+  s.setLeagueZones(new Set());
+  s.setPlayEvent(null);
+  s.setInnings(new Set());
 }
 
 export function applyPresetTo(p: ScenarioPreset, s: PresetSetters): void {
@@ -63,6 +96,12 @@ export function applyPresetTo(p: ScenarioPreset, s: PresetSetters): void {
   s.setZoneFilter(p.zoneFilter);
   s.setOutcomeFilter(p.outcomeFilter);
   s.setSelectedTypes(new Set(p.selectedTypes));
+  s.setPlayerFilter(null);
+  s.setCountBuckets(new Set());
+  s.setZoneCells(new Set());
+  s.setLeagueZones(new Set());
+  s.setPlayEvent(null);
+  s.setInnings(new Set());
   for (const key of LAYER_KEYS) s.setLayer(key, p.layers[key]);
   s.setHeatmapMode(p.heatmapMode);
   s.setBatSpeed(p.batSpeed);

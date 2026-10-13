@@ -1,5 +1,17 @@
 import { For, Show, type JSX } from "solid-js";
-import { CAMERA_VIEWS, pitchColor, type CameraViewName, type OutcomeFilter, type ZoneFilter } from "../lib/deck-layers";
+import {
+  CAMERA_VIEWS,
+  COUNT_BUCKETS,
+  LEAGUE_ZONES,
+  LEAGUE_ZONE_TITLE,
+  ZONE_CELLS,
+  pitchColor,
+  type CameraViewName,
+  type CountBucket,
+  type OutcomeFilter,
+  type ZoneCell,
+  type ZoneFilter,
+} from "../lib/deck-layers";
 import type { HeatmapMode } from "../lib/heatmap";
 import { LAYER_TOGGLES, type LayerKey, type LensId } from "../lib/scenarios";
 import type { DragMode } from "../lib/camera";
@@ -27,9 +39,26 @@ export interface LensPanelProps {
   plateZ: [number, number];
   onPlateZ: (v: [number, number]) => void;
   zoneFilter: ZoneFilter;
+  /** Count cut: empty means every count shows, like the pitch-type chips. */
+  countBuckets?: ReadonlySet<CountBucket>;
+  onToggleCount?: (b: CountBucket) => void;
+  /** In-zone cell cut: empty means every cell shows. */
+  zoneCells?: ReadonlySet<ZoneCell>;
+  /** MLB's own zone numbers; empty means every zone, the four outside cells included. */
+  leagueZones?: ReadonlySet<number>;
+  onToggleLeagueZone?: (zone: number) => void;
+  onToggleZoneCell?: (cell: ZoneCell) => void;
   onZoneFilter: (v: ZoneFilter) => void;
   outcomeFilter: OutcomeFilter;
   onOutcomeFilter: (v: OutcomeFilter) => void;
+  /** Outcomes present in the loaded pitches; the picker offers only these. */
+  playEvents?: readonly string[];
+  playEvent?: string | null;
+  onPlayEvent?: (v: string | null) => void;
+  /** Innings present in the loaded pitches; the picker offers only these. */
+  innings?: readonly number[];
+  selectedInnings?: ReadonlySet<number>;
+  onToggleInning?: (inning: number) => void;
   heatmapMode: HeatmapMode;
   onHeatmapMode: (m: HeatmapMode) => void;
   batSpeed: number;
@@ -43,6 +72,7 @@ export interface LensPanelProps {
 }
 
 const VIEWS = (Object.keys(CAMERA_VIEWS) as CameraViewName[]).map((v) => ({ value: v, label: v }));
+
 
 /**
  * The one control surface. A scenario picks which lenses to show; the header's
@@ -173,6 +203,73 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
         />
       </Show>
 
+      <Show when={has("zone") && props.zoneCells && props.onToggleZoneCell}>
+        <div
+          role="group"
+          aria-label="in-zone cells"
+          style={{
+            display: "grid",
+            "grid-template-columns": "repeat(3, 1fr)",
+            gap: "3px",
+            width: "132px",
+          }}
+        >
+          <For each={ZONE_CELLS}>
+            {(cell) => (
+              <button
+                class="ui-ctl ui-chip"
+                aria-pressed={props.zoneCells!.size === 0 || props.zoneCells!.has(cell.cell)}
+                title={cell.title}
+                aria-label={`Zone cell ${cell.cell}: ${cell.title}`}
+                onClick={() => props.onToggleZoneCell!(cell.cell)}
+              >
+                {cell.cell}
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      <Show when={has("zone") && props.leagueZones && props.onToggleLeagueZone}>
+        <div
+          role="group"
+          aria-label="league zones"
+          style={{ display: "flex", "flex-wrap": "wrap", gap: "3px", width: "132px" }}
+        >
+          <For each={LEAGUE_ZONES}>
+            {(zone) => (
+              <button
+                class="ui-ctl ui-chip"
+                aria-pressed={props.leagueZones!.size === 0 || props.leagueZones!.has(zone)}
+                title={LEAGUE_ZONE_TITLE}
+                aria-label={`League zone ${zone}: ${LEAGUE_ZONE_TITLE}`}
+                onClick={() => props.onToggleLeagueZone!(zone)}
+              >
+                {zone}
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      <Show when={has("count") && props.countBuckets && props.onToggleCount}>
+        <div role="group" aria-label="count" style={{ display: "flex", "flex-wrap": "wrap", gap: "4px", "align-items": "center" }}>
+          <For each={COUNT_BUCKETS}>
+            {(chip) => (
+              <button
+                class="ui-ctl ui-chip"
+                aria-pressed={props.countBuckets!.size === 0 || props.countBuckets!.has(chip.bucket)}
+                title={chip.title}
+                aria-label={chip.title}
+                onClick={() => props.onToggleCount!(chip.bucket)}
+              >
+                {chip.label}
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+
       <Show when={has("zone")}>
         <Segmented
           label="Zone"
@@ -194,9 +291,59 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
             { value: "all", label: "All" },
             { value: "swings", label: "Swings" },
             { value: "whiffs", label: "Whiffs" },
+            { value: "balls", label: "Balls" },
+            { value: "called_strikes", label: "Called strikes" },
           ]}
           onChange={props.onOutcomeFilter}
         />
+      </Show>
+
+      <Show when={has("outcome") && props.playEvents && props.playEvents.length > 0 && props.onPlayEvent}>
+        <div role="group" aria-label="at-bat outcome" style={{ display: "flex", "flex-wrap": "wrap", gap: "4px", "align-items": "center" }}>
+          <span style={{ color: THEME.muted, "font-size": "11px", width: "52px" }} aria-hidden="true">
+            At-bat
+          </span>
+          <button
+            class="ui-ctl ui-chip"
+            aria-pressed={props.playEvent == null}
+            title="Every plate appearance, whatever it became"
+            onClick={() => props.onPlayEvent!(null)}
+          >
+            Any
+          </button>
+          <For each={props.playEvents}>
+            {(event) => (
+              <button
+                class="ui-ctl ui-chip"
+                aria-pressed={props.playEvent === event}
+                title={`Every pitch of the plate appearances that ended in ${event}`}
+                onClick={() => props.onPlayEvent!(props.playEvent === event ? null : event)}
+              >
+                {event}
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      <Show when={has("outcome") && props.innings && props.innings.length > 0 && props.onToggleInning}>
+        <div role="group" aria-label="inning" style={{ display: "flex", "flex-wrap": "wrap", gap: "4px", "align-items": "center" }}>
+          <span style={{ color: THEME.muted, "font-size": "11px", width: "52px" }} aria-hidden="true">
+            Inning
+          </span>
+          <For each={props.innings}>
+            {(inning) => (
+              <button
+                class="ui-ctl ui-chip"
+                aria-pressed={!props.selectedInnings || props.selectedInnings.size === 0 || props.selectedInnings.has(inning)}
+                title={`Every pitch thrown in inning ${inning}`}
+                onClick={() => props.onToggleInning!(inning)}
+              >
+                {inning}
+              </button>
+            )}
+          </For>
+        </div>
       </Show>
 
       <Show when={has("heatmapMode")}>
@@ -206,6 +353,7 @@ export default function LensPanel(props: LensPanelProps): JSX.Element {
           options={[
             { value: "density", label: "Density" },
             { value: "whiff_rate", label: "Whiff %" },
+            { value: "hard_hit", label: "Hard Hit %" },
           ]}
           onChange={props.onHeatmapMode}
         />

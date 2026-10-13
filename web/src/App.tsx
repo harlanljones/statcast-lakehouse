@@ -9,7 +9,13 @@ import {
   type PitchTable,
 } from "./lib/arrow-loader";
 import { fetchPitcherStorylines, type PitcherStoryline } from "./lib/storylines";
-import { extractGameDate, distinctPitchTypes, computeWhiffRate, formatDataStatus } from "./lib/data-status";
+import {
+  computeWhiffRate,
+  countGameDates,
+  distinctPitchTypes,
+  extractGameDate,
+  formatDataStatus,
+} from "./lib/data-status";
 import {
   CAMERA_VIEWS,
   type CameraViewName,
@@ -17,6 +23,8 @@ import {
   type OutcomeFilter,
   type PitchDatum,
   passesFilters,
+  distinctInnings,
+  distinctPlayEvents,
 } from "./lib/deck-layers";
 import { computeArsenalCentroids } from "./lib/arsenal";
 import {
@@ -46,6 +54,9 @@ import {
   type ScenarioPreset,
 } from "./lib/scenarios";
 import { applyPresetFiltersTo, applyPresetTo } from "./lib/scenario-state";
+import { countMix } from "./lib/count-mix";
+import { sprayProfile } from "./lib/spray-profile";
+import type { CountBucket, PlayerFilter, ZoneCell } from "./lib/deck-layers";
 import { nextPlayState, prefersReducedMotion } from "./lib/playback";
 import type { DragMode } from "./lib/camera";
 import { isSyntheticSource, playerLabel, type DataSource } from "./lib/player-card";
@@ -56,6 +67,14 @@ export default function App() {
   const [plateZRange, setPlateZRange] = createSignal<[number, number]>([-1, 6]);
   const [zoneFilter, setZoneFilter] = createSignal<ZoneFilter>("all");
   const [outcomeFilter, setOutcomeFilter] = createSignal<OutcomeFilter>("all");
+  /**
+   * One plate-appearance outcome to keep every pitch of, or null for every
+   * at-bat. A filter, cleared like the other cuts; the picker is built from the
+   * outcomes actually present in the loaded pitches.
+   */
+  const [playEvent, setPlayEvent] = createSignal<string | null>(null);
+  /** Innings to keep, empty for every inning. A filter, cleared like the other cuts. */
+  const [innings, setInnings] = createSignal<ReadonlySet<number>>(new Set());
   const [view, setView] = createSignal<CameraViewName>("Catcher");
   const [dragMode, setDragMode] = createSignal<DragMode>("rotate");
   // Where the loaded pitches came from; the player card links out only for real data.
@@ -81,6 +100,7 @@ export default function App() {
   const [showGhostBreak, setShowGhostBreak] = createSignal<boolean>(false);
   const [showReleasePoints, setShowReleasePoints] = createSignal<boolean>(false);
   const [showPlateCrossings, setShowPlateCrossings] = createSignal<boolean>(false);
+  const [showSpray, setShowSpray] = createSignal<boolean>(false);
   const [showBreakChart, setShowBreakChart] = createSignal<boolean>(false);
   const [showPairComparison, setShowPairComparison] = createSignal<boolean>(false);
   const [pairedTypes, setPairedTypes] = createSignal<[string, string] | null>(null);
@@ -89,7 +109,29 @@ export default function App() {
   const [attackAngleDeg, setAttackAngleDeg] = createSignal<number>(10.0);
   const [showDispersion, setShowDispersion] = createSignal<boolean>(false);
   const [showFatigue, setShowFatigue] = createSignal<boolean>(false);
+  const [showCountMix, setShowCountMix] = createSignal<boolean>(false);
+  const [showSprayProfile, setShowSprayProfile] = createSignal<boolean>(false);
   const [showHeatmap, setShowHeatmap] = createSignal<boolean>(false);
+  // "Isolate this player": set from the card, cleared by a scenario change or Reset filters.
+  const [playerFilter, setPlayerFilter] = createSignal<PlayerFilter | null>(null);
+  /**
+   * The player the card's deltas read against instead of "the rest", per role.
+   * A view setting like the pinned pitch, not a filter: a preset or "Reset
+   * filters" leaves it alone, and only a change of loaded pitches clears it.
+   */
+  const [benchmark, setBenchmark] = createSignal<PlayerFilter | null>(null);
+  // Count cut: empty means every count is shown, mirroring the pitch-type chips.
+  const [countBuckets, setCountBuckets] = createSignal<ReadonlySet<CountBucket>>(new Set());
+  // In-zone cell cut: empty means every cell (and every pitch outside the zone) shows.
+  const [zoneCells, setZoneCells] = createSignal<ReadonlySet<ZoneCell>>(new Set());
+  /**
+   * MLB's own zone numbers (1-9 in the strike zone, 11-14 around it). A filter,
+   * not a view setting: a preset, "Reset filters" and a new group of pitches
+   * all clear it. Distinct from `zoneCells`, which cuts the nine cells the app
+   * derives from the plate box — the league's numbering disagrees with that box
+   * on about 4% of pitches, so the two are kept apart and labelled apart.
+   */
+  const [leagueZones, setLeagueZones] = createSignal<ReadonlySet<number>>(new Set());
   const [heatmapMode, setHeatmapMode] = createSignal<HeatmapMode>("density");
   const [activeScenarioId, setActiveScenarioId] = createSignal<ScenarioId | null>(null);
   const [showAllControls, setShowAllControls] = createSignal<boolean>(false);
@@ -112,7 +154,13 @@ export default function App() {
       plateZRange: plateZRange(),
       zoneFilter: zoneFilter(),
       outcomeFilter: outcomeFilter(),
+      playEvent: playEvent(),
+      innings: innings(),
       selectedTypes: selectedTypes(),
+      playerFilter: playerFilter(),
+      countBuckets: countBuckets(),
+      zoneCells: zoneCells(),
+      leagueZones: leagueZones(),
     };
     return all.filter((p) => passesFilters(p, opts));
   });
@@ -122,9 +170,15 @@ export default function App() {
   // loaded type (so a deselected one can be switched back on); the analysis
   // panels follow the filters.
   const availableTypes = createMemo(() => distinctPitchTypes(pitchData()?.pitches ?? []));
+  const availablePlayEvents = createMemo(() => distinctPlayEvents(pitchData()?.pitches ?? []));
+  const availableInnings = createMemo(() => distinctInnings(pitchData()?.pitches ?? []));
   const gameDate = createMemo(() => {
     const d = pitchData();
     return d ? extractGameDate(d.table) : null;
+  });
+  const gameDays = createMemo(() => {
+    const d = pitchData();
+    return d ? countGameDates(d.table) : 0;
   });
   const whiffRate = createMemo(() => computeWhiffRate(visiblePitches()));
   const arsenalCentroids = createMemo(() => {
@@ -146,6 +200,18 @@ export default function App() {
       count: distinctPitcherCount(vis),
     };
   });
+  // The count mix follows the same pitcher as the fatigue panel: a count plan is per arm.
+  const countRows = createMemo(() => {
+    if (!showCountMix()) return [];
+    return countMix(visiblePitches(), fatigueInfo().id);
+  });
+
+  // The spray profile follows the same pitcher as the fatigue panel and the count mix.
+  const sprayProfileData = createMemo(() => {
+    if (!showSprayProfile()) return null;
+    return sprayProfile(visiblePitches(), fatigueInfo().id);
+  });
+
   const fatigueBuckets = createMemo(() => {
     if (!showFatigue()) return [];
     return computeFatigueBuckets(visiblePitches(), 25, fatigueInfo().id);
@@ -230,11 +296,14 @@ export default function App() {
     ghostBreak: setShowGhostBreak,
     releasePoints: setShowReleasePoints,
     plateCrossings: setShowPlateCrossings,
+    spray: setShowSpray,
     breakChart: setShowBreakChart,
     pairComparison: setShowPairComparison,
     contactSim: setShowContactSim,
     dispersion: setShowDispersion,
     fatigue: setShowFatigue,
+    countMix: setShowCountMix,
+    sprayProfile: setShowSprayProfile,
     heatmap: setShowHeatmap,
   };
 
@@ -247,6 +316,12 @@ export default function App() {
       setZoneFilter,
       setOutcomeFilter,
       setSelectedTypes,
+    setPlayerFilter,
+    setCountBuckets,
+    setZoneCells,
+    setPlayEvent,
+    setInnings,
+    setLeagueZones,
       setLayer: (key, on) => layerSetters[key](on),
       setHeatmapMode,
       setBatSpeed,
@@ -318,6 +393,12 @@ export default function App() {
       setZoneFilter,
       setOutcomeFilter,
       setSelectedTypes,
+          setPlayerFilter,
+    setCountBuckets,
+          setZoneCells,
+    setPlayEvent,
+    setInnings,
+    setLeagueZones,
     });
 
   onMount(() => {
@@ -330,18 +411,53 @@ export default function App() {
   createEffect(() => {
     void pitchData();
     setPinned(null);
+    setPlayerFilter(null);
+    setBenchmark(null);
+    setCountBuckets(new Set<CountBucket>());
+    setZoneCells(new Set<ZoneCell>());
   });
+
+  const toggleInning = (inning: number) => {
+    const next = new Set(innings());
+    if (next.has(inning)) next.delete(inning);
+    else next.add(inning);
+    setInnings(next);
+  };
+
+  const toggleLeagueZone = (zone: number) => {
+    const next = new Set(leagueZones());
+    if (next.has(zone)) next.delete(zone);
+    else next.add(zone);
+    setLeagueZones(next);
+  };
+
+  const toggleZoneCell = (cell: ZoneCell) => {
+    const next = new Set<ZoneCell>(zoneCells());
+    if (next.has(cell)) next.delete(cell);
+    else next.add(cell);
+    setZoneCells(next);
+  };
+
+  const toggleCount = (bucket: CountBucket) => {
+    const next = new Set<CountBucket>(countBuckets());
+    if (next.has(bucket)) next.delete(bucket);
+    else next.add(bucket);
+    setCountBuckets(next);
+  };
 
   const layerState = (): Record<LayerKey, boolean> => ({
     tunneling: showTunneling(),
     ghostBreak: showGhostBreak(),
     releasePoints: showReleasePoints(),
     plateCrossings: showPlateCrossings(),
+    spray: showSpray(),
     breakChart: showBreakChart(),
     pairComparison: showPairComparison(),
     contactSim: showContactSim(),
     dispersion: showDispersion(),
     fatigue: showFatigue(),
+    countMix: showCountMix(),
+    sprayProfile: showSprayProfile(),
     heatmap: showHeatmap(),
   });
   // A scenario shows its own lenses; "All controls" (and Live data) show every lens plus the layer toggles.
@@ -386,7 +502,7 @@ export default function App() {
             activeCount={activeCount()}
             totalCount={pitchData()?.pitches.length ?? 0}
             whiffRate={whiffRate()}
-            dataStatus={formatDataStatus(pitchData()?.pitches.length ?? 0, gameDate())}
+            dataStatus={formatDataStatus(pitchData()?.pitches.length ?? 0, gameDate(), gameDays())}
             onResetFilters={resetFilters}
           />
           <Visualizer
@@ -397,7 +513,16 @@ export default function App() {
             plateZRange={plateZRange()}
             zoneFilter={zoneFilter()}
             outcomeFilter={outcomeFilter()}
+            playEvent={playEvent()}
+            innings={innings()}
             selectedTypes={selectedTypes()}
+            playerFilter={playerFilter()}
+            onPlayerFilter={setPlayerFilter}
+            benchmark={benchmark()}
+            onBenchmark={setBenchmark}
+            countBuckets={countBuckets()}
+            zoneCells={zoneCells()}
+            leagueZones={leagueZones()}
             viewState={CAMERA_VIEWS[view()]}
             dragMode={dragMode()}
             resetKey={resetKey()}
@@ -411,6 +536,7 @@ export default function App() {
             showGhostBreak={showGhostBreak()}
             showReleasePoints={showReleasePoints()}
             showPlateCrossings={showPlateCrossings()}
+            showSpray={showSpray()}
             showBreakChart={showBreakChart()}
             showPairComparison={showPairComparison()}
             pairedTypes={pairedTypes()}
@@ -424,6 +550,11 @@ export default function App() {
             showDispersion={showDispersion()}
             releaseDispersion={releaseDispersion()}
             showFatigue={showFatigue()}
+            showCountMix={showCountMix()}
+            sprayProfile={sprayProfileData()}
+            onToggleSprayProfile={setShowSprayProfile}
+            countRows={countRows()}
+            onToggleCountMix={setShowCountMix}
             fatigueBuckets={fatigueBuckets()}
             fatiguePitcherLabel={fatigueInfo().label}
             fatiguePitcherCount={fatigueInfo().count}
@@ -455,8 +586,20 @@ export default function App() {
               plateZ={plateZRange()}
               onPlateZ={setPlateZRange}
               zoneFilter={zoneFilter()}
+              countBuckets={countBuckets()}
+              onToggleCount={toggleCount}
+              zoneCells={zoneCells()}
+              leagueZones={leagueZones()}
+              onToggleLeagueZone={toggleLeagueZone}
+              onToggleZoneCell={toggleZoneCell}
               onZoneFilter={setZoneFilter}
               outcomeFilter={outcomeFilter()}
+              playEvents={availablePlayEvents()}
+              playEvent={playEvent()}
+              innings={availableInnings()}
+              selectedInnings={innings()}
+              onToggleInning={toggleInning}
+              onPlayEvent={setPlayEvent}
               onOutcomeFilter={setOutcomeFilter}
               heatmapMode={heatmapMode()}
               onHeatmapMode={setHeatmapMode}

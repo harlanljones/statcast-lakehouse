@@ -290,3 +290,22 @@ Web app only (`web/`); Python side changes are tracked separately.
   live region, pinned-pitch announcement only, contrast-checked palette, 28/36 px targets,
   reduced-motion Play jumps to 100%, pitch-name chip labels, `fetchDatePartitions` returns `[]` on
   failure instead of a fabricated partition.
+
+## 2026-10-11 observed batted-ball contact data (Completed offline)
+- `worker.SCHEMA` gains `launch_speed`, `launch_angle`, `hit_distance` and
+  `bb_type` (Savant's contact columns, NULL unless the pitch was put in play),
+  with `warehouse/ddl/02_fct_pitches.sql` and `01_bronze_pitches.sql` updated in
+  the same order, `warehouse/ddl/03_curate_day.sql` carrying them through the
+  per-day MERGE, and `warehouse/ddl/08_add_contact_data.sql` as the ALTER
+  migration for existing tables (the 06/07 pattern).
+- `mlb_client.COLUMN_MAP` maps the Savant CSV (`launch_speed`, `launch_angle`,
+  `hit_distance_sc`, `bb_type`); `ingestion/scenario_data.py` maps the feed's
+  `hitData` onto the pitch event that was put in play, and the checked-in slices
+  were refreshed (981 of 5,810 pitches carry measured contact).
+- Web: `arrow-loader.ts` exposes `launchSpeed`/`launchAngle`/`hitDistance`/
+  `bbType` on `PitchDatum`; `pitch-tooltip.ts` renders a measured contact line
+  ("Contact: 105.7 mph, 19.0° • 340.0 ft (line_drive) · Barrel") classified with
+  the existing Statcast criteria, announced through the aria-live summary. The
+  simulated contact lens stays available and stays labelled "Sim:".
+- Acceptance: 368 pytest / 271 vitest green, schema-parity and warehouse-cost
+  guards green, tooltip and loader tests pin the new fields.

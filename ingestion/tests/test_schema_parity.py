@@ -45,10 +45,10 @@ BQ_TO_PA = {
     "TIMESTAMP": pa.timestamp("us", tz="UTC"),
 }
 
-# COLUMN_MAP values that are deliberate non-fct targets: "description" is an
-# upstream-only aux column consumed to derive is_swing/is_whiff in
-# mlb_client._row and popped before the row reaches worker.SCHEMA.
-NON_FCT_TARGETS = frozenset({"description"})
+# COLUMN_MAP destinations that are deliberately not in worker.SCHEMA. The set is
+# empty: every mapped upstream column now lands in the schema (the pitch's
+# description is stored as pitch_result, not just consumed).
+NON_FCT_TARGETS: frozenset[str] = frozenset()
 
 
 def parse_ddl_columns() -> list[tuple[str, str]]:

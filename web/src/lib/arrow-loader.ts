@@ -2,9 +2,11 @@
 import { tableFromIPC, compressionRegistry, CompressionType, type Table } from "apache-arrow";
 import { decompress as zstdDecompress } from "fzstd";
 import {
+  TRAJECTORY_FLOATS,
   trajectoryFlat,
+  trajectoryFlatInto,
   computeBreakVector,
-  extrapolateToRelease,
+  extrapolateToReleaseInPlace,
   commitmentPosition,
   type PitchKinematics,
 } from "./kinematics";
@@ -21,16 +23,70 @@ export interface DatePartition {
   rows: number;
 }
 
+/**
+ * Pure-JS zstd decode, the always-available default. fzstd can return a view
+ * at an unaligned offset, and arrow-js builds BigInt64Array/Float64Array views
+ * straight onto it, so realign when needed.
+ */
+const fzstdDecode = (bytes: Uint8Array): Uint8Array => {
+  const out = zstdDecompress(bytes);
+  return out.byteOffset % 8 === 0 ? out : out.slice();
+};
+
 // The server and export_batch.py write zstd-compressed IPC bodies; arrow-js
 // decodes them only with a registered codec (decode-only is all we need).
-// fzstd can return a view at an unaligned offset, and arrow-js builds
-// BigInt64Array/Float64Array views straight onto it, so realign when needed.
-compressionRegistry.set(CompressionType.ZSTD, {
-  decode: (bytes) => {
-    const out = zstdDecompress(bytes);
-    return out.byteOffset % 8 === 0 ? out : out.slice();
-  },
-});
+compressionRegistry.set(CompressionType.ZSTD, { decode: fzstdDecode });
+
+/** A zstd decoder that can replace the pure-JS default. */
+export interface ZstdCodec {
+  decode(bytes: Uint8Array): Uint8Array;
+}
+
+/** Builds the WASM decoder; injectable so tests can exercise the failure path. */
+export type ZstdCodecFactory = () => Promise<ZstdCodec>;
+
+const wasmZstdCodec: ZstdCodecFactory = async () => {
+  const { ZSTDDecoder } = await import("zstddec");
+  const decoder = new ZSTDDecoder();
+  await decoder.init();
+  return { decode: (bytes) => decoder.decode(bytes) };
+};
+
+let decoderReady: Promise<boolean> | null = null;
+
+/**
+ * Install the WASM zstd codec, once. Resolves true when the fast decoder is
+ * registered and false when it could not be (the pure-JS codec stays in place,
+ * so decoding always works — the WASM path is a speed choice, not a
+ * correctness one). Memoized: concurrent callers share one init, and
+ * `fetchPitches` overlaps it with the first request.
+ */
+export function ensureZstdDecoder(factory: ZstdCodecFactory = wasmZstdCodec): Promise<boolean> {
+  if (!decoderReady) {
+    decoderReady = factory()
+      .then((codec) => {
+        compressionRegistry.set(CompressionType.ZSTD, { decode: (bytes) => codec.decode(bytes) });
+        return true;
+      })
+      .catch(() => false);
+  }
+  return decoderReady;
+}
+
+/** True once the WASM decoder is registered (inspection/test helper). */
+export function zstdDecoderActive(): boolean {
+  const codec = compressionRegistry.get(CompressionType.ZSTD) as { decode?: unknown } | null;
+  return typeof codec?.decode === "function" && codec.decode !== fzstdDecode;
+}
+
+/**
+ * Restore the pure-JS codec and forget the init result (test isolation; the
+ * inverse of ensureZstdDecoder).
+ */
+export function resetZstdDecoder(): void {
+  decoderReady = null;
+  compressionRegistry.set(CompressionType.ZSTD, { decode: fzstdDecode });
+}
 
 /** Arrow int64 ids arrive as bigint; the UI only needs plain numbers (MLB ids are far below 2^53). */
 function idNumber(v: unknown): number | undefined {
@@ -45,18 +101,40 @@ function idString(v: unknown): string | undefined {
   return s === "" ? undefined : s;
 }
 
-/** Nullable Arrow UTF-8 fields arrive as strings; omit empty display names. */
-function displayName(v: unknown): string | undefined {
+/** Nullable Arrow UTF-8 fields arrive as strings; omit empty values. */
+function textOrUndefined(v: unknown): string | undefined {
   if (v == null) return undefined;
   const name = String(v).trim();
   return name === "" ? undefined : name;
+}
+
+/**
+ * True for a canonical 36-char UUID (8-4-4-4-12 hex, case-insensitive).
+ *
+ * This runs once per pitch on the load path, where a RegExp with a repeated
+ * group measured ~160 ns/row — as much as the whole row loop's own overhead —
+ * so the shape is checked character by character instead.
+ */
+function isUuid(value: string): boolean {
+  if (value.length !== 36) return false;
+  for (let i = 0; i < 36; i++) {
+    const code = value.charCodeAt(i);
+    if (i === 8 || i === 13 || i === 18 || i === 23) {
+      if (code !== 45) return false; // '-'
+      continue;
+    }
+    const hex =
+      (code >= 48 && code <= 57) || (code >= 97 && code <= 102) || (code >= 65 && code <= 70);
+    if (!hex) return false;
+  }
+  return true;
 }
 
 function sourcePlayId(explicitPlayId: unknown, pitchId: unknown): string | undefined {
   const explicit = idString(explicitPlayId);
   if (explicit) return explicit;
   const id = idString(pitchId);
-  return id && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id) ? id : undefined;
+  return id && isUuid(id) ? id : undefined;
 }
 
 /** Row accessor over one Arrow column, or null when the column is absent. */
@@ -67,6 +145,12 @@ type Getter = (i: number) => unknown;
  * representation is read straight from `toArray()` (zero-copy for a single
  * chunk); anything else (nullable columns, strings, int64) goes through the
  * Vector's `get`, because `toArray()` would silently turn NULLs into 0/NaN.
+ *
+ * No-null Utf8 columns also get an array fast path: `toArray()` hands back a
+ * plain array of strings, while `Vector.get()` re-decodes the string on every
+ * call (about 60x slower per row on a real corpus). Other plain-array columns
+ * (timestamps as epoch milliseconds) keep the Vector path so the value type a
+ * caller sees never changes.
  */
 function columnGetter(table: Table, name: string): Getter | null {
   const vec = table.getChild(name);
@@ -76,6 +160,10 @@ function columnGetter(table: Table, name: string): Getter | null {
     if (ArrayBuffer.isView(arr) && !(arr instanceof DataView)) {
       const typed = arr as unknown as ArrayLike<unknown>;
       return (i) => typed[i];
+    }
+    if (Array.isArray(arr) && typeof arr[0] === "string") {
+      const strings = arr as string[];
+      return (i) => strings[i];
     }
   }
   return (i) => vec.get(i);
@@ -111,10 +199,17 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const isSwing = columnGetter(table, "is_swing");
   const isWhiff = columnGetter(table, "is_whiff");
   const spin = columnGetter(table, "release_spin_rate");
+  const spinDir = columnGetter(table, "spin_direction");
   const szTop = columnGetter(table, "sz_top");
   const szBot = columnGetter(table, "sz_bot");
   const extension = columnGetter(table, "extension");
   const atBat = columnGetter(table, "at_bat_number");
+  const zone = columnGetter(table, "zone");
+  const pitchResult = columnGetter(table, "pitch_result");
+  const playEvent = columnGetter(table, "play_event");
+  const inning = columnGetter(table, "inning");
+  const balls = columnGetter(table, "balls");
+  const strikes = columnGetter(table, "strikes");
   const pitchNum = columnGetter(table, "pitch_number");
   const pitcherId = columnGetter(table, "pitcher_id");
   const batterId = columnGetter(table, "batter_id");
@@ -124,9 +219,22 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
   const pitchId = columnGetter(table, "pitch_id");
   const playId = columnGetter(table, "play_id");
   const pitchType = columnGetter(table, "pitch_type");
+  const launchSpeed = columnGetter(table, "launch_speed");
+  const launchAngle = columnGetter(table, "launch_angle");
+  const hitDistance = columnGetter(table, "hit_distance");
+  const bbType = columnGetter(table, "bb_type");
+  const hcX = columnGetter(table, "hc_x");
+  const hcY = columnGetter(table, "hc_y");
 
   const pitches: PitchDatum[] = [];
   const n = table.numRows;
+  // One buffer for every trajectory. A fresh 720-byte Float32Array per pitch was
+  // this function's biggest allocation — about 45 MB on the full corpus — and the
+  // GC cost of it is why identical code scaled worse than linearly (runs 87-89,
+  // profiled at GC 12.4%). Every consumer only reads `path`, so views are safe;
+  // the buffer outlives them because it is held by the returned table's pitches.
+  const paths = new Float32Array(n * TRAJECTORY_FLOATS);
+  let pathCursor = 0;
   for (let i = 0; i < n; i++) {
     const ext = extension ? finiteOrUndefined(extension(i)) : undefined;
     const measured: PitchKinematics = {
@@ -134,10 +242,13 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
       vx0: vx0[i], vy0: vy0[i], vz0: vz0[i],
       ax: ax[i], ay: ay[i], az: az[i],
     };
-    const k = extrapolateToRelease(measured, ext);
+    // In place: `measured` was built for this row and nothing else holds it.
+    const k = extrapolateToReleaseInPlace(measured, ext);
     let path: Float32Array;
     try {
-      path = trajectoryFlat(k);
+      path = paths.subarray(pathCursor, pathCursor + TRAJECTORY_FLOATS);
+      trajectoryFlatInto(k, path);
+      pathCursor += TRAJECTORY_FLOATS;
     } catch {
       continue; // degenerate row (never reaches plate) — drop, don't crash
     }
@@ -155,16 +266,29 @@ export function loadPitchTable(buffer: ArrayBuffer): PitchTable {
     pitches.push({
       pitcherId: idNumber(pitcherId?.(i)),
       batterId: idNumber(batterId?.(i)),
-      pitcherName: displayName(pitcherName?.(i)),
-      batterName: displayName(batterName?.(i)),
+      pitcherName: textOrUndefined(pitcherName?.(i)),
+      batterName: textOrUndefined(batterName?.(i)),
       gameId: idNumber(gameId?.(i)),
       pitchId: idString(pitchId?.(i)),
       playId: sourcePlayId(playId?.(i), pitchId?.(i)),
+      launchSpeed: launchSpeed ? finiteOrUndefined(launchSpeed(i)) : undefined,
+      launchAngle: launchAngle ? finiteOrUndefined(launchAngle(i)) : undefined,
+      hitDistance: hitDistance ? finiteOrUndefined(hitDistance(i)) : undefined,
+      bbType: bbType ? textOrUndefined(bbType(i)) : undefined,
+      hcX: hcX ? finiteOrUndefined(hcX(i)) : undefined,
+      hcY: hcY ? finiteOrUndefined(hcY(i)) : undefined,
       atBatNumber: idNumber(atBat?.(i)),
+      balls: balls ? idNumber(balls(i)) : undefined,
+      strikes: strikes ? idNumber(strikes(i)) : undefined,
+      zone: zone ? idNumber(zone(i)) : undefined,
+      pitchResult: pitchResult ? textOrUndefined(pitchResult(i)) : undefined,
+      playEvent: playEvent ? textOrUndefined(playEvent(i)) : undefined,
+      inning: inning ? idNumber(inning(i)) : undefined,
       pitchNumber: idNumber(pitchNum?.(i)),
       path,
       releaseSpeed: speed[i],
       spinRate: spin ? finiteOrUndefined(spin(i)) : undefined,
+      spinDirection: spinDir ? finiteOrUndefined(spinDir(i)) : undefined,
       extension: ext,
       szTop: szTop ? finiteOrUndefined(szTop(i)) : undefined,
       szBot: szBot ? finiteOrUndefined(szBot(i)) : undefined,
@@ -210,9 +334,12 @@ export function clearEtagCache(): void {
 
 export async function fetchPitches(url: string): Promise<PitchTable> {
   const cached = etagCache.get(url);
-  const res = cached
-    ? await fetch(url, { headers: { "If-None-Match": cached.etag } })
-    : await fetch(url);
+  // Warm the WASM decoder while the body is in flight; a failed init just
+  // leaves the pure-JS codec in place.
+  const [res] = await Promise.all([
+    cached ? fetch(url, { headers: { "If-None-Match": cached.etag } }) : fetch(url),
+    ensureZstdDecoder(),
+  ]);
   if (res.status === 304 && cached) {
     return cached.parsed;
   }

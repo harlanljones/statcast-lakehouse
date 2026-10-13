@@ -23,6 +23,7 @@ import math
 import os
 import sys
 from datetime import date, datetime, timedelta, timezone
+from itertools import repeat
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -32,7 +33,11 @@ import pyarrow as pa
 PLATE_Y_FT = 1.417
 GRAVITY_FT_S2 = 32.174
 PITCHING_RUBBER_Y_FT = 60.5
-COMMITMENT_PLANE_Y_FT = 23.8
+# Commitment / decision frame: a fixed LEAD TIME before the plate, not a fixed
+# distance — flight time varies by pitch, so a fixed-distance plane made tunnelling
+# velocity-dependent (Baseball Prospectus abandoned the same convention).
+# Mirrored exactly in web/src/lib/kinematics.ts.
+COMMITMENT_LEAD_S = 0.150
 
 SCHEMA = pa.schema(
     [
@@ -42,8 +47,22 @@ SCHEMA = pa.schema(
         ("pitcher_id", pa.int64()),
         ("batter_id", pa.int64()),
         ("pitch_type", pa.string()),
+        # The pitch's outcome as one canonical code (mlb_client.PITCH_RESULTS):
+        # Savant's vocabulary, into which the game feed's prose descriptions are
+        # mapped. is_swing/is_whiff are derived from it and cannot recover it —
+        # a called strike and a ball share (0, 0), which is half the corpus.
+        ("pitch_result", pa.string()),
+        # Outcome of the plate appearance the pitch belongs to (Savant's CSV
+        # "events"), repeated on every pitch of that appearance. Distinct from
+        # pitch_result, which is what THIS pitch did.
+        ("play_event", pa.string()),
         ("release_speed", pa.float64()),
         ("release_spin_rate", pa.float64()),
+        # MLB pitchData.breaks.spinDirection: the direction the spin axis points, in
+        # degrees, stored verbatim. 100% present on tracked pitches. Deliberately NOT
+        # interpreted: its relation to the induced break is not a fixed offset (eight
+        # games, median -99.8 degrees, only 35% within 10 of 180).
+        ("spin_direction", pa.float64()),
         ("x0", pa.float64()),
         ("y0", pa.float64()),
         ("z0", pa.float64()),
@@ -55,6 +74,11 @@ SCHEMA = pa.schema(
         ("az", pa.float64()),
         ("plate_x", pa.float64()),
         ("plate_z", pa.float64()),
+# MLB's own zone number for the pitch, straight from the feed: 1-9 are the
+# nine cells of the strike zone, 11-14 the four cells around it. Present on
+# every tracked pitch and NOT derivable from plate_x/plate_z (the league's cell
+# edges are not published), which is why it is carried rather than computed.
+        ("zone", pa.int64()),
         ("sz_top", pa.float64()),
         ("sz_bot", pa.float64()),
         # Plate-appearance context (Savant stand/p_throws/balls/strikes are
@@ -64,9 +88,22 @@ SCHEMA = pa.schema(
         ("balls", pa.int64()),
         ("strikes", pa.int64()),
         ("at_bat_number", pa.int64()),
+        # Inning the play belongs to (1-based, extras included); 100% present.
+        ("inning", pa.int64()),
         ("pitch_number", pa.int64()),
         ("is_swing", pa.int64()),
         ("is_whiff", pa.int64()),
+        # Batted-ball outcome (Savant's contact columns): measured exit
+        # velocity and launch angle, projected distance in feet, the batted-ball
+        # class, and Savant's hit-chart coordinates (a 250x250 image space with
+        # home plate at about (125, 205); x grows toward right field, y grows
+        # back toward the plate). NULL unless the pitch was put in play.
+        ("launch_speed", pa.float64()),
+        ("launch_angle", pa.float64()),
+        ("hit_distance", pa.float64()),
+        ("bb_type", pa.string()),
+        ("hc_x", pa.float64()),
+        ("hc_y", pa.float64()),
         # MLB pitchData.extension: feet from the rubber to the release point.
         ("extension", pa.float64()),
         ("ingestion_time", pa.timestamp("us", tz="UTC")),
@@ -96,28 +133,105 @@ def solve_flight_time(y0: float, vy0: float, ay: float, y_end: float = PLATE_Y_F
         if t <= 0 or b > 0:
             raise ValueError("pitch plane crossing is not in the future")
         return t
-    roots = sorted(
-        t for t in ((-b - math.sqrt(disc)) / (2.0 * a), (-b + math.sqrt(disc)) / (2.0 * a))
-        if t > 0 and b + 2.0 * a * t < 0
-    )
-    if not roots:
+    # Earliest positive root at which the ball is still approaching the plate,
+    # scanned without building and sorting a list: this runs several times per
+    # pitch (path, ghost, break vector, commitment plane) on the export path.
+    # Mirrors the same scan in web/src/lib/kinematics.ts flightTime.
+    two_a = 2.0 * a
+    root = math.sqrt(disc)
+    t1 = (-b - root) / two_a
+    t2 = (-b + root) / two_a
+    best = math.inf
+    if t1 > 0 and b + two_a * t1 < 0:
+        best = t1
+    if t2 > 0 and b + two_a * t2 < 0 and t2 < best:
+        best = t2
+    if best == math.inf:
         raise ValueError("pitch plane crossing is not in the future")
-    return roots[0]
+    return best
 
 
 def position_at(pitch: dict[str, float], t: float) -> tuple[float, float, float]:
-    """Constant-acceleration (9-parameter) position at time t, in feet."""
+    """Constant-acceleration (9-parameter) position at time t, in feet.
+
+    Horner form of the same closed form (x0 + vx0*t + 0.5*ax*t*t): two
+    multiplies per coordinate instead of three, evaluated in the same order as
+    ``trajectory`` and as ``positionAt`` in web/src/lib/kinematics.ts.
+    """
     return (
-        pitch["x0"] + pitch["vx0"] * t + 0.5 * pitch["ax"] * t * t,
-        pitch["y0"] + pitch["vy0"] * t + 0.5 * pitch["ay"] * t * t,
-        pitch["z0"] + pitch["vz0"] * t + 0.5 * pitch["az"] * t * t,
+        pitch["x0"] + t * (pitch["vx0"] + 0.5 * pitch["ax"] * t),
+        pitch["y0"] + t * (pitch["vy0"] + 0.5 * pitch["ay"] * t),
+        pitch["z0"] + t * (pitch["vz0"] + 0.5 * pitch["az"] * t),
     )
 
 
 def trajectory(pitch: dict[str, float], n: int = 60) -> list[tuple[float, float, float]]:
-    """n points from release to the plate plane (Statcast's 60-point path)."""
-    t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
-    return [position_at(pitch, t_end * i / (n - 1)) for i in range(n)]
+    """n points from release to the plate plane (Statcast's 60-point path).
+
+    Same closed form and expression order as ``position_at`` (Horner form),
+    inlined over the loop with the per-point timestamps accumulated from
+    ``t_end / (n - 1)``. This is the hot path of every trajectory export: 60
+    points per pitch, where the per-point dict lookups, the tuple allocation
+    and the two extra multiplies per coordinate cost more than the physics.
+    The mirrored TypeScript solver (``trajectoryFlat``) accumulates the same
+    timestamp sequence, so both produce the same floats to the last bit; keep
+    the two in step when touching either.
+    """
+    return _trajectory_points(
+        pitch, solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"]), n
+    )
+
+
+def _trajectory_points(
+    pitch: dict[str, float], t_end: float, n: int = 60
+) -> list[tuple[float, float, float]]:
+    """The 60-point loop of ``trajectory`` at an already-solved flight time."""
+    x0 = pitch["x0"]
+    vx0 = pitch["vx0"]
+    half_ax = 0.5 * pitch["ax"]
+    y0 = pitch["y0"]
+    vy0 = pitch["vy0"]
+    half_ay = 0.5 * pitch["ay"]
+    z0 = pitch["z0"]
+    vz0 = pitch["vz0"]
+    half_az = 0.5 * pitch["az"]
+    dt = t_end / (n - 1)
+    points: list[tuple[float, float, float]] = []
+    append = points.append
+    t = 0.0
+    # repeat(None, n), not range(n): this loop runs 60 times per pitch and the
+    # range iterator materializes an int object per step, which costs more than
+    # the arithmetic it guards.
+    for _ in repeat(None, n):
+        append(
+            (
+                x0 + t * (vx0 + half_ax * t),
+                y0 + t * (vy0 + half_ay * t),
+                z0 + t * (vz0 + half_az * t),
+            )
+        )
+        t += dt
+    return points
+
+
+def _ghost_accels(pitch: dict[str, float], t_mid: float) -> tuple[float, float, float]:
+    """The ghost's (ax, ay, az) at a known mid-flight time (see ghost_kinematics)."""
+    vx = pitch["vx0"] + pitch["ax"] * t_mid
+    vy = pitch["vy0"] + pitch["ay"] * t_mid
+    vz = pitch["vz0"] + pitch["az"] * t_mid
+    speed = math.sqrt(vx * vx + vy * vy + vz * vz)
+    drag = (pitch["ax"] * vx + pitch["ay"] * vy + (pitch["az"] + GRAVITY_FT_S2) * vz) / speed
+    return drag * vx / speed, pitch["ay"], -GRAVITY_FT_S2 + drag * vz / speed
+
+
+def _ghost_kinematics_at(pitch: dict[str, float], t_mid: float) -> dict[str, float]:
+    """The ghost at a known mid-flight time (see ghost_kinematics)."""
+    ax, ay, az = _ghost_accels(pitch, t_mid)
+    ghost = dict(pitch)
+    ghost["ax"] = ax
+    ghost["ay"] = ay
+    ghost["az"] = az
+    return ghost
 
 
 def ghost_kinematics(pitch: dict[str, float]) -> dict[str, float]:
@@ -129,33 +243,33 @@ def ghost_kinematics(pitch: dict[str, float]) -> dict[str, float]:
     keeps the fitted ay so it reaches the plate at the same time. Validated
     against pitchphys no-spin flights (test_pitchphys_crosscheck.py).
     """
-    t_mid = 0.5 * solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
-    vx = pitch["vx0"] + pitch["ax"] * t_mid
-    vy = pitch["vy0"] + pitch["ay"] * t_mid
-    vz = pitch["vz0"] + pitch["az"] * t_mid
-    speed = math.sqrt(vx * vx + vy * vy + vz * vz)
-    drag = (pitch["ax"] * vx + pitch["ay"] * vy + (pitch["az"] + GRAVITY_FT_S2) * vz) / speed
-    ghost = dict(pitch)
-    ghost["ax"] = drag * vx / speed
-    ghost["ay"] = pitch["ay"]
-    ghost["az"] = -GRAVITY_FT_S2 + drag * vz / speed
-    return ghost
+    return _ghost_kinematics_at(
+        pitch, 0.5 * solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
+    )
 
 
 def ghost_trajectory(
     pitch: dict[str, float], n: int = 60
 ) -> list[tuple[float, float, float]]:
-    """n points along the trajectory under pure gravity and drag."""
-    return trajectory(ghost_kinematics(pitch), n=n)
+    """n points along the trajectory under pure gravity and drag.
+
+    The ghost keeps y0/vy0/ay, so it crosses the plate at the same time as the
+    real pitch: one flight-time solve serves both the ghost's mid-flight state
+    and its path (``trajectory`` would solve for the same value again).
+    """
+    t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
+    return _trajectory_points(_ghost_kinematics_at(pitch, 0.5 * t_end), t_end, n)
 
 
 def compute_break_vector(pitch: dict[str, float]) -> dict[str, float]:
     """Aerodynamic break in inches at plate arrival (Nathan 2012 definition):
     actual minus the drag-corrected ghost, which share the same flight time."""
     t_end = solve_flight_time(pitch["y0"], pitch["vy0"], pitch["ay"])
-    ghost = ghost_kinematics(pitch)
-    dx_ft = 0.5 * (pitch["ax"] - ghost["ax"]) * t_end * t_end
-    dz_ft = 0.5 * (pitch["az"] - ghost["az"]) * t_end * t_end
+    # Only the ghost's x/z accelerations are needed here, so skip the dict copy
+    # that _ghost_kinematics_at makes for the trajectory path.
+    ghost_ax, _, ghost_az = _ghost_accels(pitch, 0.5 * t_end)
+    dx_ft = 0.5 * (pitch["ax"] - ghost_ax) * t_end * t_end
+    dz_ft = 0.5 * (pitch["az"] - ghost_az) * t_end * t_end
     h_break = dx_ft * 12.0
     v_break = dz_ft * 12.0
     return {
@@ -230,47 +344,79 @@ def extrapolate_to_release(pitch: dict[str, Any], extension_ft: float | None) ->
 
 
 def solve_commitment_time(y0: float, vy0: float, ay: float) -> float:
-    """Solve for the time t when the pitch crosses the commitment plane (y = 23.8 ft)."""
-    return solve_flight_time(y0, vy0, ay, y_end=COMMITMENT_PLANE_Y_FT)
+    """Time at which the pitch is compared: a fixed lead time before the plate."""
+    return max(0.0, solve_flight_time(y0, vy0, ay) - COMMITMENT_LEAD_S)
 
 
 def commitment_position(pitch: dict[str, float]) -> tuple[float, float, float]:
-    """Position (x, y, z) in feet at the commitment plane (y = 23.8 ft)."""
+    """Position (x, y, z) in feet at the commitment frame (150 ms before the plate).
+    y therefore varies by pitch."""
     t = solve_commitment_time(pitch["y0"], pitch["vy0"], pitch["ay"])
     return position_at(pitch, t)
 
 
 def tunneling_distance(p1: dict[str, float], p2: dict[str, float]) -> float:
-    """Tunneling separation distance in inches at the commitment plane (y = 23.8 ft)."""
+    """Tunneling separation in inches at the commitment frame (150 ms before plate)."""
     c1 = commitment_position(p1)
     c2 = commitment_position(p2)
     return math.hypot(c1[0] - c2[0], c1[2] - c2[2]) * 12.0
 
 
 def compute_arsenal_centroids(pitches: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Compute mean kinematic centroids and break characteristics per pitch_type."""
-    by_type: dict[str, list[dict[str, Any]]] = {}
+    """Compute mean kinematic centroids and break characteristics per pitch_type.
+
+    One accumulation pass over the corpus, like ``computeArsenalCentroids`` in
+    web/src/lib/arsenal.ts: the twelve per-type sums used to be twelve separate
+    generator passes per pitch type, which cost more than the additions.
+    """
+    totals: dict[str, list[float]] = {}
     for p in pitches:
         pt = p.get("pitch_type", "")
-        if pt:
-            by_type.setdefault(pt, []).append(p)
+        if not pt:
+            continue
+        t = totals.get(pt)
+        if t is None:
+            t = [0.0] * 15  # index 14 counts the pitches that have a spin rate
+            totals[pt] = t
+        t[0] += 1.0
+        t[1] += p.get("release_speed", 0.0)
+        # A pitch without a measured spin rate (NULL in the corpus, NaN from the
+        # API path) is left out of the spin mean rather than counted as zero:
+        # `computeArsenalCentroids` in web/src/lib/arsenal.ts keeps a spin count
+        # for the same reason, so both mirrors report the mean over pitches that
+        # were measured, or None/undefined when none were.
+        spin = p.get("release_spin_rate")
+        if spin is not None and not math.isnan(spin):
+            t[2] += spin
+            t[14] += 1.0
+        t[3] += p["x0"]
+        t[4] += p["y0"]
+        t[5] += p["z0"]
+        t[6] += p["vx0"]
+        t[7] += p["vy0"]
+        t[8] += p["vz0"]
+        t[9] += p["ax"]
+        t[10] += p["ay"]
+        t[11] += p["az"]
+        t[12] += p.get("plate_x", 0.0)
+        t[13] += p.get("plate_z", 0.0)
 
     centroids: dict[str, dict[str, Any]] = {}
-    for pt, pts in by_type.items():
-        n = len(pts)
-        mean_speed = sum(p.get("release_speed", 0.0) for p in pts) / n
-        mean_spin = sum(p.get("release_spin_rate", 0.0) for p in pts) / n
-        mean_x0 = sum(p["x0"] for p in pts) / n
-        mean_y0 = sum(p["y0"] for p in pts) / n
-        mean_z0 = sum(p["z0"] for p in pts) / n
-        mean_vx0 = sum(p["vx0"] for p in pts) / n
-        mean_vy0 = sum(p["vy0"] for p in pts) / n
-        mean_vz0 = sum(p["vz0"] for p in pts) / n
-        mean_ax = sum(p["ax"] for p in pts) / n
-        mean_ay = sum(p["ay"] for p in pts) / n
-        mean_az = sum(p["az"] for p in pts) / n
-        mean_px = sum(p.get("plate_x", 0.0) for p in pts) / n
-        mean_pz = sum(p.get("plate_z", 0.0) for p in pts) / n
+    for pt, t in totals.items():
+        n = int(t[0])
+        mean_speed = t[1] / n
+        mean_spin = t[2] / t[14] if t[14] > 0 else None
+        mean_x0 = t[3] / n
+        mean_y0 = t[4] / n
+        mean_z0 = t[5] / n
+        mean_vx0 = t[6] / n
+        mean_vy0 = t[7] / n
+        mean_vz0 = t[8] / n
+        mean_ax = t[9] / n
+        mean_ay = t[10] / n
+        mean_az = t[11] / n
+        mean_px = t[12] / n
+        mean_pz = t[13] / n
 
         k_mean = {
             "x0": mean_x0, "y0": mean_y0, "z0": mean_z0,
@@ -524,23 +670,45 @@ def compute_release_dispersion(
             "wireframe_segments": [],
         }
 
-    sum_x = sum(p["x0"] for p in pitches)
-    sum_y = sum(p["y0"] for p in pitches)
-    sum_z = sum(p["z0"] for p in pitches)
+    sum_x = 0.0
+    sum_y = 0.0
+    sum_z = 0.0
+    for p in pitches:
+        sum_x += p["x0"]
+        sum_y += p["y0"]
+        sum_z += p["z0"]
     mx = sum_x / n
     my = sum_y / n
     mz = sum_z / n
 
-    var_x = sum((p["x0"] - mx) ** 2 for p in pitches) / (n - 1)
-    var_y = sum((p["y0"] - my) ** 2 for p in pitches) / (n - 1)
-    var_z = sum((p["z0"] - mz) ** 2 for p in pitches) / (n - 1)
+    # One centred pass for all six second moments, like computeReleaseDispersion
+    # in web/src/lib/dispersion.ts (nine generator sums cost more than the work).
+    var_x = 0.0
+    var_y = 0.0
+    var_z = 0.0
+    cov_xy = 0.0
+    cov_xz = 0.0
+    cov_yz = 0.0
+    for p in pitches:
+        dx = p["x0"] - mx
+        dy = p["y0"] - my
+        dz = p["z0"] - mz
+        var_x += dx * dx
+        var_y += dy * dy
+        var_z += dz * dz
+        cov_xy += dx * dy
+        cov_xz += dx * dz
+        cov_yz += dy * dz
+    d = n - 1
+    var_x /= d
+    var_y /= d
+    var_z /= d
+    cov_xy /= d
+    cov_xz /= d
+    cov_yz /= d
     std_x = math.sqrt(var_x)
     std_y = math.sqrt(var_y)
     std_z = math.sqrt(var_z)
-
-    cov_xy = sum((p["x0"] - mx) * (p["y0"] - my) for p in pitches) / (n - 1)
-    cov_xz = sum((p["x0"] - mx) * (p["z0"] - mz) for p in pitches) / (n - 1)
-    cov_yz = sum((p["y0"] - my) * (p["z0"] - mz) for p in pitches) / (n - 1)
 
     radii = (k_sigma * std_x, k_sigma * std_y, k_sigma * std_z)
     volume = (4.0 / 3.0) * math.pi * radii[0] * radii[1] * radii[2]
@@ -581,13 +749,26 @@ def compute_fatigue_buckets(
         if count == 0:
             continue
 
-        avg_speed = sum(p["release_speed"] for p in chunk) / count
-        avg_z = sum(p["z0"] for p in chunk) / count
-        avg_x = sum(p["x0"] for p in chunk) / count
-        avg_ext = sum(PITCHING_RUBBER_Y_FT - p["y0"] for p in chunk) / count
-
-        swings = sum(p.get("is_swing", 0) for p in chunk)
-        whiffs = sum(p.get("is_whiff", 0) for p in chunk)
+        # One pass per bucket, like computeFatigueBuckets in
+        # web/src/lib/dispersion.ts: five generator sums per bucket cost more
+        # than the additions.
+        speed_sum = 0.0
+        z_sum = 0.0
+        x_sum = 0.0
+        ext_sum = 0.0
+        swings = 0
+        whiffs = 0
+        for p in chunk:
+            speed_sum += p["release_speed"]
+            z_sum += p["z0"]
+            x_sum += p["x0"]
+            ext_sum += PITCHING_RUBBER_Y_FT - p["y0"]
+            swings += p.get("is_swing", 0)
+            whiffs += p.get("is_whiff", 0)
+        avg_speed = speed_sum / count
+        avg_z = z_sum / count
+        avg_x = x_sum / count
+        avg_ext = ext_sum / count
         whiff_pct = (whiffs / swings * 100.0) if swings > 0 else 0.0
 
         if base_speed is None:

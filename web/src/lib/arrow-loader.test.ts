@@ -29,6 +29,12 @@ function ipcBuffer(rows: {
   szBot?: Float64Array | number[];
   /** Nullable optional columns: plain arrays so NULLs survive. */
   extension?: (number | null)[];
+  launchSpeed?: (number | null)[];
+  launchAngle?: (number | null)[];
+  hitDistance?: (number | null)[];
+  bbType?: (string | null)[];
+  hcX?: (number | null)[];
+  hcY?: (number | null)[];
   atBatNumber?: (number | null)[];
   pitchNumber?: (number | null)[];
   /** int64 ids (arrive as bigint) and string ids, as in the real schema. */
@@ -67,6 +73,12 @@ function ipcBuffer(rows: {
   if (rows.szTop) arrays.sz_top = new Float64Array(rows.szTop);
   if (rows.szBot) arrays.sz_bot = new Float64Array(rows.szBot);
   if (rows.extension) arrays.extension = rows.extension;
+  if (rows.launchSpeed) arrays.launch_speed = rows.launchSpeed;
+  if (rows.launchAngle) arrays.launch_angle = rows.launchAngle;
+  if (rows.hitDistance) arrays.hit_distance = rows.hitDistance;
+  if (rows.bbType) arrays.bb_type = rows.bbType;
+  if (rows.hcX) arrays.hc_x = rows.hcX;
+  if (rows.hcY) arrays.hc_y = rows.hcY;
   if (rows.atBatNumber) arrays.at_bat_number = rows.atBatNumber;
   if (rows.pitchNumber) arrays.pitch_number = rows.pitchNumber;
   if (rows.ids?.pitcherId) arrays.pitcher_id = new BigInt64Array(rows.ids.pitcherId);
@@ -182,7 +194,7 @@ describe("loadPitchTable", () => {
     expect(pitches[2].extension).toBe(6.0);
     expect(pitches[2].kinematics!.y0).toBe(54.5);
     // Commitment and break math run on the extrapolated kinematics.
-    expect(pitches[0].commitmentPoint![1]).toBeCloseTo(23.8, 6);
+    expect(pitches[0].commitmentPoint![1]).toBeLessThan(23.8);  // the frame is a lead time, not a fixed plane
   });
 
   it("reads nullable at_bat_number / pitch_number and leaves NULLs unset", () => {
@@ -273,13 +285,13 @@ describe("loadPitchTable", () => {
     expect(p.isWhiff).toBeUndefined();
   });
 
-  it("computes commitmentPoint at y = 23.8 ft when kinematics are parsed", () => {
+  it("computes commitmentPoint a lead time before the plate when kinematics are parsed", () => {
     const buf = ipcBuffer({ count: 1, pitchTypes: ["FF"] });
     const { pitches } = loadPitchTable(buf);
     expect(pitches).toHaveLength(1);
     const cp = pitches[0].commitmentPoint;
     expect(cp).toBeDefined();
-    expect(cp![1]).toBeCloseTo(23.8, 5);
+    expect(cp![1]).toBeLessThan(23.8);  // the frame is a lead time, not a fixed plane
   });
 });
 
@@ -431,5 +443,41 @@ describe("fetchDatePartitions", () => {
     );
     const result = await fetchDatePartitions();
     expect(result).toEqual([]);
+  });
+});
+
+describe("batted-ball contact columns", () => {
+  it("carries Savant's hit-chart coordinates and leaves unmeasured balls undefined", () => {
+    const buf = ipcBuffer({
+      count: 2,
+      pitchTypes: ["FF", "SL"],
+      hitDistance: [402, null],
+      hcX: [187.4, null],
+      hcY: [42.1, null],
+    });
+    const { pitches } = loadPitchTable(buf);
+    expect(pitches[0].hcX).toBeCloseTo(187.4);
+    expect(pitches[0].hcY).toBeCloseTo(42.1);
+    expect(pitches[1].hcX).toBeUndefined();
+    expect(pitches[1].hcY).toBeUndefined();
+  });
+
+  it("carries measured contact data and leaves non-contact pitches undefined", () => {
+    const buf = ipcBuffer({
+      count: 2,
+      pitchTypes: ["FF", "SL"],
+      launchSpeed: [104.2, null],
+      launchAngle: [18, null],
+      hitDistance: [358, null],
+      bbType: ["line_drive", null],
+    });
+    const { pitches } = loadPitchTable(buf);
+
+    expect(pitches[0].launchSpeed).toBeCloseTo(104.2);
+    expect(pitches[0].launchAngle).toBeCloseTo(18);
+    expect(pitches[0].hitDistance).toBeCloseTo(358);
+    expect(pitches[0].bbType).toBe("line_drive");
+    expect(pitches[1].launchSpeed).toBeUndefined();
+    expect(pitches[1].bbType).toBeUndefined();
   });
 });

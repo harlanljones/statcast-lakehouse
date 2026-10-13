@@ -24,6 +24,9 @@ import {
 } from "../lib/camera";
 import { keyboardCameraStep, stepPitch } from "../lib/keyboard";
 import PlayerCard from "./PlayerCard";
+import type { CountRow } from "../lib/count-mix";
+import type { SprayProfile } from "../lib/spray-profile";
+import type { CountBucket, PlayerFilter, ZoneCell } from "../lib/deck-layers";
 import { THEME } from "./ui";
 import type { ArsenalCentroid } from "../lib/arsenal";
 import type { FatigueBucket, ReleaseDispersion } from "../lib/dispersion";
@@ -34,6 +37,8 @@ import type { PitcherStoryline } from "../lib/storylines";
 const BreakChart = lazy(() => import("./BreakChart"));
 const PairComparisonPanel = lazy(() => import("./PairComparisonPanel"));
 const FatiguePanel = lazy(() => import("./FatiguePanel"));
+const CountPanel = lazy(() => import("./CountPanel"));
+const SprayProfilePanel = lazy(() => import("./SprayProfilePanel"));
 
 export interface VisualizerProps {
   data: PitchTable | null;
@@ -44,7 +49,22 @@ export interface VisualizerProps {
   plateZRange?: [number, number];
   zoneFilter?: ZoneFilter;
   outcomeFilter?: OutcomeFilter;
+  /** One plate-appearance outcome to keep every pitch of, or null for any. */
+  playEvent?: string | null;
+  /** Innings to keep; empty or absent means every inning. */
+  innings?: ReadonlySet<number> | null;
   selectedTypes?: ReadonlySet<string> | null;
+  /** Isolate one player's pitches (set from the player card). */
+  playerFilter?: PlayerFilter | null;
+  onPlayerFilter?: (f: PlayerFilter | null) => void;
+  /** Pinned comparison players, per role: what the card's deltas read against instead of the rest. */
+  benchmark?: PlayerFilter | null;
+  onBenchmark?: (b: PlayerFilter | null) => void;
+  /** Count cut from the chip row: empty means every count shows. */
+  countBuckets?: ReadonlySet<CountBucket>;
+  zoneCells?: ReadonlySet<ZoneCell>;
+  /** MLB's own zone numbers (1-9 in the strike zone, 11-14 around it). */
+  leagueZones?: ReadonlySet<number>;
   viewState?: OrbitViewState | null;
   /** What a plain drag does; shift/right-drag does the other one. */
   dragMode?: DragMode;
@@ -63,6 +83,7 @@ export interface VisualizerProps {
   showGhostBreak?: boolean;
   showReleasePoints?: boolean;
   showPlateCrossings?: boolean;
+  showSpray?: boolean;
   showBreakChart?: boolean;
   pairedTypes?: [string, string] | null;
   arsenalCentroids?: Map<string, ArsenalCentroid> | null;
@@ -79,6 +100,11 @@ export interface VisualizerProps {
   fatigueBuckets?: FatigueBucket[];
   fatiguePitcherLabel?: string;
   fatiguePitcherCount?: number;
+  showCountMix?: boolean;
+  countRows?: CountRow[];
+  onToggleCountMix?: (on: boolean) => void;
+  sprayProfile?: SprayProfile | null;
+  onToggleSprayProfile?: (on: boolean) => void;
   onToggleFatigue?: (v: boolean) => void;
   showHeatmap?: boolean;
   heatmapCells?: HeatmapCell[] | null;
@@ -237,7 +263,13 @@ export default function Visualizer(props: VisualizerProps) {
           plateZRange: props.plateZRange,
           zoneFilter: props.zoneFilter,
           outcomeFilter: props.outcomeFilter,
+          playEvent: props.playEvent ?? null,
+          innings: props.innings ?? null,
           selectedTypes: props.selectedTypes ?? null,
+          playerFilter: props.playerFilter ?? null,
+          countBuckets: props.countBuckets ?? null,
+          zoneCells: props.zoneCells ?? null,
+          leagueZones: props.leagueZones ?? null,
           onHover: handleHover,
           flightProgress,
           isPlaying: playing,
@@ -245,6 +277,7 @@ export default function Visualizer(props: VisualizerProps) {
           showGhostBreak: props.showGhostBreak,
           showReleasePoints: props.showReleasePoints,
           showPlateCrossings: props.showPlateCrossings,
+          showSpray: props.showSpray,
           pairedTypes: props.pairedTypes,
           arsenalCentroids: props.arsenalCentroids,
           showDispersion: props.showDispersion,
@@ -399,6 +432,20 @@ export default function Visualizer(props: VisualizerProps) {
               onClose={() => props.onTogglePairComparison?.(false)}
             />
           </Show>
+          <Show when={props.sprayProfile}>
+            <SprayProfilePanel
+              profile={props.sprayProfile!}
+              pitcherLabel={props.fatiguePitcherLabel}
+              onClose={() => props.onToggleSprayProfile?.(false)}
+            />
+          </Show>
+          <Show when={props.showCountMix && props.countRows}>
+            <CountPanel
+              rows={props.countRows!}
+              pitcherLabel={props.fatiguePitcherLabel}
+              onClose={() => props.onToggleCountMix?.(false)}
+            />
+          </Show>
           <Show when={props.showFatigue && props.fatigueBuckets}>
             <FatiguePanel
               buckets={props.fatigueBuckets!}
@@ -420,6 +467,10 @@ export default function Visualizer(props: VisualizerProps) {
         <Show when={pinned()}>
           {(p) => (
             <PlayerCard
+              playerFilter={props.playerFilter ?? null}
+              onPlayerFilter={props.onPlayerFilter}
+              benchmark={props.benchmark ?? null}
+              onBenchmark={props.onBenchmark}
               pitch={p()}
               pitches={visible()}
               synthetic={props.synthetic ?? true}
@@ -490,7 +541,13 @@ export default function Visualizer(props: VisualizerProps) {
               {t.pitchType}
             </div>
             <div>{t.speed}</div>
-            {t.spin && <div style={{ color: "#a0e0a0" }}>{t.spin}</div>}
+            {(t.spin || t.spinAxis) && (
+              <div style={{ color: "#a0e0a0" }}>
+                {t.spin}
+                {t.spin && t.spinAxis ? " · " : ""}
+                {t.spinAxis}
+              </div>
+            )}
             <div>{t.location}</div>
             {t.break && <div style={{ color: THEME.gold }}>{t.break}</div>}
             {t.tunnel && <div style={{ color: THEME.gold }}>{t.tunnel}</div>}
@@ -508,6 +565,11 @@ export default function Visualizer(props: VisualizerProps) {
                 </div>
               )}
             </Show>
+            {t.observedContact && (
+              <div style={{ color: THEME.gold, "margin-top": "3px", "border-top": `1px solid ${THEME.border}`, "padding-top": "2px" }}>
+                {t.observedContact}
+              </div>
+            )}
             {t.simulatedContact && (
               <div style={{ color: "#ff99ff", "margin-top": "3px", "border-top": `1px solid ${THEME.border}`, "padding-top": "2px" }}>
                 {t.simulatedContact}

@@ -1,11 +1,28 @@
 import { For, Show, type JSX } from "solid-js";
 import { pitchColor, type PitchDatum } from "../lib/deck-layers";
-import { mlbLinks, pitchResult, playerLabel, summarizePitcher } from "../lib/player-card";
+import {
+  comparisonAgainst,
+  formatRateDelta,
+  mlbLinks,
+  pitchResult,
+  playerLabel,
+  summarizeBatter,
+  summarizeOthers,
+  summarizePitcher,
+} from "../lib/player-card";
+import type { PlayerFilter } from "../lib/deck-layers";
+import { sprayDirection } from "../lib/spray";
 import { storylinesForPitcher, type PitcherStoryline } from "../lib/storylines";
 import { CloseButton, THEME } from "./ui";
 
 export interface PlayerCardProps {
   pitch: PitchDatum;
+  /** Set by the isolate buttons; the same player pressed again clears it. */
+  playerFilter?: PlayerFilter | null;
+  onPlayerFilter?: (f: PlayerFilter | null) => void;
+  /** Pinned comparison players, per role: the yardstick this card's deltas use instead of "the rest". */
+  benchmark?: PlayerFilter | null;
+  onBenchmark?: (b: PlayerFilter | null) => void;
   /** The pitches currently visible (after filters), for the pitcher summary. */
   pitches: readonly PitchDatum[];
   synthetic: boolean;
@@ -25,6 +42,95 @@ const muted: JSX.CSSProperties = { color: THEME.muted };
  */
 export default function PlayerCard(props: PlayerCardProps): JSX.Element {
   const summary = () => (props.pitch.pitcherId != null ? summarizePitcher(props.pitches, props.pitch.pitcherId) : null);
+  const atBat = () => (props.pitch.batterId != null ? summarizeBatter(props.pitches, props.pitch.batterId) : null);
+  /**
+   * The yardstick each role's deltas use: every OTHER pitcher (or batter) in the
+   * loaded pitches, labelled "vs rest" on screen and never as a league baseline —
+   * the loaded slices are a handful of real games picked for their stories — or
+   * the player the user pinned as the comparison, labelled with their name.
+   */
+  const pitcherAgainst = () => comparisonAgainst(props.pitches, "pitcher", props.pitch.pitcherId, props.benchmark);
+  const batterAgainst = () => comparisonAgainst(props.pitches, "batter", props.pitch.batterId, props.benchmark);
+  const restValue = (rate: number | null, other: number | null) =>
+    rate == null || other == null ? undefined : `${Math.round(other * 100)}%`;
+
+  /** Where this batted ball landed, when the data carries both halves of it. */
+  const sprayLine = () => {
+    const direction = sprayDirection(props.pitch.hcX, props.pitch.hcY);
+    const distance = props.pitch.hitDistance;
+    if (!direction || distance == null || !(distance > 0)) return null;
+    return `Spray: ${Math.round(distance)} ft to ${direction}`;
+  };
+  /** Setting one role never clears the other, so both together is the matchup. */
+  const toggleIsolate = (role: "pitcher" | "batter", id: number) => {
+    const next: PlayerFilter = { ...(props.playerFilter ?? {}) };
+    if (next[role] === id) delete next[role];
+    else next[role] = id;
+    props.onPlayerFilter?.(next.pitcher == null && next.batter == null ? null : next);
+  };
+  const matchup = () =>
+    props.playerFilter?.pitcher != null && props.playerFilter.batter != null;
+  const isolated = (role: "pitcher" | "batter", id: number | undefined) =>
+    id != null && props.playerFilter?.[role] === id;
+  const ctlStyle = (on: boolean): JSX.CSSProperties => ({
+    "margin-top": "4px",
+    padding: "2px 8px",
+    "font-size": "11px",
+    color: on ? THEME.accent : THEME.muted,
+    background: "transparent",
+    border: `1px ${on ? "solid" : "dashed"} ${on ? THEME.accent : THEME.border}`,
+    "border-radius": "4px",
+    cursor: "pointer",
+  });
+  const isolateButton = (role: "pitcher" | "batter", id: number | undefined) => (
+    <Show when={id != null}>
+      <button
+        class="ui-ctl"
+        type="button"
+        aria-pressed={isolated(role, id)}
+        title={
+          isolated(role, id)
+            ? matchup()
+              ? `Showing only this ${role} to the isolated ${role === "pitcher" ? "batter" : "pitcher"} — press to clear`
+              : "Show every player again"
+            : matchup()
+              ? `Add this ${role} to the matchup`
+              : "Filter the scene to this player's pitches"
+        }
+        onClick={() => toggleIsolate(role, id as number)}
+        style={ctlStyle(isolated(role, id))}
+      >
+        {isolated(role, id) ? "Isolated — show all" : `Only this ${role}`}
+      </button>
+    </Show>
+  );
+  /** Pins this player as the yardstick the deltas read against, for their role. */
+  const benchmarked = (role: "pitcher" | "batter", id: number | undefined) =>
+    id != null && props.benchmark?.[role] === id;
+  const toggleBenchmark = (role: "pitcher" | "batter", id: number) => {
+    const next: PlayerFilter = { ...(props.benchmark ?? {}) };
+    if (next[role] === id) delete next[role];
+    else next[role] = id;
+    props.onBenchmark?.(next.pitcher == null && next.batter == null ? null : next);
+  };
+  const benchmarkButton = (role: "pitcher" | "batter", id: number | undefined) => (
+    <Show when={id != null}>
+      <button
+        class="ui-ctl"
+        type="button"
+        aria-pressed={benchmarked(role, id)}
+        title={
+          benchmarked(role, id)
+            ? `Read this ${role}'s deltas against the rest of the loaded pitches again`
+            : `Read this ${role}'s deltas against this player instead of the rest`
+        }
+        onClick={() => toggleBenchmark(role, id as number)}
+        style={{ ...ctlStyle(benchmarked(role, id)), "margin-left": "6px" }}
+      >
+        {benchmarked(role, id) ? "Comparing — clear" : "Compare with"}
+      </button>
+    </Show>
+  );
   const links = () =>
     mlbLinks({
       synthetic: props.synthetic,
@@ -82,6 +188,21 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
             <div style={muted}>
               {s().count} pitches · avg {s().avgSpeed.toFixed(1)} mph ·{" "}
               {s().whiffRate == null ? "no swings" : `${Math.round(s().whiffRate! * 100)}% whiff`}
+              <Show
+                when={formatRateDelta(s().whiffRate, pitcherAgainst().stats?.whiffRate ?? null)}
+              >
+                {(delta) => (
+                  <span
+                    title={`${pitcherAgainst().label}: ${restValue(
+                      s().whiffRate,
+                      pitcherAgainst().stats?.whiffRate ?? null,
+                    ) ?? "—"} whiff`}
+                  >
+                    {" "}
+                    · {delta()} vs {pitcherAgainst().short}
+                  </span>
+                )}
+              </Show>
             </div>
             <div aria-label="pitch mix" style={{ margin: "6px 0 10px" }}>
               <For each={s().mix}>
@@ -93,20 +214,128 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
                         style={{ display: "block", height: "100%", width: `${Math.max(m.share * 100, 2)}%`, background: rgb(m.type), "border-radius": "3px" }}
                       />
                     </span>
-                    <span style={{ width: "76px", "text-align": "right", "white-space": "nowrap", ...muted }}>
+                    <span
+                      style={{ width: "132px", "text-align": "right", "white-space": "nowrap", ...muted }}
+                      title={
+                        m.spinRate == null
+                          ? "no measured spin on these pitches"
+                          : `mean spin ${Math.round(m.spinRate)} rpm over this pitcher\'s ${m.type} pitches in view`
+                      }
+                    >
                       {Math.round(m.share * 100)}% ({m.count})
+                      {m.spinRate == null ? "" : ` · ${Math.round(m.spinRate)} rpm`}
                     </span>
                   </div>
                 )}
               </For>
             </div>
+            <Show when={s().contact}>
+              {(c) => (
+                <div aria-label="contact allowed" style={{ "margin-bottom": "10px" }}>
+                  <div style={muted}>
+                    Contact · avg {c().avgExitVelocity.toFixed(1)} mph · hard-hit{" "}
+                    {Math.round(c().hardHitRate * 100)}% of {c().measured}
+                    <Show
+                      when={formatRateDelta(
+                        c().hardHitRate,
+                        pitcherAgainst().stats?.contact?.hardHitRate ?? null,
+                      )}
+                    >
+                      {(delta) => (
+                        <span
+                          title={`${pitcherAgainst().label}: ${restValue(
+                            c().hardHitRate,
+                            pitcherAgainst().stats?.contact?.hardHitRate ?? null,
+                          ) ?? "—"} hard-hit`}
+                        >
+                          {" "}
+                          · {delta()} vs {pitcherAgainst().short}
+                        </span>
+                      )}
+                    </Show>
+                  </div>
+                  <For each={c().mix}>
+                    {(m) => (
+                      <div style={{ display: "flex", gap: "6px", "margin-top": "2px" }}>
+                        <span style={{ flex: "1" }}>{m.label}</span>
+                        <span style={{ ...muted, "white-space": "nowrap" }}>
+                          {Math.round(m.share * 100)}% ({m.count})
+                        </span>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              )}
+            </Show>
+            {isolateButton("pitcher", props.pitch.pitcherId)}
+            {benchmarkButton("pitcher", props.pitch.pitcherId)}
           </>
         )}
       </Show>
 
-      <div style={{ ...muted, "margin-bottom": "8px" }}>
-        {playerLabel("Batter", props.pitch.batterId, props.synthetic, props.pitch.batterName)}
-      </div>
+      <Show
+        when={atBat()}
+        fallback={
+          <div style={{ ...muted, "margin-bottom": "8px" }}>
+            {playerLabel("Batter", props.pitch.batterId, props.synthetic, props.pitch.batterName)}
+          </div>
+        }
+      >
+        {(b) => (
+          <div aria-label="batter summary" style={{ "margin-bottom": "8px" }}>
+            <div>{playerLabel("Batter", props.pitch.batterId, props.synthetic, props.pitch.batterName)}</div>
+            <div style={muted}>
+              {b().count} seen ·{" "}
+              {b().swingRate == null ? "no swing data" : `${Math.round(b().swingRate! * 100)}% swings`} ·{" "}
+              {b().whiffRate == null ? "no swings" : `${Math.round(b().whiffRate! * 100)}% whiff`}
+              <Show
+                when={formatRateDelta(b().whiffRate, batterAgainst().stats?.whiffRate ?? null)}
+              >
+                {(delta) => (
+                  <span
+                    title={`${batterAgainst().label}: ${restValue(
+                      b().whiffRate,
+                      batterAgainst().stats?.whiffRate ?? null,
+                    ) ?? "—"} whiff`}
+                  >
+                    {" "}
+                    · {delta()} vs {batterAgainst().short}
+                  </span>
+                )}
+              </Show>{" "}
+              · avg {b().avgSpeed.toFixed(1)} mph faced
+            </div>
+            <Show when={b().contact}>
+              {(c) => (
+                <div style={muted}>
+                  Contact · avg {c().avgExitVelocity.toFixed(1)} mph · hard-hit{" "}
+                  {Math.round(c().hardHitRate * 100)}% of {c().measured}
+                  <Show
+                    when={formatRateDelta(
+                      c().hardHitRate,
+                      batterAgainst().stats?.contact?.hardHitRate ?? null,
+                    )}
+                  >
+                    {(delta) => (
+                      <span
+                        title={`${batterAgainst().label}: ${restValue(
+                          c().hardHitRate,
+                          batterAgainst().stats?.contact?.hardHitRate ?? null,
+                        ) ?? "—"} hard-hit`}
+                      >
+                        {" "}
+                        · {delta()} vs {batterAgainst().short}
+                      </span>
+                    )}
+                  </Show>
+                </div>
+              )}
+            </Show>
+            {isolateButton("batter", props.pitch.batterId)}
+            {benchmarkButton("batter", props.pitch.batterId)}
+          </div>
+        )}
+      </Show>
 
       <Show when={!props.synthetic && stories().length > 0}>
         <section
@@ -149,7 +378,32 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
         </Show>
         <div style={muted}>
           {pitchResult(props.pitch)} · plate ({props.pitch.plateX.toFixed(2)}, {props.pitch.plateZ.toFixed(2)}) ft
+          <Show when={props.pitch.spinDirection != null}>
+            {/*
+              * The feed's spin-direction field, printed verbatim. The tooltip says only
+              * what is verified: the field's provenance and the fact that its relation
+              * to the break is NOT a simple one (measured, and it did not hold).
+              */}
+            <span
+              title={
+                "MLB's spinDirection for this pitch: the direction the spin axis points, in degrees, "
+                + "exactly as the feed reports it. Its relation to the break is not a fixed offset — "
+                + "measured across eight games, the gap's median is -99.8 degrees and only 35% of pitches "
+                + "fall within 10 of 180 — so the angle is shown and not interpreted."
+              }
+              style={muted}
+            >
+              {" · "}Spin axis {Math.round(props.pitch.spinDirection!)}°
+            </span>
+          </Show>
+          <Show when={props.pitch.playEvent}>
+            {/* The appearance's outcome, verbatim: "At-bat", never "Result". */}
+            <span style={muted}> · At-bat: {props.pitch.playEvent}</span>
+          </Show>
         </div>
+        <Show when={sprayLine()}>
+          <div style={muted}>{sprayLine()}</div>
+        </Show>
       </div>
 
       <div role="group" aria-label="MLB links" style={{ display: "flex", "flex-wrap": "wrap", gap: "6px" }}>

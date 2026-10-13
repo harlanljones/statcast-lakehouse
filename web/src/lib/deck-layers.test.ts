@@ -8,6 +8,11 @@ import {
   effectiveViewState,
   FALLBACK_COLOR,
   FILTER_SIZE,
+  countBucket,
+  distinctInnings,
+  distinctPlayEvents,
+  filteredLayerProps,
+  zoneCell,
   PITCH_COLORS,
   STRIKE_ZONE,
   battersBoxesSegments,
@@ -941,6 +946,8 @@ describe("buildLayers", () => {
           pitchCount: 5,
           swingCount: 3,
           whiffCount: 2,
+          contactCount: 4,
+          hardHitCount: 2,
           value: 1.0,
           color: [255, 50, 30, 240],
         },
@@ -963,7 +970,7 @@ describe("buildLayers", () => {
     const cell = {
       cellId: 0, xMin: -0.5, xMax: 0.0, zMin: 1.5, zMax: 2.5,
       polygon: [[-0.5, 1.417, 1.5], [0.0, 1.417, 1.5], [0.0, 1.417, 2.5], [-0.5, 1.417, 2.5]] as [number, number, number][],
-      pitchCount: 5, swingCount: 3, whiffCount: 2, value: 1.0,
+      pitchCount: 5, swingCount: 3, whiffCount: 2, contactCount: 4, hardHitCount: 2, value: 1.0,
       color: [255, 50, 30, 240] as [number, number, number, number],
     };
     const everything = buildLayers({
@@ -1135,5 +1142,299 @@ describe("pickedLayers", () => {
     const ids = pickedLayers(p).map((l) => l.id);
     expect(ids).toEqual(["picked-pitch-highlight", "picked-plate-crossing", "picked-batter-strike-zone"]);
     expect(buildLayers({ pitches: [p], speedRange: [60, 105] }).some((l) => l.id.startsWith("picked-"))).toBe(false);
+  });
+});
+
+describe("spray landings layer", () => {
+  const contact = (over: Partial<PitchDatum>): PitchDatum => ({
+    path: new Float32Array(3),
+    releaseSpeed: 92,
+    pfxX: 0,
+    pfxZ: 0,
+    plateX: 0,
+    plateZ: 2.5,
+    pitchType: "FF",
+    ...over,
+  });
+
+  it("only builds when asked for", () => {
+    const off = buildLayers({ pitches: [contact({})], speedRange: [40, 105] });
+    const on = buildLayers({ pitches: [contact({})], speedRange: [40, 105], showSpray: true });
+    expect(off.some((l) => l.id === "spray-landings")).toBe(false);
+    expect(on.some((l) => l.id === "spray-landings")).toBe(true);
+  });
+
+  it("places an in-play ball by chart direction and measured distance", () => {
+    const layer = buildLayers({ pitches: [contact({})], speedRange: [40, 105], showSpray: true }).find(
+      (l) => l.id === "spray-landings",
+    )!;
+    const props = layer.props as unknown as {
+      getPosition: (d: PitchDatum) => number[];
+      getRadius: (d: PitchDatum) => number;
+    };
+    const rightField = contact({ hcX: 200, hcY: 150, hitDistance: 350 });
+    const pos = props.getPosition(rightField);
+    expect(pos[0]).toBeGreaterThan(0);          // right field is positive x
+    expect(pos[1]).toBeLessThan(0);             // beyond the plate, out into the outfield
+    expect(Math.hypot(pos[0], pos[1])).toBeCloseTo(350, 4);
+    expect(props.getRadius(rightField)).toBeGreaterThan(0);
+  });
+
+  it("gives pitches with no measured landing a zero radius, so nothing is drawn", () => {
+    const layer = buildLayers({ pitches: [contact({})], speedRange: [40, 105], showSpray: true }).find(
+      (l) => l.id === "spray-landings",
+    )!;
+    const props = layer.props as unknown as { getRadius: (d: PitchDatum) => number };
+    expect(props.getRadius(contact({}))).toBe(0);                      // not in play at all
+    expect(props.getRadius(contact({ hcX: 180, hcY: 150 }))).toBe(0);  // in play, distance never measured
+  });
+});
+
+describe("isolating one player", () => {
+  const datum = (over: Partial<PitchDatum>): PitchDatum => ({
+    path: new Float32Array(3),
+    releaseSpeed: 92,
+    pfxX: 0,
+    pfxZ: 0,
+    plateX: 0,
+    plateZ: 2.5,
+    pitchType: "FF",
+    ...over,
+  });
+
+  it("keeps only that pitcher's or batter's pitches, and treats a missing id as a miss", () => {
+    const opts = { speedRange: [40, 105] as [number, number], playerFilter: { batter: 7 } };
+    expect(passesFilters(datum({ batterId: 7 }), opts)).toBe(true);
+    expect(passesFilters(datum({ batterId: 8 }), opts)).toBe(false);
+    expect(passesFilters(datum({}), opts)).toBe(false);
+    const byPitcher = { speedRange: [40, 105] as [number, number], playerFilter: { pitcher: 3 } };
+    expect(passesFilters(datum({ pitcherId: 3, batterId: 99 }), byPitcher)).toBe(true);
+    expect(passesFilters(datum({ pitcherId: 4, batterId: 99 }), byPitcher)).toBe(false);
+  });
+
+  it("combines both roles into a matchup, and changing either one re-derives the mask", () => {
+    const matchup = {
+      speedRange: [40, 105] as [number, number],
+      playerFilter: { pitcher: 1, batter: 7 },
+    };
+    expect(passesFilters(datum({ pitcherId: 1, batterId: 7 }), matchup)).toBe(true);
+    expect(passesFilters(datum({ pitcherId: 1, batterId: 8 }), matchup)).toBe(false);
+    expect(passesFilters(datum({ pitcherId: 2, batterId: 7 }), matchup)).toBe(false);
+
+    const pitches = [datum({ pitcherId: 1, batterId: 7 }), datum({ pitcherId: 1, batterId: 8 })];
+    const both = filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { pitcher: 1, batter: 7 } });
+    const batterOnly = filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { batter: 7 } });
+    const mask = (p: ReturnType<typeof filteredLayerProps>) =>
+      pitches.map((d) => (p.getFilterValue as unknown as (x: PitchDatum) => number[])(d)[3]);
+    expect(mask(both)).toEqual([1, 0]);
+    expect(mask(batterOnly)).toEqual([1, 0]);
+    expect(mask(filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { pitcher: 2 } }))).toEqual([0, 0]);
+  });
+
+  it("changes nothing when no player filter is set", () => {
+    const plain = { speedRange: [40, 105] as [number, number] };
+    expect(passesFilters(datum({ batterId: 7 }), plain)).toBe(true);
+    expect(passesFilters(datum({}), plain)).toBe(true);
+  });
+
+  it("re-derives the GPU filter values when the isolated player changes", () => {
+    const pitches = [datum({ pitcherId: 1, batterId: 7 }), datum({ pitcherId: 2, batterId: 8 })];
+    const none = filteredLayerProps({ pitches, speedRange: [40, 105] });
+    const first = filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { batter: 7 } });
+    const second = filteredLayerProps({ pitches, speedRange: [40, 105], playerFilter: { batter: 8 } });
+    const mask = (p: ReturnType<typeof filteredLayerProps>) =>
+      pitches.map((d) => (p.getFilterValue as unknown as (x: PitchDatum) => number[])(d)[3]);
+    expect(mask(none)).toEqual([1, 1]);
+    expect(mask(first)).toEqual([1, 0]);
+    expect(mask(second)).toEqual([0, 1]);
+  });
+});
+
+describe("the count cut", () => {
+  const datum = (over: Partial<PitchDatum>): PitchDatum => ({
+    path: new Float32Array(3),
+    releaseSpeed: 92,
+    pfxX: 0,
+    pfxZ: 0,
+    plateX: 0,
+    plateZ: 2.5,
+    pitchType: "FF",
+    ...over,
+  });
+
+  it("classifies every count into one disjoint bucket, with no count as null", () => {
+    expect(countBucket(0, 0)).toBe("first");
+    expect(countBucket(0, 1)).toBe("pitcher_ahead");
+    expect(countBucket(1, 2)).toBe("pitcher_ahead");
+    expect(countBucket(1, 0)).toBe("hitter_ahead");
+    expect(countBucket(3, 2)).toBe("hitter_ahead");
+    expect(countBucket(1, 1)).toBe("even");
+    expect(countBucket(2, 2)).toBe("even");
+    expect(countBucket(undefined, 1)).toBeNull();
+    expect(countBucket(1, undefined)).toBeNull();
+  });
+
+  it("filters to the chosen buckets and drops rows that carry no count", () => {
+    const opts = {
+      speedRange: [40, 105] as [number, number],
+      countBuckets: new Set(["pitcher_ahead" as const]),
+    };
+    expect(passesFilters(datum({ balls: 0, strikes: 2 }), opts)).toBe(true);
+    expect(passesFilters(datum({ balls: 1, strikes: 1 }), opts)).toBe(false);
+    expect(passesFilters(datum({}), opts)).toBe(false);
+  });
+
+  it("changes nothing when no bucket is chosen", () => {
+    const plain = { speedRange: [40, 105] as [number, number] };
+    expect(passesFilters(datum({ balls: 3, strikes: 0 }), plain)).toBe(true);
+    expect(passesFilters(datum({}), plain)).toBe(true);
+  });
+
+  it("re-derives the GPU filter values when the bucket set changes", () => {
+    const pitches = [datum({ balls: 0, strikes: 2 }), datum({ balls: 2, strikes: 0 })];
+    const ahead = filteredLayerProps({ pitches, speedRange: [40, 105], countBuckets: new Set(["pitcher_ahead"]) });
+    const behind = filteredLayerProps({ pitches, speedRange: [40, 105], countBuckets: new Set(["hitter_ahead"]) });
+    const mask = (p: ReturnType<typeof filteredLayerProps>) =>
+      pitches.map((d) => (p.getFilterValue as unknown as (x: PitchDatum) => number[])(d)[3]);
+    expect(mask(ahead)).toEqual([1, 0]);
+    expect(mask(behind)).toEqual([0, 1]);
+  });
+});
+
+describe("in-zone cells", () => {
+  const ZT = 3.5;
+  const ZB = 1.5;
+  const datum = (over: Partial<PitchDatum>): PitchDatum => ({
+    path: new Float32Array(3),
+    releaseSpeed: 92,
+    pfxX: 0,
+    pfxZ: 0,
+    plateX: 0,
+    plateZ: 2.5,
+    pitchType: "FF",
+    szTop: ZT,
+    szBot: ZB,
+    ...over,
+  });
+
+  it("numbers the nine cells left to right, top row first", () => {
+    // column centres at x = -0.553, 0, +0.553; row centres at z = 3.17, 2.5, 1.83
+    expect(zoneCell(-0.55, 3.1, ZT, ZB)).toBe(1);
+    expect(zoneCell(0, 3.1, ZT, ZB)).toBe(2);
+    expect(zoneCell(0.55, 3.1, ZT, ZB)).toBe(3);
+    expect(zoneCell(-0.55, 2.5, ZT, ZB)).toBe(4);
+    expect(zoneCell(0, 2.5, ZT, ZB)).toBe(5);
+    expect(zoneCell(0.55, 2.5, ZT, ZB)).toBe(6);
+    expect(zoneCell(-0.55, 1.9, ZT, ZB)).toBe(7);
+    expect(zoneCell(0, 1.9, ZT, ZB)).toBe(8);
+    expect(zoneCell(0.55, 1.9, ZT, ZB)).toBe(9);
+  });
+
+  it("puts a pitch exactly on the zone's edge in the outer cell", () => {
+    expect(zoneCell(STRIKE_ZONE.halfWidth, ZT, ZT, ZB)).toBe(3);
+    expect(zoneCell(-STRIKE_ZONE.halfWidth, ZB, ZT, ZB)).toBe(7);
+  });
+
+  it("is null outside the zone, without a plate location, or with a degenerate zone", () => {
+    expect(zoneCell(0.9, 2.5, ZT, ZB)).toBeNull();
+    expect(zoneCell(0, 3.6, ZT, ZB)).toBeNull();
+    expect(zoneCell(0, 1.4, ZT, ZB)).toBeNull();
+    expect(zoneCell(undefined, 2.5, ZT, ZB)).toBeNull();
+    expect(zoneCell(0, undefined, ZT, ZB)).toBeNull();
+    expect(zoneCell(0, 2.5, 2.5, 2.5)).toBeNull();
+  });
+
+  it("never disagrees with the in-zone filter", () => {
+    for (let x = -1.2; x <= 1.2; x += 0.13) {
+      for (let z = 1.0; z <= 4.0; z += 0.17) {
+        const cell = zoneCell(x, z, ZT, ZB);
+        expect(cell === null).toBe(!isInsideStrikeZone(x, z, ZT, ZB));
+      }
+    }
+  });
+
+  it("filters to the chosen cells and drops pitches outside the zone", () => {
+    const opts = { speedRange: [40, 105] as [number, number], zoneCells: new Set([5 as const]) };
+    expect(passesFilters(datum({ plateX: 0, plateZ: 2.5 }), opts)).toBe(true);
+    expect(passesFilters(datum({ plateX: 0.55, plateZ: 2.5 }), opts)).toBe(false);
+    expect(passesFilters(datum({ plateX: 0.9, plateZ: 2.5 }), opts)).toBe(false);
+    expect(passesFilters(datum({}), { speedRange: [40, 105] })).toBe(true);
+  });
+
+  it("re-derives the GPU filter values when the cell set changes", () => {
+    const pitches = [datum({ plateX: 0, plateZ: 2.5 }), datum({ plateX: 0.55, plateZ: 3.1 })];
+    const centre = filteredLayerProps({ pitches, speedRange: [40, 105], zoneCells: new Set([5]) });
+    const high = filteredLayerProps({ pitches, speedRange: [40, 105], zoneCells: new Set([3]) });
+    const mask = (p: ReturnType<typeof filteredLayerProps>) =>
+      pitches.map((d) => (p.getFilterValue as unknown as (x: PitchDatum) => number[])(d)[3]);
+    expect(mask(centre)).toEqual([1, 0]);
+    expect(mask(high)).toEqual([0, 1]);
+  });
+
+  it("cuts on MLB's own zone numbers, the four outside cells included", () => {
+    const chase = { speedRange: [40, 105] as [number, number], leagueZones: new Set([14]) };
+    expect(passesFilters(datum({ zone: 14 }), chase)).toBe(true);
+    expect(passesFilters(datum({ zone: 13 }), chase)).toBe(false);
+    // A pitch the feed gave no zone cannot satisfy the cut; with nothing selected
+    // everything shows, whether or not it carries one.
+    expect(passesFilters(datum({}), chase)).toBe(false);
+    expect(passesFilters(datum({}), { speedRange: [40, 105] })).toBe(true);
+    const outside = { speedRange: [40, 105] as [number, number], leagueZones: new Set([11, 12, 13, 14]) };
+    expect(passesFilters(datum({ zone: 12 }), outside)).toBe(true);
+    expect(passesFilters(datum({ zone: 5 }), outside)).toBe(false);
+  });
+
+  it("re-derives the GPU filter values when the league-zone set changes", () => {
+    const pitches = [datum({ zone: 5 }), datum({ zone: 14 })];
+    const inside = filteredLayerProps({ pitches, speedRange: [40, 105], leagueZones: new Set([5]) });
+    const chase = filteredLayerProps({ pitches, speedRange: [40, 105], leagueZones: new Set([14]) });
+    const mask = (p: ReturnType<typeof filteredLayerProps>) =>
+      pitches.map((d) => (p.getFilterValue as unknown as (x: PitchDatum) => number[])(d)[3]);
+    expect(mask(inside)).toEqual([1, 0]);
+    expect(mask(chase)).toEqual([0, 1]);
+  });
+
+  it("cuts called strikes from balls, which the derived flags cannot tell apart", () => {
+    const take = { isSwing: 0, isWhiff: 0 } as const;
+    const called = { speedRange: [40, 105] as [number, number], outcomeFilter: "called_strikes" as const };
+    expect(passesFilters(datum({ ...take, pitchResult: "called_strike" }), called)).toBe(true);
+    expect(passesFilters(datum({ ...take, pitchResult: "ball" }), called)).toBe(false);
+    // Without the stored code there is nothing to match on.
+    expect(passesFilters(datum({ ...take }), called)).toBe(false);
+    const balls = { speedRange: [40, 105] as [number, number], outcomeFilter: "balls" as const };
+    expect(passesFilters(datum({ pitchResult: "ball" }), balls)).toBe(true);
+    expect(passesFilters(datum({ pitchResult: "ball_in_dirt" }), balls)).toBe(true);
+    expect(passesFilters(datum({ pitchResult: "called_strike" }), balls)).toBe(false);
+    expect(passesFilters(datum({}), { speedRange: [40, 105] })).toBe(true);
+  });
+
+  it("keeps whole at-bats, not just the pitch that decided them", () => {
+    const hrs = { speedRange: [40, 105] as [number, number], playEvent: "Home Run" };
+    // Every pitch of the appearance stays, including the takes before the swing.
+    expect(passesFilters(datum({ playEvent: "Home Run", pitchResult: "called_strike" }), hrs)).toBe(true);
+    expect(passesFilters(datum({ playEvent: "Home Run", pitchResult: "hit_into_play" }), hrs)).toBe(true);
+    expect(passesFilters(datum({ playEvent: "Strikeout" }), hrs)).toBe(false);
+    expect(passesFilters(datum({}), hrs)).toBe(false);
+    expect(passesFilters(datum({}), { speedRange: [40, 105] })).toBe(true);
+    // The picker offers only outcomes the loaded pitches carry, alphabetically.
+    const group = [datum({ playEvent: "Strikeout" }), datum({ playEvent: "Home Run" }), datum({ playEvent: "Strikeout" }), datum({})];
+    expect(distinctPlayEvents(group)).toEqual(["Home Run", "Strikeout"]);
+    expect(distinctPlayEvents([])).toEqual([]);
+  });
+
+  it("cuts by inning, and offers only the innings the data carries", () => {
+    const seventh = { speedRange: [40, 105] as [number, number], innings: new Set([7]) };
+    expect(passesFilters(datum({ inning: 7 }), seventh)).toBe(true);
+    expect(passesFilters(datum({ inning: 8 }), seventh)).toBe(false);
+    // A pitch without an inning cannot satisfy the cut; with nothing selected
+    // everything shows, whether or not it carries one.
+    expect(passesFilters(datum({}), seventh)).toBe(false);
+    const late = { speedRange: [40, 105] as [number, number], innings: new Set([8, 9]) };
+    expect(passesFilters(datum({ inning: 9 }), late)).toBe(true);
+    expect(passesFilters(datum({ inning: 7 }), late)).toBe(false);
+    expect(passesFilters(datum({}), { speedRange: [40, 105] })).toBe(true);
+    expect(distinctInnings([datum({ inning: 9 }), datum({ inning: 1 }), datum({ inning: 9 }), datum({})]))
+      .toEqual([1, 9]);
+    expect(distinctInnings([])).toEqual([]);
   });
 });

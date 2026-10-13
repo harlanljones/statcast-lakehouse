@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { applyPresetFiltersTo, applyPresetTo, type PresetSetters } from "./scenario-state";
 import { LIVE_PRESET, SCENARIOS, scenarioById, type LayerKey, type ScenarioPreset } from "./scenarios";
+import type { CountBucket, PlayerFilter, ZoneCell } from "./deck-layers";
 
 const LAYER_KEYS: LayerKey[] = [
-  "tunneling", "ghostBreak", "releasePoints", "plateCrossings", "breakChart",
-  "pairComparison", "contactSim", "dispersion", "fatigue", "heatmap",
+  "tunneling", "ghostBreak", "releasePoints", "plateCrossings", "spray", "breakChart",
+  "pairComparison", "contactSim", "dispersion", "fatigue", "countMix", "sprayProfile", "heatmap",
 ];
 
 /** In-memory stand-in for App's signals: records the last value written to each. */
@@ -17,6 +18,12 @@ function fakeApp() {
     zoneFilter: "" as ScenarioPreset["zoneFilter"] | "",
     outcomeFilter: "" as ScenarioPreset["outcomeFilter"] | "",
     selectedTypes: null as ReadonlySet<string> | null,
+    playerFilter: null as PlayerFilter | null,
+    countBuckets: new Set<CountBucket>() as ReadonlySet<CountBucket>,
+    zoneCells: new Set<ZoneCell>() as ReadonlySet<ZoneCell>,
+    leagueZones: new Set<number>() as ReadonlySet<number>,
+    playEvent: null as string | null,
+    innings: new Set<number>() as ReadonlySet<number>,
     heatmapMode: "" as ScenarioPreset["heatmapMode"] | "",
     batSpeed: NaN,
     attackAngleDeg: NaN,
@@ -32,6 +39,12 @@ function fakeApp() {
     setZoneFilter: (v) => { state.zoneFilter = v; },
     setOutcomeFilter: (v) => { state.outcomeFilter = v; },
     setSelectedTypes: (v) => { state.selectedTypes = v; },
+    setPlayerFilter: (v) => { state.playerFilter = v; },
+    setCountBuckets: (v) => { state.countBuckets = v; },
+    setZoneCells: (v) => { state.zoneCells = v; },
+    setLeagueZones: (v) => { state.leagueZones = v; },
+    setPlayEvent: (v) => { state.playEvent = v; },
+    setInnings: (v) => { state.innings = v; },
     setLayer: (k, on) => { state.layers[k] = on; state.layerWrites++; },
     setHeatmapMode: (v) => { state.heatmapMode = v; },
     setBatSpeed: (v) => { state.batSpeed = v; },
@@ -63,6 +76,58 @@ describe("applyPresetTo", () => {
       for (const k of LAYER_KEYS) expect(state.layers[k]).toBe(preset.layers[k]);
     },
   );
+
+  it("clears the in-zone cell cut when a preset or the reset lands", () => {
+    const app = fakeApp();
+    app.setters.setZoneCells(new Set([5] as ZoneCell[]));
+    expect([...app.state.zoneCells]).toEqual([5]);
+    applyPresetFiltersTo(LIVE_PRESET, app.setters);
+    expect(app.state.zoneCells.size).toBe(0);
+  });
+
+  it("clears the league-zone cut when a preset or the reset lands", () => {
+    const app = fakeApp();
+    app.setters.setLeagueZones(new Set([14]));
+    expect([...app.state.leagueZones]).toEqual([14]);
+    applyPresetFiltersTo(LIVE_PRESET, app.setters);
+    expect(app.state.leagueZones.size).toBe(0);
+  });
+
+  it("clears the inning cut when a preset or the reset lands", () => {
+    const app = fakeApp();
+    app.setters.setInnings(new Set([7]));
+    expect([...app.state.innings]).toEqual([7]);
+    applyPresetFiltersTo(LIVE_PRESET, app.setters);
+    expect(app.state.innings.size).toBe(0);
+  });
+
+  it("clears the at-bat cut when a preset or the reset lands", () => {
+    const app = fakeApp();
+    app.setters.setPlayEvent("Home Run");
+    expect(app.state.playEvent).toBe("Home Run");
+    applyPresetFiltersTo(LIVE_PRESET, app.setters);
+    expect(app.state.playEvent).toBeNull();
+    expect(app.state.leagueZones.size).toBe(0);
+  });
+
+  it("clears the count cut when a preset or the reset lands", () => {
+    const app = fakeApp();
+    app.setters.setCountBuckets(new Set<CountBucket>(["pitcher_ahead"]));
+    expect([...app.state.countBuckets]).toEqual(["pitcher_ahead"]);
+    applyPresetFiltersTo(LIVE_PRESET, app.setters);
+    expect(app.state.countBuckets.size).toBe(0);
+  });
+
+  it("clears a player isolate when a preset or the reset lands", () => {
+    const app = fakeApp();
+    app.setters.setPlayerFilter({ batter: 42 });
+    expect(app.state.playerFilter).toEqual({ batter: 42 });
+    applyPresetFiltersTo(LIVE_PRESET, app.setters);
+    expect(app.state.playerFilter).toBeNull();
+    app.setters.setPlayerFilter({ pitcher: 7 });
+    applyPresetTo(SCENARIOS[0].preset, app.setters);
+    expect(app.state.playerFilter).toBeNull();
+  });
 
   it("switching scenarios leaves nothing from the previous one behind", () => {
     const { state, setters } = fakeApp();

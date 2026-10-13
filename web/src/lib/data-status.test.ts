@@ -2,7 +2,13 @@
 import { describe, expect, it } from "vitest";
 import { tableFromArrays, tableToIPC, type Table } from "apache-arrow";
 import { loadPitchTable } from "./arrow-loader";
-import { distinctPitchTypes, extractGameDate, formatDataStatus, computeWhiffRate } from "./data-status";
+import {
+  computeWhiffRate,
+  countGameDates,
+  distinctPitchTypes,
+  extractGameDate,
+  formatDataStatus,
+} from "./data-status";
 import type { PitchDatum } from "./deck-layers";
 
 describe("distinctPitchTypes", () => {
@@ -78,6 +84,11 @@ describe("formatDataStatus", () => {
 
   it("groups thousands with commas", () => {
     expect(formatDataStatus(1000000, "2024-04-01")).toBe("1,000,000 rows · 2024-04-01");
+  });
+
+  it("names the span when a slice covers several game days", () => {
+    expect(formatDataStatus(4063, "2024-04-15", 12)).toBe("4,063 rows · 12 game days");
+    expect(formatDataStatus(4063, "2024-04-15", 1)).toBe("4,063 rows · 2024-04-15");
   });
 });
 

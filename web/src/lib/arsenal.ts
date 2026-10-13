@@ -42,49 +42,58 @@ export interface PitchPairMetrics {
  * Group pitches by pitchType and compute mean kinematic parameters and break vectors.
  */
 export function computeArsenalCentroids(pitches: PitchDatum[]): Map<string, ArsenalCentroid> {
-  const byType = new Map<string, PitchDatum[]>();
+  // One pass: accumulate each type's sums as it is first seen, in pitch order,
+  // so the sums stay bit-identical to the per-type loop this replaced (and no
+  // per-type pitch arrays are allocated).
+  interface Totals {
+    count: number;
+    sumSpeed: number;
+    sumSpin: number;
+    spinCount: number;
+    sumX0: number; sumY0: number; sumZ0: number;
+    sumVx0: number; sumVy0: number; sumVz0: number;
+    sumAx: number; sumAy: number; sumAz: number;
+    sumPlateX: number; sumPlateZ: number;
+  }
+  const totals = new Map<string, Totals>();
+
   for (const p of pitches) {
-    if (!p.pitchType) continue;
-    let list = byType.get(p.pitchType);
-    if (!list) {
-      list = [];
-      byType.set(p.pitchType, list);
+    if (!p.pitchType || p.kinematics == null) continue;
+    let t = totals.get(p.pitchType);
+    if (!t) {
+      t = {
+        count: 0,
+        sumSpeed: 0,
+        sumSpin: 0,
+        spinCount: 0,
+        sumX0: 0, sumY0: 0, sumZ0: 0,
+        sumVx0: 0, sumVy0: 0, sumVz0: 0,
+        sumAx: 0, sumAy: 0, sumAz: 0,
+        sumPlateX: 0, sumPlateZ: 0,
+      };
+      totals.set(p.pitchType, t);
     }
-    list.push(p);
+    t.count++;
+    t.sumSpeed += p.releaseSpeed;
+    if (p.spinRate != null && !isNaN(p.spinRate)) {
+      t.sumSpin += p.spinRate;
+      t.spinCount++;
+    }
+    const k = p.kinematics;
+    t.sumX0 += k.x0; t.sumY0 += k.y0; t.sumZ0 += k.z0;
+    t.sumVx0 += k.vx0; t.sumVy0 += k.vy0; t.sumVz0 += k.vz0;
+    t.sumAx += k.ax; t.sumAy += k.ay; t.sumAz += k.az;
+    t.sumPlateX += p.plateX ?? p.pfxX ?? 0;
+    t.sumPlateZ += p.plateZ ?? p.pfxZ ?? 0;
   }
 
   const centroids = new Map<string, ArsenalCentroid>();
-  for (const [pt, list] of byType.entries()) {
-    const valid = list.filter((p) => p.kinematics != null);
-    if (valid.length === 0) continue;
-
-    const n = valid.length;
-    let sumSpeed = 0;
-    let sumSpin = 0;
-    let spinCount = 0;
-    let sumX0 = 0, sumY0 = 0, sumZ0 = 0;
-    let sumVx0 = 0, sumVy0 = 0, sumVz0 = 0;
-    let sumAx = 0, sumAy = 0, sumAz = 0;
-    let sumPlateX = 0, sumPlateZ = 0;
-
-    for (const p of valid) {
-      sumSpeed += p.releaseSpeed;
-      if (p.spinRate != null && !isNaN(p.spinRate)) {
-        sumSpin += p.spinRate;
-        spinCount++;
-      }
-      const k = p.kinematics!;
-      sumX0 += k.x0; sumY0 += k.y0; sumZ0 += k.z0;
-      sumVx0 += k.vx0; sumVy0 += k.vy0; sumVz0 += k.vz0;
-      sumAx += k.ax; sumAy += k.ay; sumAz += k.az;
-      sumPlateX += p.plateX ?? p.pfxX ?? 0;
-      sumPlateZ += p.plateZ ?? p.pfxZ ?? 0;
-    }
-
+  for (const [pt, t] of totals.entries()) {
+    const n = t.count;
     const kMean: PitchKinematics = {
-      x0: sumX0 / n, y0: sumY0 / n, z0: sumZ0 / n,
-      vx0: sumVx0 / n, vy0: sumVy0 / n, vz0: sumVz0 / n,
-      ax: sumAx / n, ay: sumAy / n, az: sumAz / n,
+      x0: t.sumX0 / n, y0: t.sumY0 / n, z0: t.sumZ0 / n,
+      vx0: t.sumVx0 / n, vy0: t.sumVy0 / n, vz0: t.sumVz0 / n,
+      ax: t.sumAx / n, ay: t.sumAy / n, az: t.sumAz / n,
     };
 
     const bv = computeBreakVector(kMean);
@@ -93,11 +102,11 @@ export function computeArsenalCentroids(pitches: PitchDatum[]): Map<string, Arse
     centroids.set(pt, {
       pitchType: pt,
       count: n,
-      releaseSpeed: sumSpeed / n,
-      releaseSpinRate: spinCount > 0 ? sumSpin / spinCount : undefined,
+      releaseSpeed: t.sumSpeed / n,
+      releaseSpinRate: t.spinCount > 0 ? t.sumSpin / t.spinCount : undefined,
       kinematics: kMean,
-      plateX: sumPlateX / n,
-      plateZ: sumPlateZ / n,
+      plateX: t.sumPlateX / n,
+      plateZ: t.sumPlateZ / n,
       breakVector: bv,
       commitmentPoint: cp,
     });

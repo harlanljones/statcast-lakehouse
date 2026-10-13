@@ -9,7 +9,19 @@ from typing import Any
 import httpx
 import pytest
 
-from ingestion.mlb_client import COLUMN_MAP, FetchRetriesExhausted, RetryPolicy, _row, fetch_game_day
+from ingestion.mlb_client import (
+    COLUMN_MAP,
+    FEED_DESCRIPTION_TO_RESULT,
+    FetchRetriesExhausted,
+    PITCH_RESULTS,
+    RetryPolicy,
+    CSV_SWING_RESULTS,
+    CSV_WHIFF_RESULTS,
+    SWING_RESULTS,
+    WHIFF_RESULTS,
+    _row,
+    fetch_game_day,
+)
 
 
 def statcast_record(**overrides: Any) -> dict[str, Any]:
@@ -102,8 +114,62 @@ class TestRowMapping:
         row = _row(statcast_record(balls="", stand=None))
         assert row["balls"] is None and row["stand"] is None
 
-    def test_descriptions_are_popped(self):
-        assert "description" not in _row(statcast_record())
+    def test_description_is_kept_as_the_canonical_result(self):
+        # The upstream column used to be popped after deriving is_swing/is_whiff;
+        # it is now stored, because those two flags cannot recover it: a called
+        # strike and a ball are both (0, 0), which is about half the corpus.
+        assert _row(statcast_record(description="called_strike"))["pitch_result"] == "called_strike"
+        assert _row(statcast_record(description="ball"))["pitch_result"] == "ball"
+        assert _row(statcast_record(description=""))["pitch_result"] is None
+
+    def test_swing_and_whiff_split_one_canonical_vocabulary(self):
+        called = _row(statcast_record(description="called_strike"))
+        ball = _row(statcast_record(description="ball"))
+        assert (called["is_swing"], called["is_whiff"]) == (0, 0)
+        assert (ball["is_swing"], ball["is_whiff"]) == (0, 0)
+        swing = _row(statcast_record(description="swinging_strike"))
+        assert (swing["is_swing"], swing["is_whiff"]) == (1, 1)
+
+    def test_result_vocabulary_is_closed_and_consistent(self):
+        assert WHIFF_RESULTS <= SWING_RESULTS < PITCH_RESULTS
+        assert CSV_WHIFF_RESULTS <= CSV_SWING_RESULTS < PITCH_RESULTS
+        assert set(FEED_DESCRIPTION_TO_RESULT.values()) <= PITCH_RESULTS
+        # Every description the feeds have been observed to emit, so a new one
+        # fails here rather than silently stopping a refresh.
+        observed = {
+            "Ball", "Ball In Dirt", "Called Strike", "Foul", "Foul Bunt", "Foul Tip",
+            "Hit By Pitch", "In play, no out", "In play, out(s)", "In play, run(s)",
+            "Missed Bunt", "Pitchout", "Swinging Strike", "Swinging Strike (Blocked)",
+        }
+        assert observed <= set(FEED_DESCRIPTION_TO_RESULT)
+
+    def test_play_event_comes_through_verbatim(self):
+        # Savant's CSV spells the plate-appearance outcome in its own words; it is
+        # stored as-is (no mapping), unlike the pitch description.
+        assert _row(statcast_record(events="Strikeout"))["play_event"] == "Strikeout"
+        assert _row(statcast_record(events="Grounded Into DP"))["play_event"] == "Grounded Into DP"
+        assert _row(statcast_record())["play_event"] is None
+
+    def test_contact_columns_from_savant(self):
+        row = _row(
+            statcast_record(
+                launch_speed="104.2",
+                launch_angle="18.0",
+                hit_distance_sc="358",
+                bb_type="line_drive",
+            )
+        )
+        assert row["launch_speed"] == pytest.approx(104.2)
+        assert row["launch_angle"] == pytest.approx(18.0)
+        assert row["hit_distance"] == pytest.approx(358.0)
+        assert row["bb_type"] == "line_drive"
+
+    def test_contact_columns_are_null_without_a_batted_ball(self):
+        row = _row(statcast_record())
+        assert row["launch_speed"] is None
+        assert row["launch_angle"] is None
+        assert row["hit_distance"] is None
+        assert row["bb_type"] is None
 
 
 class TestSwingClassification:

@@ -27,6 +27,7 @@ import {
 } from "./collision";
 import type { ReleaseDispersion } from "./dispersion";
 import type { HeatmapCell } from "./heatmap";
+import { sprayColor, sprayPoint } from "./spray";
 
 export const ORBIT_TARGET: [number, number, number] = [0, 14, 1.8];
 export const INITIAL_VIEW: OrbitViewState = {
@@ -48,6 +49,13 @@ export interface PitchDatum {
   isSwing?: number;
   isWhiff?: number;
   spinRate?: number;
+  /**
+   * MLB's spin-axis direction for the pitch, in degrees, exactly as the feed
+   * reports it. The angle is deliberately not interpreted anywhere: a first attempt
+   * to read it as "the induced break points the other way" held across a single
+   * game but NOT across eight (median gap -99.8 degrees, 35% within 10 of 180).
+   */
+  spinDirection?: number;
   /** Pitcher extension in ft (from the optional `extension` column); undefined when unknown. */
   extension?: number;
   szTop?: number;
@@ -68,6 +76,53 @@ export interface PitchDatum {
   /** Plate-appearance and pitch order within the game; nullable in older files. */
   atBatNumber?: number;
   pitchNumber?: number;
+  /** Count when the pitch was thrown (drives the count cut in the filter panel). */
+  balls?: number;
+  strikes?: number;
+  /**
+   * MLB's own zone number for the pitch: 1-9 are the nine cells of the strike
+   * zone, 11-14 the four cells around it. Carried from the feed rather than
+   * derived — the league's cell edges are not published, and its 1-9 disagrees
+   * with a plain plate box on about 4% of pitches, which is why the outside
+   * cells cannot be reconstructed from plate_x/plate_z.
+   */
+  zone?: number;
+  /**
+   * The pitch's outcome as one canonical code (the pipeline's PITCH_RESULTS):
+   * "called_strike", "ball", "ball_in_dirt", "foul", "hit_into_play", ...
+   * isSwing/isWhiff cannot recover it — a called strike, a ball, a hit batter
+   * and a pitchout are all (0, 0), about half the corpus.
+   */
+  pitchResult?: string;
+  /**
+   * Outcome of the plate appearance this pitch belongs to ("Strikeout",
+   * "Single", "Home Run", ...), repeated on every pitch of that appearance —
+   * Savant's CSV does the same. It is NOT what this pitch did; that is
+   * pitchResult. Present verbatim, so it is shown as the feed spells it.
+   */
+  playEvent?: string;
+  /**
+   * Inning the play belongs to, 1-based (extras included). Only the integer is
+   * carried: the feed spells the half "top"/"bottom" and Savant's CSV "Top"/"Bot",
+   * so a half column would need canonicalising before anything consumed it.
+   */
+  inning?: number;
+  /**
+   * Observed batted-ball data (MLB's contact columns): measured exit velocity
+   * (mph), launch angle (degrees), projected distance (feet) and batted-ball
+   * class. Undefined unless the pitch was put in play.
+   */
+  launchSpeed?: number;
+  launchAngle?: number;
+  hitDistance?: number;
+  bbType?: string;
+  /**
+   * Savant's hit-chart coordinates (250x250 image space, home near (125, 205));
+   * undefined unless the pitch was put in play. The spray layer turns them into
+   * scene feet with `sprayPoint`.
+   */
+  hcX?: number;
+  hcY?: number;
 }
 
 export const FILTER_SIZE = 4;
@@ -78,7 +133,9 @@ export const FILTER_SIZE = 4;
  */
 export const STRIKE_ZONE = {
   y: 1.417,
-  halfWidth: 0.83, // 17 inches / 2
+  // The plate's half-width (17 in / 2) plus the ball's radius, so a pitch whose
+  // edge clips the plate is inside — the same effective width the cells below cut.
+  halfWidth: 0.83,
   zMin: 1.5,
   zMax: 3.5,
 } as const;
@@ -302,11 +359,135 @@ export function diamondWireframeSegments(): WireSegment[] {
 type FilterRange4 = [[number, number], [number, number], [number, number], [number, number]];
 
 export type ZoneFilter = "all" | "in_zone" | "out_of_zone";
-export type OutcomeFilter = "all" | "swings" | "whiffs";
+export type OutcomeFilter = "all" | "swings" | "whiffs" | "balls" | "called_strikes";
 
 /** The filter state shared by the GPU masks (buildLayers) and the CPU counts/panels (App). */
+/** The nine in-zone cells, numbered left to right with the top row first. */
+export type ZoneCell = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
+/**
+ * Picker titles, in cell order. The columns are stated by x range rather than by
+ * "inside/outside", because the app labels no left/right for the horizontal axis
+ * anywhere else and inventing one here would be the only place it appears.
+ */
+export const ZONE_CELLS: readonly { cell: ZoneCell; row: number; col: number; title: string }[] = [
+  { cell: 1, row: 0, col: 0, title: "High, x −0.83 to −0.28" },
+  { cell: 2, row: 0, col: 1, title: "High, x −0.28 to 0.28" },
+  { cell: 3, row: 0, col: 2, title: "High, x 0.28 to 0.83" },
+  { cell: 4, row: 1, col: 0, title: "Middle, x −0.83 to −0.28" },
+  { cell: 5, row: 1, col: 1, title: "Middle, x −0.28 to 0.28" },
+  { cell: 6, row: 1, col: 2, title: "Middle, x 0.28 to 0.83" },
+  { cell: 7, row: 2, col: 0, title: "Low, x −0.83 to −0.28" },
+  { cell: 8, row: 2, col: 1, title: "Low, x −0.28 to 0.28" },
+  { cell: 9, row: 2, col: 2, title: "Low, x 0.28 to 0.83" },
+];
+
+/**
+ * MLB's own zone numbers, in the order the league reports them: the nine cells
+ * of the strike zone, then the four around it. The control shows the numbers
+ * themselves, because the app labels no left/right anywhere else and the
+ * league's cell geometry is deliberately not published — inventing a name for
+ * each cell would be the only place it appeared.
+ */
+export const LEAGUE_ZONES: readonly number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14];
+
+export const LEAGUE_ZONE_TITLE =
+  "MLB's own zone number for the pitch: 1-9 the nine cells of the strike zone, 11-14 the four cells around it";
+
+/**
+ * Which in-zone cell the pitch crossed, or null when it is outside the zone or
+ * carries no plate location. The bounds are the ones `isInsideStrikeZone` uses —
+ * the plate plus the ball's radius wide, the batter's own sz_bot..sz_top tall —
+ * so a cell result and the "in zone" filter can never disagree. The zone's height
+ * is cut into equal thirds and its width likewise; a pitch exactly on an edge
+ * lands in the outer cell, matching the inclusive bounds above.
+ */
+export function zoneCell(
+  plateX?: number,
+  plateZ?: number,
+  szTop?: number,
+  szBot?: number,
+): ZoneCell | null {
+  if (plateX == null || plateZ == null) return null;
+  if (!isInsideStrikeZone(plateX, plateZ, szTop, szBot)) return null;
+  const top = szTop ?? STRIKE_ZONE.zMax;
+  const bot = szBot ?? STRIKE_ZONE.zMin;
+  if (!(top > bot)) return null;
+  const half = STRIKE_ZONE.halfWidth;
+  const col = Math.min(2, Math.max(0, Math.floor(((plateX + half) / (2 * half)) * 3)));
+  // z grows upward, so the top row is the highest third.
+  const row = Math.min(2, Math.max(0, Math.floor(((top - plateZ) / (top - bot)) * 3)));
+  return (row * 3 + col + 1) as ZoneCell;
+}
+
+/** Game state when the pitch was thrown, as a disjoint cut of the count. */
+export type CountBucket = "first" | "pitcher_ahead" | "hitter_ahead" | "even";
+
+/** The four buckets in display order, phrased from the pitcher's point of view. */
+export const COUNT_BUCKETS: readonly { bucket: CountBucket; label: string; title: string }[] = [
+  { bucket: "first", label: "First pitch", title: "First pitch of the at-bat (0-0)" },
+  { bucket: "pitcher_ahead", label: "Pitcher ahead", title: "More strikes than balls (0-1, 0-2, 1-2)" },
+  {
+    bucket: "hitter_ahead",
+    label: "Hitter ahead",
+    title: "More balls than strikes (1-0, 2-0, 3-0, 2-1, 3-1, 3-2)",
+  },
+  { bucket: "even", label: "Even", title: "Level count, not the first pitch (1-1, 2-2)" },
+];
+
+/**
+ * Which side the count favours, or null when the row carries no count.
+ * 0-0 is its own bucket: the first pitch of an at-bat is a different decision
+ * from any other even count, which is why it is not just "even".
+ */
+/**
+ * Every plate-appearance outcome present in the loaded pitches, alphabetical.
+ * The picker is built from this, so it can only offer events the data has.
+ */
+export function distinctPlayEvents(pitches: readonly PitchDatum[]): string[] {
+  const seen = new Set<string>();
+  for (const p of pitches) if (p.playEvent) seen.add(p.playEvent);
+  return [...seen].sort();
+}
+
+/** Every inning present in the loaded pitches, ascending (extras included). */
+export function distinctInnings(pitches: readonly PitchDatum[]): number[] {
+  const seen = new Set<number>();
+  for (const p of pitches) if (p.inning != null) seen.add(p.inning);
+  return [...seen].sort((a, b) => a - b);
+}
+
+export function countBucket(balls?: number, strikes?: number): CountBucket | null {
+  if (balls == null || strikes == null) return null;
+  if (balls === 0 && strikes === 0) return "first";
+  if (strikes > balls) return "pitcher_ahead";
+  if (balls > strikes) return "hitter_ahead";
+  return "even";
+}
+
+/**
+ * Narrows the view to specific players' pitches — what the card's isolate
+ * actions set. Either role may be set alone (only this pitcher / only this
+ * batter) or both together, which is the matchup: this pitcher to this batter.
+ */
+export interface PlayerFilter {
+  pitcher?: number;
+  batter?: number;
+}
+
 export interface FilterOpts {
   speedRange: [number, number];
+  playerFilter?: PlayerFilter | null;
+  /** Empty or absent means every count; otherwise only these buckets show. */
+  countBuckets?: ReadonlySet<CountBucket> | null;
+  /** Empty or absent means every in-zone cell; pitches outside the zone are excluded by it. */
+  zoneCells?: ReadonlySet<ZoneCell> | null;
+  /** Empty or absent means every zone; selecting any restricts to the league's own numbers. */
+  leagueZones?: ReadonlySet<number> | null;
+  /** One plate-appearance outcome to keep every pitch of ("Strikeout", "Home Run", ...), or null for any. */
+  playEvent?: string | null;
+  /** Empty or absent means every inning; selecting any restricts to them. */
+  innings?: ReadonlySet<number> | null;
   plateXRange?: [number, number];
   plateZRange?: [number, number];
   zoneFilter?: ZoneFilter;
@@ -314,23 +495,67 @@ export interface FilterOpts {
   selectedTypes?: ReadonlySet<string> | null;
 }
 
-type CriteriaOpts = Pick<FilterOpts, "zoneFilter" | "outcomeFilter" | "selectedTypes">;
+type CriteriaOpts = Pick<
+  FilterOpts,
+  "zoneFilter" | "outcomeFilter" | "selectedTypes" | "playerFilter" | "countBuckets" | "zoneCells" | "leagueZones" |
+  "playEvent" |
+  "innings"
+>;
 
 /**
  * Categorical criteria (type set, zone, outcome): the part of the filter that
  * rides the 4th GPU channel as a 0/1 mask. The batter-specific zone
  * (szTop/szBot) applies when the datum carries it; plateX falls back to pfxX.
  */
-function passesCriteria(d: PitchDatum, { zoneFilter, outcomeFilter, selectedTypes }: CriteriaOpts): boolean {
+function passesCriteria(d: PitchDatum, opts: CriteriaOpts): boolean {
+  // Options are read lazily: this runs once per pitch per filter change, the
+  // categorical options are usually inactive, and destructuring all three up
+  // front costs more than the comparisons that reject most pitches.
+  // One player's pitches first: it rejects almost everything, so it pays to run
+  // it before the other criteria.
+  const playerFilter = opts.playerFilter;
+  if (playerFilter) {
+    if (playerFilter.pitcher != null && d.pitcherId !== playerFilter.pitcher) return false;
+    if (playerFilter.batter != null && d.batterId !== playerFilter.batter) return false;
+  }
+  const zoneCells = opts.zoneCells;
+  if (zoneCells && zoneCells.size > 0) {
+    const cell = zoneCell(d.plateX ?? d.pfxX, d.plateZ ?? d.pfxZ, d.szTop, d.szBot);
+    if (cell === null || !zoneCells.has(cell)) return false;
+  }
+  const leagueZones = opts.leagueZones;
+  if (leagueZones && leagueZones.size > 0) {
+    if (d.zone == null || !leagueZones.has(d.zone)) return false;
+  }
+  const countBuckets = opts.countBuckets;
+  if (countBuckets && countBuckets.size > 0) {
+    const bucket = countBucket(d.balls, d.strikes);
+    if (bucket === null || !countBuckets.has(bucket)) return false;
+  }
+  const selectedTypes = opts.selectedTypes;
   if (selectedTypes && selectedTypes.size > 0 && !selectedTypes.has(d.pitchType)) return false;
+  const zoneFilter = opts.zoneFilter;
   if (zoneFilter === "in_zone" || zoneFilter === "out_of_zone") {
     const px = d.plateX ?? d.pfxX ?? 0;
     const pz = d.plateZ ?? d.pfxZ ?? 0;
     const inside = isInsideStrikeZone(px, pz, d.szTop, d.szBot);
     if (zoneFilter === "in_zone" ? !inside : inside) return false;
   }
+  const outcomeFilter = opts.outcomeFilter;
   if (outcomeFilter === "swings" && !d.isSwing) return false;
   if (outcomeFilter === "whiffs" && !d.isWhiff) return false;
+  // Reads the stored result code, not a derivation: a pitch in the dirt is a
+  // called ball, and only the code tells a called strike from a ball.
+  if (outcomeFilter === "balls" && d.pitchResult !== "ball" && d.pitchResult !== "ball_in_dirt") return false;
+  if (outcomeFilter === "called_strikes" && d.pitchResult !== "called_strike") return false;
+  // At-bat level, not pitch level: this keeps EVERY pitch of the appearances that
+  // ended in the chosen event, so the sequence that produced it stays together.
+  const playEvent = opts.playEvent;
+  if (playEvent != null && playEvent !== "" && d.playEvent !== playEvent) return false;
+  const innings = opts.innings;
+  if (innings && innings.size > 0) {
+    if (d.inning == null || !innings.has(d.inning)) return false;
+  }
   return true;
 }
 
@@ -341,12 +566,17 @@ function passesCriteria(d: PitchDatum, { zoneFilter, outcomeFilter, selectedType
  * GPU's [min, max] test.
  */
 export function passesFilters(d: PitchDatum, opts: FilterOpts): boolean {
-  const [sLo, sHi] = opts.speedRange;
-  if (d.releaseSpeed < sLo || d.releaseSpeed > sHi) return false;
+  // Index access, not array destructuring: destructuring walks the iterator
+  // protocol once per pitch (thousands of times per filter change), which
+  // measures ~20% slower than reading the two bounds directly.
+  const speed = opts.speedRange;
+  if (d.releaseSpeed < speed[0] || d.releaseSpeed > speed[1]) return false;
   const px = d.plateX ?? d.pfxX ?? 0;
   const pz = d.plateZ ?? d.pfxZ ?? 0;
-  if (opts.plateXRange && (px < opts.plateXRange[0] || px > opts.plateXRange[1])) return false;
-  if (opts.plateZRange && (pz < opts.plateZRange[0] || pz > opts.plateZRange[1])) return false;
+  const xRange = opts.plateXRange;
+  if (xRange !== undefined && (px < xRange[0] || px > xRange[1])) return false;
+  const zRange = opts.plateZRange;
+  if (zRange !== undefined && (pz < zRange[0] || pz > zRange[1])) return false;
   return passesCriteria(d, opts);
 }
 
@@ -385,6 +615,13 @@ export interface BuildLayersOpts {
   showGhostBreak?: boolean;
   showReleasePoints?: boolean;
   showPlateCrossings?: boolean;
+  showSpray?: boolean;
+  playerFilter?: PlayerFilter | null;
+  countBuckets?: ReadonlySet<CountBucket> | null;
+  zoneCells?: ReadonlySet<ZoneCell> | null;
+  leagueZones?: ReadonlySet<number> | null;
+  playEvent?: string | null;
+  innings?: ReadonlySet<number> | null;
   pairedTypes?: [string, string] | null;
   arsenalCentroids?: Map<string, ArsenalCentroid> | null;
   showContactSim?: boolean;
@@ -394,6 +631,23 @@ export interface BuildLayersOpts {
   releaseDispersion?: ReleaseDispersion | null;
   showHeatmap?: boolean;
   heatmapCells?: HeatmapCell[] | null;
+}
+
+/** Spray-dot radius in metres (the scene is in feet; keep the dots pitch-sized). */
+const SPRAY_RADIUS = 0.9;
+
+/**
+ * Landing position in scene feet. Rows that cannot be placed get the origin and
+ * a zero radius below, which draws nothing — ScatterplotLayer needs a position
+ * for every row, and a NaN would corrupt the vertex buffer.
+ */
+function sprayPosition(d: PitchDatum): [number, number, number] {
+  const p = sprayPoint(d.hcX, d.hcY, d.hitDistance);
+  return p ? [p.x, p.y, 0] : [0, 0, 0];
+}
+
+function sprayRadius(d: PitchDatum): number {
+  return sprayPoint(d.hcX, d.hcY, d.hitDistance) ? SPRAY_RADIUS : 0;
 }
 
 /** Base trajectory width in meters (the un-picked line width). */
@@ -439,10 +693,26 @@ let lastFiltered: { key: unknown[]; props: FilteredLayerProps } | null = null;
 export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
   const { speedRange, hBreakRange, vBreakRange, plateXRange, plateZRange, zoneFilter, outcomeFilter } = opts;
   const selectedTypes = opts.selectedTypes ?? null;
+  const playerFilter = opts.playerFilter ?? null;
+  const countBuckets = opts.countBuckets ?? null;
+  const zoneCells = opts.zoneCells ?? null;
+  const leagueZones = opts.leagueZones ?? null;
+  const playEvent = opts.playEvent ?? null;
+  const innings = opts.innings ?? null;
   const hasTypeFilter = Boolean(selectedTypes && selectedTypes.size > 0);
   const hasZoneFilter = zoneFilter === "in_zone" || zoneFilter === "out_of_zone";
-  const hasOutcomeFilter = outcomeFilter === "swings" || outcomeFilter === "whiffs";
-  const typeRange: [number, number] = hasTypeFilter || hasZoneFilter || hasOutcomeFilter ? [0.5, 1.5] : OPEN_RANGE;
+  const hasOutcomeFilter = outcomeFilter !== "all" && outcomeFilter != null;
+  const hasPlayerFilter = playerFilter !== null;
+  const hasCountFilter = Boolean(countBuckets && countBuckets.size > 0);
+  const hasCellFilter = Boolean(zoneCells && zoneCells.size > 0);
+  const hasLeagueFilter = Boolean(leagueZones && leagueZones.size > 0);
+  const hasPlayEventFilter = playEvent != null && playEvent !== "";
+  const hasInningFilter = Boolean(innings && innings.size > 0);
+  const typeRange: [number, number] =
+    hasTypeFilter || hasZoneFilter || hasOutcomeFilter || hasPlayerFilter || hasCountFilter || hasCellFilter ||
+    hasLeagueFilter || hasPlayEventFilter || hasInningFilter
+      ? [0.5, 1.5]
+      : OPEN_RANGE;
   const xRange = plateXRange ?? hBreakRange ?? OPEN_RANGE;
   const zRange = plateZRange ?? vBreakRange ?? OPEN_RANGE;
 
@@ -450,10 +720,26 @@ export function filteredLayerProps(opts: BuildLayersOpts): FilteredLayerProps {
     speedRange[0], speedRange[1], xRange[0], xRange[1], zRange[0], zRange[1],
     typeRange[0], typeRange[1], selectedTypes, zoneFilter ?? "all", outcomeFilter ?? "all",
     selectedTypes ? selectedTypes.size : 0,
+    playerFilter ? `${playerFilter.pitcher ?? ""}:${playerFilter.batter ?? ""}` : "",
+    countBuckets ? [...countBuckets].sort().join(",") : "",
+    zoneCells ? [...zoneCells].sort((a, b) => a - b).join(",") : "",
+    leagueZones ? [...leagueZones].sort((a, b) => a - b).join(",") : "",
+    playEvent ?? "",
+    innings ? [...innings].sort((a, b) => a - b).join(",") : "",
   ];
   if (lastFiltered && lastFiltered.key.every((v, i) => v === key[i])) return lastFiltered.props;
 
-  const criteria: CriteriaOpts = { zoneFilter, outcomeFilter, selectedTypes };
+  const criteria: CriteriaOpts = {
+    zoneFilter,
+    outcomeFilter,
+    selectedTypes,
+    playerFilter,
+    countBuckets,
+    zoneCells,
+    leagueZones,
+    playEvent,
+    innings,
+  };
   const props: FilteredLayerProps = {
     getFilterValue: (d) => [
       d.releaseSpeed,
@@ -523,6 +809,7 @@ export function buildLayers(opts: BuildLayersOpts) {
     showGhostBreak,
     showReleasePoints,
     showPlateCrossings,
+    showSpray,
     pairedTypes,
     arsenalCentroids,
     showDispersion,
@@ -593,6 +880,30 @@ export function buildLayers(opts: BuildLayersOpts) {
         getFillColor: getPitchFill190,
         getLineColor: [255, 255, 255, 200],
         ...markerStyle(1),
+        ...filtered,
+      }),
+    );
+  }
+
+  if (showSpray) {
+    layers.push(
+      new ScatterplotLayer<PitchDatum>({
+        id: "spray-landings",
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        data: pitches,
+        getPosition: sprayPosition,
+        getRadius: sprayRadius,
+        radiusUnits: "meters",
+        filled: true,
+        stroked: true,
+        getFillColor: (d) => {
+          const [r, g, b] = sprayColor(d.bbType);
+          return [r, g, b, 215];
+        },
+        getLineColor: [12, 14, 18, 220],
+        lineWidthUnits: "meters",
+        getLineWidth: 0.06,
+        pickable: true,
         ...filtered,
       }),
     );

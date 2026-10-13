@@ -70,6 +70,7 @@ COLUMN_MAP = {
     "pitch_type": "pitch_type",
     "release_speed": "release_speed",
     "release_spin_rate": "release_spin_rate",
+    "spin_axis": "spin_direction",
     "api_release_pos_x": "x0",
     "release_pos_y": "y0",
     "api_release_pos_z": "z0",
@@ -81,6 +82,7 @@ COLUMN_MAP = {
     "az": "az",
     "plate_x": "plate_x",
     "plate_z": "plate_z",
+    "zone": "zone",
     "sz_top": "sz_top",
     "sz_bot": "sz_bot",
     "stand": "stand",
@@ -88,9 +90,18 @@ COLUMN_MAP = {
     "balls": "balls",
     "strikes": "strikes",
     "at_bat_number": "at_bat_number",
+    "inning": "inning",
     "pitch_number": "pitch_number",
     "release_extension": "extension",
-    "description": "description",
+    # Savant's batted-ball contact columns (NULL unless the ball was put in play).
+    "launch_speed": "launch_speed",
+    "launch_angle": "launch_angle",
+    "hit_distance_sc": "hit_distance",
+    "bb_type": "bb_type",
+    "hc_x": "hc_x",
+    "hc_y": "hc_y",
+    "description": "pitch_result",
+    "events": "play_event",
 }
 
 
@@ -109,9 +120,11 @@ def _to_int(v: Any) -> int | None:
 
 
 INT_FIELDS = frozenset(
-    {"game_id", "pitcher_id", "batter_id", "balls", "strikes", "at_bat_number", "pitch_number"}
+    {"game_id", "pitcher_id", "batter_id", "balls", "strikes", "at_bat_number", "inning", "pitch_number"}
 )
-TEXT_FIELDS = frozenset({"pitch_type", "game_date", "description", "stand", "p_throws"})
+TEXT_FIELDS = frozenset(
+    {"pitch_type", "game_date", "pitch_result", "play_event", "stand", "p_throws", "bb_type"}
+)
 
 
 class _RawReader(io.RawIOBase):
@@ -136,6 +149,60 @@ class _RawReader(io.RawIOBase):
         return n
 
 
+# The canonical pitch-result vocabulary: Savant's own codes, which the CSV path
+# already emits verbatim. The game feed spells the same outcomes as prose
+# ("Called Strike", "In play, run(s)"), so its values are mapped into this set
+# rather than stored raw — otherwise one column would mean two things depending
+# on which path filled it. Everything the feed has been observed to emit is
+# listed; `canonical_result` returns None for anything new, and the scenario
+# fetcher asserts on that so a changed vocabulary fails loudly instead of
+# silently mislabelling half the corpus.
+PITCH_RESULTS = frozenset({
+    "ball", "ball_in_dirt", "called_strike", "foul", "foul_bunt", "foul_tip",
+    "hit_by_pitch", "hit_into_play", "missed_bunt", "pitchout", "swinging_strike",
+    "swinging_strike_blocked",
+})
+
+FEED_DESCRIPTION_TO_RESULT = {
+    "Ball": "ball",
+    "Ball In Dirt": "ball_in_dirt",
+    "Called Strike": "called_strike",
+    "Foul": "foul",
+    "Foul Bunt": "foul_bunt",
+    "Foul Tip": "foul_tip",
+    "Hit By Pitch": "hit_by_pitch",
+    "In play, no out": "hit_into_play",
+    "In play, out(s)": "hit_into_play",
+    "In play, run(s)": "hit_into_play",
+    "Missed Bunt": "missed_bunt",
+    # A pitchout is a called pitch thrown out of the zone: no swing. Statcast
+    # never gives it its own pitch TYPE (it files it as FF or SI), but the feed
+    # does describe it, so it is carried as a result code of its own.
+    "Pitchout": "pitchout",
+    "Swinging Strike": "swinging_strike",
+    "Swinging Strike (Blocked)": "swinging_strike_blocked",
+}
+
+# The swing/whiff split for rows built from the game feed, defined on the
+# canonical codes the feed's own rule produces: a pitch is a swing when it is
+# fouled, put in play, swung at or bunted at. The CSV path below keeps Savant's
+# CSV convention instead (a foul tip is filed as a take there), which is a
+# deliberate, documented choice of that path — this module holds both, labelled.
+SWING_RESULTS = frozenset({
+    "foul", "foul_bunt", "foul_tip", "hit_into_play", "missed_bunt",
+    "swinging_strike", "swinging_strike_blocked",
+})
+WHIFF_RESULTS = frozenset({"missed_bunt", "swinging_strike", "swinging_strike_blocked"})
+# Savant CSV convention (unchanged behaviour for the live BigQuery path).
+CSV_SWING_RESULTS = frozenset({"foul", "hit_into_play", "swinging_strike", "swinging_strike_blocked"})
+CSV_WHIFF_RESULTS = frozenset({"swinging_strike"})
+
+
+def canonical_result(description: str | None) -> str | None:
+    """The canonical code for a game feed's pitch description, or None if unseen."""
+    return FEED_DESCRIPTION_TO_RESULT.get((description or "").strip())
+
+
 def _row(record: dict[str, Any]) -> dict[str, Any] | None:
     out: dict[str, Any] = {}
     for src, dst in COLUMN_MAP.items():
@@ -158,9 +225,9 @@ def _row(record: dict[str, Any]) -> dict[str, Any] | None:
         out["x0"] = _to_float(record.get("release_pos_x"))
     if out.get("z0") is None and "release_pos_z" in record:
         out["z0"] = _to_float(record.get("release_pos_z"))
-    out["is_swing"] = int(out.get("description") in ("swinging_strike", "foul", "hit_into_play", "swinging_strike_blocked"))
-    out["is_whiff"] = int(out.get("description") == "swinging_strike")
-    out.pop("description", None)
+    out["pitch_result"] = out.get("pitch_result") or None
+    out["is_swing"] = int(out.get("pitch_result") in CSV_SWING_RESULTS)
+    out["is_whiff"] = int(out.get("pitch_result") in CSV_WHIFF_RESULTS)
     return out
 
 

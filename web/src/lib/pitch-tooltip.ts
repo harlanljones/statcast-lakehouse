@@ -4,8 +4,8 @@
  * Visualizer.tsx; this module is unit-tested in pitch-tooltip.test.ts.
  */
 import { isInsideStrikeZone, pitchColor, type PitchDatum } from "./deck-layers";
-import { commitmentPosition, flightTime, PLATE_Y } from "./kinematics";
-import { computeCollision } from "./collision";
+import { COMMITMENT_LEAD_MS, commitmentPosition, flightTime, PLATE_Y } from "./kinematics";
+import { classifyContactQuality, computeCollision } from "./collision";
 
 export interface PitchTooltipInfo {
   pitchType: string;
@@ -23,16 +23,24 @@ export interface PitchTooltipInfo {
   break?: string;
   /** Spin rate in RPM, e.g. "2350 rpm" */
   spin?: string;
+  /**
+   * MLB's spin-axis direction, e.g. "axis 141°". Shown verbatim and NOT
+   * interpreted: its relation to the break is not a fixed offset (measured across
+   * eight games, median -99.8 degrees, only 35% within 10 of 180).
+   */
+  spinAxis?: string;
   /** Release coordinates "Rel (+1.5, 5.8) ft", or "At 50 ft (+1.5, 5.8)" when extension is unknown. */
   release?: string;
   /** Extension from rubber, e.g. "Ext 6.2 ft"; omitted when unknown. */
   extension?: string;
   /** Batter-specific strike zone bounds, e.g. "Zone [1.5, 3.4] ft" */
   zoneBounds?: string;
-  /** Tunneling point at commitment plane (y = 23.8 ft), e.g. "Tunnel (+0.3, 3.2) ft" */
+  /** Tunneling point 150 ms before the plate, e.g. "Tunnel (+0.3, 3.2) ft @150 ms" */
   tunnel?: string;
   /** Simulated ball-bat contact quality and distance, e.g. "Sim: 106.5 mph (Barrel) • 375.7 ft" */
   simulatedContact?: string;
+  /** Measured contact for a ball in play, e.g. "Contact: 104.2 mph, 18.0° • 358 ft (line_drive) · Barrel" */
+  observedContact?: string;
 }
 
 /** Round half away from zero, then fix to one decimal (deterministic sign handling). */
@@ -78,6 +86,11 @@ export function pitchTooltip(
     spin = `${Math.round(d.spinRate)} rpm`;
   }
 
+  let spinAxis: string | undefined;
+  if (d.spinDirection != null && !isNaN(d.spinDirection)) {
+    spinAxis = `axis ${Math.round(d.spinDirection)}°`;
+  }
+
   let release: string | undefined;
   let extension: string | undefined;
   if (d.kinematics) {
@@ -104,8 +117,20 @@ export function pitchTooltip(
     const cp = d.commitmentPoint ?? (d.kinematics ? commitmentPosition(d.kinematics) : null);
     if (cp) {
       const signX = cp[0] >= 0 ? "+" : "";
-      tunnel = `Tunnel (${signX}${round1(cp[0])}, ${round1(cp[2])}) ft`;
+      tunnel = `Tunnel (${signX}${round1(cp[0])}, ${round1(cp[2])}) ft @${COMMITMENT_LEAD_MS} ms`;
     }
+  }
+
+  let observedContact: string | undefined;
+  if (d.launchSpeed != null && d.launchAngle != null) {
+    // Measured by MLB's tracking, not simulated: exit velocity and launch
+    // angle classify the batted ball with the same Statcast criteria the
+    // contact lens uses, so the label is the real one.
+    const quality = classifyContactQuality(d.launchSpeed, d.launchAngle);
+    const distance = d.hitDistance != null ? ` • ${round1(d.hitDistance)} ft` : "";
+    const kind = d.bbType ? ` (${d.bbType})` : "";
+    const label = quality && quality !== "Whiff" ? ` · ${quality}` : "";
+    observedContact = `Contact: ${round1(d.launchSpeed)} mph, ${round1(d.launchAngle)}°${distance}${kind}${label}`;
   }
 
   let simulatedContact: string | undefined;
@@ -127,10 +152,12 @@ export function pitchTooltip(
     outcome,
     break: breakStr,
     spin,
+    spinAxis,
     release,
     extension,
     zoneBounds,
     tunnel,
+    observedContact,
     simulatedContact,
   };
 }
@@ -194,12 +221,14 @@ export function pitchTooltipSummary(
   if (!info) return "";
   const parts = [`${info.pitchType}: ${info.speed}`];
   if (info.spin) parts.push(info.spin);
+  if (info.spinAxis) parts.push(info.spinAxis);
   parts.push(info.location, info.zone);
   if (info.zoneBounds) parts.push(info.zoneBounds);
   if (info.break) parts.push(info.break);
   if (info.release) parts.push(info.release);
   if (info.extension) parts.push(info.extension);
   if (info.tunnel) parts.push(info.tunnel);
+  if (info.observedContact) parts.push(info.observedContact);
   if (info.simulatedContact) parts.push(info.simulatedContact);
   if (info.outcome) parts.push(info.outcome);
   return parts.join(", ");

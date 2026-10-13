@@ -119,10 +119,11 @@ describe("pitchTooltip", () => {
     expect(info.break).toBe('IVB +16.5"  HB -14.2"');
   });
 
-  it("formats spin rate, release coordinates, and extension when available", () => {
+  it("formats spin rate and its axis, release coordinates, and extension when available", () => {
     const info = pitchTooltip(
       pitch({
         spinRate: 2380.4,
+        spinDirection: 141,
         extension: 6.2,
         kinematics: {
           x0: -1.75,
@@ -138,9 +139,14 @@ describe("pitchTooltip", () => {
       }),
     )!;
     expect(info.spin).toBe("2380 rpm");
+    // Shown verbatim: the relation to the break is not a fixed offset, so the
+    // angle is never interpreted into a movement claim.
+    expect(info.spinAxis).toBe("axis 141°");
     expect(info.release).toBe("Rel (-1.8, 5.8) ft");
     expect(info.extension).toBe("Ext 6.2 ft");
-    expect(info.tunnel).toBe("Tunnel (-0.9, 4.2) ft");
+    // Re-derived for the time-based frame: the point is where the pitch was 150 ms
+    // before the plate, so both the coordinates and the label change.
+    expect(info.tunnel).toBe("Tunnel (-0.8, 4.0) ft @150 ms");
   });
 
   it("labels the release point 'At 50 ft' and omits Ext when extension is unknown", () => {
@@ -165,7 +171,7 @@ describe("pitchTooltip", () => {
         commitmentPoint: [0.34, 23.8, 3.16],
       }),
     )!;
-    expect(info.tunnel).toBe("Tunnel (+0.3, 3.2) ft");
+    expect(info.tunnel).toBe("Tunnel (+0.3, 3.2) ft @150 ms");
   });
 
   it("summarizes break in aria-live region when breakVector is present", () => {
@@ -187,12 +193,13 @@ describe("pitchTooltip", () => {
     ).toBe('FF: 94.5 mph, 0.1 ft, 2.3 ft, In Zone, IVB +17.2"  HB -8.5", Whiff');
   });
 
-  it("includes spin, release, extension, and tunnel in aria-live summary", () => {
+  it("includes spin and its axis, release, extension, and tunnel in aria-live summary", () => {
     expect(
       pitchTooltipSummary(
         pitch({
           releaseSpeed: 95.0,
           spinRate: 2450,
+          spinDirection: 141,
           plateX: 0.1,
           plateZ: 2.5,
           extension: 6.0,
@@ -211,7 +218,7 @@ describe("pitchTooltip", () => {
           isWhiff: 1,
         }),
       ),
-    ).toBe("FF: 95.0 mph, 2450 rpm, 0.1 ft, 2.5 ft, In Zone, Rel (+1.5, 6.0) ft, Ext 6.0 ft, Tunnel (+1.5, 6.0) ft, Sim: 111.0 mph (Solid Contact) • 247.4 ft, Whiff");
+    ).toBe("FF: 95.0 mph, 2450 rpm, axis 141°, 0.1 ft, 2.5 ft, In Zone, Rel (+1.5, 6.0) ft, Ext 6.0 ft, Tunnel (+1.5, 6.0) ft @150 ms, Sim: 111.0 mph (Solid Contact) • 247.4 ft, Whiff");
   });
 
   it("formats batter-specific strike zone bounds when present", () => {
@@ -316,5 +323,35 @@ describe("cursorFlight (deck.gl 3D pick → position along the flight)", () => {
     expect(cursorFlight(d, 55)).toBeNull();
     expect(cursorFlight(d, 0.5)).toBeNull();
     expect(cursorFlight(null, 20)).toBeNull();
+  });
+});
+
+describe("observed contact", () => {
+  it("labels measured batted-ball data and classifies it with the Statcast criteria", () => {
+    // 105.7 mph at 19 deg sits inside the Statcast barrel cone; 104.2 at 18
+    // does not (the cone starts at 26-30 deg at 98 mph and widens with speed).
+    const barrel = pitchTooltip(
+      pitch({ launchSpeed: 105.7, launchAngle: 19, hitDistance: 340, bbType: "line_drive" })
+    );
+    expect(barrel?.observedContact).toBe("Contact: 105.7 mph, 19.0° • 340.0 ft (line_drive) · Barrel");
+
+    const solid = pitchTooltip(
+      pitch({ launchSpeed: 104.2, launchAngle: 18, hitDistance: 358, bbType: "line_drive" })
+    );
+    expect(solid?.observedContact).toBe("Contact: 104.2 mph, 18.0° • 358.0 ft (line_drive) · Solid Contact");
+  });
+
+  it("omits the line for pitches that were not put in play", () => {
+    expect(pitchTooltip(pitch())?.observedContact).toBeUndefined();
+  });
+
+  it("appears in the accessible summary", () => {
+    const summary = pitchTooltipSummary(
+      pitch({ launchSpeed: 91.8, launchAngle: 40, hitDistance: 296, bbType: "fly_ball" }),
+      undefined,
+      undefined,
+      false
+    );
+    expect(summary).toContain("Contact: 91.8 mph, 40.0° • 296.0 ft (fly_ball)");
   });
 });
