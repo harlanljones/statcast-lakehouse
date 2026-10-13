@@ -45,7 +45,7 @@ axis.
 pitch, and moved to a **time-based frame 150 ms before the plate** plus release distance and a pre-tunnel maximum.
 Our commitment point is the fixed-distance form this article argues against.
 
-## 2. A verified defect in our own serving path (Arrow record batches)
+## 2. A suspected serving-path defect — CHECKED AND REFUTED (kept as a negative record)
 
 apache-arrow's `Vector.toArray()` is **zero-copy only for a single Data chunk** — with more than one chunk it
 allocates a new typed array and copies every chunk into it (doc comment and code:
@@ -55,11 +55,20 @@ allocates a new typed array and copies every chunk into it (doc comment and code
 it writes the table as-is, and pyarrow emits one record batch per chunk. Any served file with N > 1 batches
 therefore makes each of ~30 `getChild().toArray()` calls in `web/src/lib/arrow-loader.ts` allocate and copy a whole
 column (~30 × 62,741 elements) — a plausible source of the GC spike measured at 12.4% of self-time.
-**Check:** count `pa.ipc.open_file(body).num_record_batches` on the real served bytes; if > 1, serve one batch and
-every `toArray()` becomes a view. *(The batching claim is verified in code; the effect on our served bytes is not
-yet measured.)*
+**CHECKED 2026-10-13 — refuted, and the note is kept as a negative record so nobody re-specs it.** Served
+payloads are single-chunk: `/pitches/sample` and `/pitches/scenario/blowouts` both report **max 1 chunk
+and 0 multi-chunk columns** across all 42/44 columns, because scenario tables are built in one batch and
+`export_batch.py` already calls `combine_chunks()`. So `toArray()` *is* zero-copy on the serving path and
+this optimization would have changed nothing. The code-level claim stands (arrow-js does copy for >1
+chunk); the premise about *our* payloads does not. **The check cost one command and prevented a
+spec'd no-op.**
 
-Related, also worth an A/B: compressed IPC cannot slice the input, so the loader's JS `fzstd` path allocates a
+Related, **also already settled**: compressed IPC cannot slice the input, so a JS `fzstd` decode path
+allocates a fresh buffer per column — but the loader registers `fzstd` only as the fallback and
+`ensureZstdDecoder()` swaps in a WASM `zstddec` codec, warmed while the fetch is in flight, so the
+browser path is already on the fast codec. (The *bench* calls `loadPitchTable` directly and therefore
+measures the pure-JS codec — its 136.7 ms decode is a conservative proxy for the app.) Original note:
+compressed IPC cannot slice the input, so the loader's JS `fzstd` path allocates a
 fresh buffer per column (<https://github.com/apache/arrow-js/blob/main/src/ipc/reader.ts>, `_decompressBuffers`).
 A WASM zstd (`zstddec`, `@bokuweb/zstd-wasm`) or uncompressed-body + HTTP compression are the alternatives; no
 benchmark exists for this corpus.
