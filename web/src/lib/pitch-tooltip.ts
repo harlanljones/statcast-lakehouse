@@ -4,7 +4,7 @@
  * Visualizer.tsx; this module is unit-tested in pitch-tooltip.test.ts.
  */
 import { isInsideStrikeZone, pitchColor, type PitchDatum } from "./deck-layers";
-import { commitmentPosition, flightTime, PLATE_Y } from "./kinematics";
+import { COMMITMENT_LEAD_MS, commitmentPosition, flightTime, PLATE_Y } from "./kinematics";
 import { classifyContactQuality, computeCollision } from "./collision";
 
 export interface PitchTooltipInfo {
@@ -35,7 +35,7 @@ export interface PitchTooltipInfo {
   extension?: string;
   /** Batter-specific strike zone bounds, e.g. "Zone [1.5, 3.4] ft" */
   zoneBounds?: string;
-  /** Tunneling point at commitment plane (y = 23.8 ft), e.g. "Tunnel (+0.3, 3.2) ft" */
+  /** Tunneling point 150 ms before the plate, e.g. "Tunnel (+0.3, 3.2) ft @150 ms" */
   tunnel?: string;
   /** Simulated ball-bat contact quality and distance, e.g. "Sim: 106.5 mph (Barrel) • 375.7 ft" */
   simulatedContact?: string;
@@ -117,7 +117,7 @@ export function pitchTooltip(
     const cp = d.commitmentPoint ?? (d.kinematics ? commitmentPosition(d.kinematics) : null);
     if (cp) {
       const signX = cp[0] >= 0 ? "+" : "";
-      tunnel = `Tunnel (${signX}${round1(cp[0])}, ${round1(cp[2])}) ft`;
+      tunnel = `Tunnel (${signX}${round1(cp[0])}, ${round1(cp[2])}) ft @${COMMITMENT_LEAD_MS} ms`;
     }
   }
 

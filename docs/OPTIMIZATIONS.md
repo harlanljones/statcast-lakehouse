@@ -91,21 +91,27 @@ rather than claiming a prediction.
 
 ---
 
-## O4 — Accuracy: make the tunnel point time-based
+## O4 — Accuracy: make the tunnel point time-based — DONE 2026-10-13
 
 **Evidence.** Our commitment point is a fixed distance (y = 23.8 ft). Baseball Prospectus used the same
 fixed-distance convention (23.4 ft) and [abandoned it](https://www.baseballprospectus.com/news/article/37436/prospectus-feature-updating-pitch-tunnels/)
 because flight time varies by pitch, moving to a **time-based frame 150 ms before the plate**.
 
-**Change.** Compute the commitment point at a fixed *time* before plate arrival (using the existing
-`solve_flight_time`), keeping the current geometry but making the plane pitch-dependent; optionally expose release
-distance and a pre-tunnel maximum like BP's revision.
+**Change (landed).** `COMMITMENT_LEAD_MS = 150` in `web/src/lib/kinematics.ts` and `COMMITMENT_LEAD_S = 0.150` in
+`ingestion/worker.py` replace `COMMITMENT_PLANE_Y_FT = 23.8`; the commitment time is now `flightTime(p) - lead`,
+clamped at zero, so the plane is pitch-dependent. The hover tooltip's tunnel string carries the frame
+(`Tunnel (+0.3, 3.2) ft @150 ms`), which is the card-copy note the risk below asked for. A fastball used to cross
+the old fixed plane about 172 ms before the plate, so the frame genuinely moved. Release distance and a
+pre-tunnel maximum (BP's other additions) are still not modelled.
 
 **Expected effect.** Tunnelling comparisons across pitch types become meaningful instead of systematically biased
 by velocity.
 
-**Acceptance.** The commitment y-coordinate becomes a function of flight time (assert two pitches with different
-speeds commit at different y); the tunnel ratio's existing tests are re-derived, not re-pinned.
+**Acceptance (met).** `kinematics.test.ts` and `test_worker.py` both assert the lead time exactly
+(`flightTime(p) - t == 0.15`) and that the frame varies with speed — the faster pitch is **further** out 150 ms
+before the plate (20.92 ft vs 19.06 ft for the fixtures), the opposite of the first guess, which the failing test
+corrected. Every assertion that pinned 23.8 was re-derived (5 in the web suite, 6 in Python), not re-pinned, and
+`ts_checksum` legitimately changes because the derived points moved.
 
 **Risk.** Small, contained, and it invalidates a documented product behaviour — so it needs an explicit note in
 the card copy that the frame is now time-based.

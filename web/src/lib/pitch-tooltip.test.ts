@@ -144,7 +144,9 @@ describe("pitchTooltip", () => {
     expect(info.spinAxis).toBe("axis 141°");
     expect(info.release).toBe("Rel (-1.8, 5.8) ft");
     expect(info.extension).toBe("Ext 6.2 ft");
-    expect(info.tunnel).toBe("Tunnel (-0.9, 4.2) ft");
+    // Re-derived for the time-based frame: the point is where the pitch was 150 ms
+    // before the plate, so both the coordinates and the label change.
+    expect(info.tunnel).toBe("Tunnel (-0.8, 4.0) ft @150 ms");
   });
 
   it("labels the release point 'At 50 ft' and omits Ext when extension is unknown", () => {
@@ -169,7 +171,7 @@ describe("pitchTooltip", () => {
         commitmentPoint: [0.34, 23.8, 3.16],
       }),
     )!;
-    expect(info.tunnel).toBe("Tunnel (+0.3, 3.2) ft");
+    expect(info.tunnel).toBe("Tunnel (+0.3, 3.2) ft @150 ms");
   });
 
   it("summarizes break in aria-live region when breakVector is present", () => {
@@ -216,7 +218,7 @@ describe("pitchTooltip", () => {
           isWhiff: 1,
         }),
       ),
-    ).toBe("FF: 95.0 mph, 2450 rpm, axis 141°, 0.1 ft, 2.5 ft, In Zone, Rel (+1.5, 6.0) ft, Ext 6.0 ft, Tunnel (+1.5, 6.0) ft, Sim: 111.0 mph (Solid Contact) • 247.4 ft, Whiff");
+    ).toBe("FF: 95.0 mph, 2450 rpm, axis 141°, 0.1 ft, 2.5 ft, In Zone, Rel (+1.5, 6.0) ft, Ext 6.0 ft, Tunnel (+1.5, 6.0) ft @150 ms, Sim: 111.0 mph (Solid Contact) • 247.4 ft, Whiff");
   });
 
   it("formats batter-specific strike zone bounds when present", () => {

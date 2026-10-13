@@ -39,7 +39,8 @@ axis.
   <https://baseball.physics.illinois.edu/spindown-rev1.pdf> — 1/e decay ≈ 20–25 s over a ~0.4 s flight. A useful
   **negative** result: do not add a spin-decay term to the trajectory.
 
-**Feature correction — the tunnel point.** *Updating Pitch Tunnels* (Baseball Prospectus, 2018) —
+**Feature correction — the tunnel point (*adopted* 2026-10-13, see `docs/OPTIMIZATIONS.md` O4).**
+*Updating Pitch Tunnels* (Baseball Prospectus, 2018) —
 <https://www.baseballprospectus.com/news/article/37436/prospectus-feature-updating-pitch-tunnels/> — concedes that a
 *fixed-distance* tunnel point (they used 23.4 ft, numerically our 23.8 ft) is wrong because flight time varies by
 pitch, and moved to a **time-based frame 150 ms before the plate** plus release distance and a pre-tunnel maximum.

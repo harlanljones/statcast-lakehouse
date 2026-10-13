@@ -12,7 +12,7 @@ import {
   extrapolateToReleaseInPlace,
   extrapolateToRelease,
   type PitchKinematics,
-  COMMITMENT_PLANE_Y_FT,
+  COMMITMENT_LEAD_MS,
   solveCommitmentTime,
   commitmentPosition,
   tunnelingDistance,
@@ -203,7 +203,7 @@ describe("extrapolateToRelease", () => {
   });
 });
 
-describe("commitment plane and tunneling", () => {
+describe("commitment frame and tunneling", () => {
   const FASTBALL = {
     x0: 0, y0: 55, z0: 6,
     vx0: 0, vy0: -130, vz0: -10,
@@ -215,24 +215,34 @@ describe("commitment plane and tunneling", () => {
     ax: -8.0, ay: 20.0, az: -22.0,
   };
 
-  it("commitment plane constant is 23.8 ft", () => {
-    expect(COMMITMENT_PLANE_Y_FT).toBe(23.8);
+  it("compares pitches a fixed lead time before the plate", () => {
+    expect(COMMITMENT_LEAD_MS).toBe(150);
   });
 
-  it("solveCommitmentTime matches zero-acceleration closed form", () => {
+  it("solveCommitmentTime is the time to the plate minus the lead time", () => {
     const t = solveCommitmentTime(FASTBALL);
-    expect(t).toBeCloseTo((55.0 - 23.8) / 130.0, 9);
+    expect(t).toBeCloseTo((55.0 - 1.417) / 130.0 - 0.15, 9);
+    expect(flightTime(FASTBALL) - t).toBeCloseTo(0.15, 9);
   });
 
-  it("solveCommitmentTime with acceleration arrives at y = 23.8 ft", () => {
+  it("keeps the lead time exact even with acceleration", () => {
     const t = solveCommitmentTime(SLIDER);
     const y = SLIDER.y0 + SLIDER.vy0 * t + 0.5 * SLIDER.ay * t * t;
-    expect(y).toBeCloseTo(COMMITMENT_PLANE_Y_FT, 6);
+    // The old fixed-distance frame pinned y; now y is whatever the pitch was at,
+    // and the invariant is the time.
+    expect(y).toBeGreaterThan(1.417);
+    expect(flightTime(SLIDER) - t).toBeCloseTo(0.15, 9);
   });
 
-  it("commitmentPosition y coordinate is 23.8 ft", () => {
-    const pos = commitmentPosition(SLIDER);
-    expect(pos[1]).toBeCloseTo(COMMITMENT_PLANE_Y_FT, 6);
+  it("y varies with speed: the faster pitch is still further out 150 ms before the plate", () => {
+    const fast = commitmentPosition(FASTBALL);
+    const slow = commitmentPosition(SLIDER);
+    // Both are compared 150 ms before arriving, so the pitch that covers more
+    // ground in that time is further from the plate — and neither sits at the old
+    // fixed 23.8 ft plane: the fastball used to cross that plane about 172 ms out.
+    expect(fast[1]).toBeGreaterThan(slow[1]);
+    expect(fast[1]).toBeCloseTo(20.917, 2);
+    expect(slow[1]).toBeCloseTo(19.059, 2);
   });
 
   it("tunnelingDistance provides symmetric Euclidean distance in inches", () => {
@@ -243,7 +253,7 @@ describe("commitment plane and tunneling", () => {
     expect(d12).toBeGreaterThan(0);
   });
 
-  it("rejects pitches not reaching commitment plane", () => {
+  it("rejects pitches that never reach the plate", () => {
     expect(() => solveCommitmentTime({ ...FASTBALL, y0: 20, vy0: 5 })).toThrow();
   });
 });

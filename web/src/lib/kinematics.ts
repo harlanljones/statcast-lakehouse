@@ -14,7 +14,16 @@
 export const PLATE_Y = 1.417; // ft, front face of home plate
 export const GRAVITY_FT_S2 = 32.174; // standard gravity in ft/s^2
 export const PITCHING_RUBBER_Y_FT = 60.5; // ft, pitching rubber distance from home plate
-export const COMMITMENT_PLANE_Y_FT = 23.8; // ft, commitment / decision plane distance from home plate
+/**
+ * Commitment / decision frame: pitches are compared at a fixed LEAD TIME before
+ * they reach the plate, not at a fixed distance. Flight time varies by pitch — a
+ * 100 mph fastball and a 75 mph curve differ by about 0.15 s — so a fixed-distance
+ * plane made tunnelling comparisons depend on velocity. Baseball Prospectus used
+ * the same fixed-distance convention (23.4 ft) and abandoned it for a time-based
+ * frame 150 ms before the plate (prospectus-feature-updating-pitch-tunnels, 2018).
+ * Mirrored exactly in ingestion/worker.py.
+ */
+export const COMMITMENT_LEAD_MS = 150; // ms before the pitch reaches the plate
 
 export interface PitchKinematics {
   x0: number;
@@ -284,21 +293,25 @@ function applyReleasePlane(p: PitchKinematics, t: number, extensionFt: number): 
 }
 
 /**
-  * Flight time until crossing the commitment plane (y = 23.8 ft).
-  */
+ * Time at which the pitch is compared: a fixed lead time before it reaches the
+ * plate. Clamped at zero so a degenerate fit can never ask for a negative time.
+ */
 export function solveCommitmentTime(p: PitchKinematics): number {
-  return flightTime(p, COMMITMENT_PLANE_Y_FT);
+  return Math.max(0, flightTime(p) - COMMITMENT_LEAD_MS / 1000);
 }
 
 /**
-  * Position (x, y, z) in feet at the commitment plane (y = 23.8 ft).
-  */
+ * Position (x, y, z) in feet at the commitment frame (150 ms before the plate).
+ * `y` therefore varies by pitch — it is closer to the plate for a faster pitch.
+ */
 export function commitmentPosition(p: PitchKinematics): [number, number, number] {
   return positionAt(p, solveCommitmentTime(p));
 }
 
 /**
-  * Tunneling separation distance in inches between two pitches at the commitment plane (y = 23.8 ft).
+  * Tunneling separation distance in inches between two pitches at the commitment
+  * frame (150 ms before the plate, so each pitch is compared where it actually was
+  * when the batter had to decide).
   */
 export function tunnelingDistance(p1: PitchKinematics, p2: PitchKinematics): number {
   const c1 = commitmentPosition(p1);

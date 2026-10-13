@@ -23,7 +23,7 @@ from ingestion.worker import (
     PITCHING_RUBBER_Y_FT,
     release_extension,
     extrapolate_to_release,
-    COMMITMENT_PLANE_Y_FT,
+    COMMITMENT_LEAD_S,
     solve_commitment_time,
     commitment_position,
     tunneling_distance,
@@ -210,20 +210,23 @@ class TestCommitmentPlaneAndTunneling:
     }
 
     def test_commitment_plane_constant(self):
-        assert math.isclose(COMMITMENT_PLANE_Y_FT, 23.8, rel_tol=1e-6)
+        assert math.isclose(COMMITMENT_LEAD_S, 0.150, rel_tol=1e-9)
 
     def test_solve_commitment_time_zero_accel(self):
         t = solve_commitment_time(self.FASTBALL["y0"], self.FASTBALL["vy0"], self.FASTBALL["ay"])
-        assert math.isclose(t, (55.0 - 23.8) / 130.0, rel_tol=1e-9)
+        assert math.isclose(t, (55.0 - 1.417) / 130.0 - COMMITMENT_LEAD_S, rel_tol=1e-9)
 
     def test_solve_commitment_time_with_accel(self):
         t = solve_commitment_time(self.SLIDER["y0"], self.SLIDER["vy0"], self.SLIDER["ay"])
         y = self.SLIDER["y0"] + self.SLIDER["vy0"] * t + 0.5 * self.SLIDER["ay"] * t * t
-        assert math.isclose(y, COMMITMENT_PLANE_Y_FT, rel_tol=1e-7)
+        # The frame is a lead time, so y is wherever the pitch was — and the
+        # faster pitch is still further out.
+        assert commitment_position(self.FASTBALL)[1] > commitment_position(self.SLIDER)[1]
 
-    def test_commitment_position_y_is_commitment_plane(self):
+    def test_commitment_frame_compares_pitches_at_a_lead_time(self):
         pos = commitment_position(self.SLIDER)
-        assert math.isclose(pos[1], COMMITMENT_PLANE_Y_FT, rel_tol=1e-7)
+        assert commitment_position(self.FASTBALL)[1] > pos[1]
+        assert pos[1] < 23.8  # no longer pinned to the old fixed plane
 
     def test_tunneling_distance_identity_and_symmetry(self):
         assert math.isclose(tunneling_distance(self.FASTBALL, self.FASTBALL), 0.0, abs_tol=1e-9)
@@ -270,7 +273,7 @@ class TestArsenalCentroidsAndPairMetrics:
         assert math.isclose(centroids["FF"]["release_speed"], 95.0, rel_tol=1e-6)
         assert math.isclose(centroids["FF"]["release_spin_rate"], 2350.0, rel_tol=1e-6)
         assert math.isclose(centroids["FF"]["kinematics"]["x0"], -1.6, rel_tol=1e-6)
-        assert math.isclose(centroids["FF"]["commitment_point"][1], 23.8, rel_tol=1e-6)
+        assert centroids["FF"]["commitment_point"][1] < 23.8
 
     def test_compute_arsenal_centroids_skips_unmeasured_spin_rates(self):
         """A pitch with no spin measurement is left out of the spin mean.
@@ -331,7 +334,7 @@ class TestArsenalCentroidsAndPairMetrics:
         assert math.isclose(metrics["release_separation_inches"], 0.0, abs_tol=1e-5)
         # Velocity delta is 10 mph
         assert math.isclose(metrics["velocity_delta_mph"], 10.0, rel_tol=1e-6)
-        # Tunnel separation at y = 23.8 ft should be smaller than plate divergence at y = 1.417 ft
+        # Tunnel separation 150 ms before the plate should be smaller than plate divergence
         assert metrics["tunneling_separation_inches"] > 0
         assert metrics["plate_divergence_inches"] > metrics["tunneling_separation_inches"]
         # Tunnel ratio > 1

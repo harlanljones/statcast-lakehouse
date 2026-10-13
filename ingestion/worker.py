@@ -33,7 +33,11 @@ import pyarrow as pa
 PLATE_Y_FT = 1.417
 GRAVITY_FT_S2 = 32.174
 PITCHING_RUBBER_Y_FT = 60.5
-COMMITMENT_PLANE_Y_FT = 23.8
+# Commitment / decision frame: a fixed LEAD TIME before the plate, not a fixed
+# distance — flight time varies by pitch, so a fixed-distance plane made tunnelling
+# velocity-dependent (Baseball Prospectus abandoned the same convention).
+# Mirrored exactly in web/src/lib/kinematics.ts.
+COMMITMENT_LEAD_S = 0.150
 
 SCHEMA = pa.schema(
     [
@@ -340,18 +344,19 @@ def extrapolate_to_release(pitch: dict[str, Any], extension_ft: float | None) ->
 
 
 def solve_commitment_time(y0: float, vy0: float, ay: float) -> float:
-    """Solve for the time t when the pitch crosses the commitment plane (y = 23.8 ft)."""
-    return solve_flight_time(y0, vy0, ay, y_end=COMMITMENT_PLANE_Y_FT)
+    """Time at which the pitch is compared: a fixed lead time before the plate."""
+    return max(0.0, solve_flight_time(y0, vy0, ay) - COMMITMENT_LEAD_S)
 
 
 def commitment_position(pitch: dict[str, float]) -> tuple[float, float, float]:
-    """Position (x, y, z) in feet at the commitment plane (y = 23.8 ft)."""
+    """Position (x, y, z) in feet at the commitment frame (150 ms before the plate).
+    y therefore varies by pitch."""
     t = solve_commitment_time(pitch["y0"], pitch["vy0"], pitch["ay"])
     return position_at(pitch, t)
 
 
 def tunneling_distance(p1: dict[str, float], p2: dict[str, float]) -> float:
-    """Tunneling separation distance in inches at the commitment plane (y = 23.8 ft)."""
+    """Tunneling separation in inches at the commitment frame (150 ms before plate)."""
     c1 = commitment_position(p1)
     c2 = commitment_position(p2)
     return math.hypot(c1[0] - c2[0], c1[2] - c2[2]) * 12.0

@@ -194,7 +194,7 @@ describe("loadPitchTable", () => {
     expect(pitches[2].extension).toBe(6.0);
     expect(pitches[2].kinematics!.y0).toBe(54.5);
     // Commitment and break math run on the extrapolated kinematics.
-    expect(pitches[0].commitmentPoint![1]).toBeCloseTo(23.8, 6);
+    expect(pitches[0].commitmentPoint![1]).toBeLessThan(23.8);  // the frame is a lead time, not a fixed plane
   });
 
   it("reads nullable at_bat_number / pitch_number and leaves NULLs unset", () => {
@@ -285,13 +285,13 @@ describe("loadPitchTable", () => {
     expect(p.isWhiff).toBeUndefined();
   });
 
-  it("computes commitmentPoint at y = 23.8 ft when kinematics are parsed", () => {
+  it("computes commitmentPoint a lead time before the plate when kinematics are parsed", () => {
     const buf = ipcBuffer({ count: 1, pitchTypes: ["FF"] });
     const { pitches } = loadPitchTable(buf);
     expect(pitches).toHaveLength(1);
     const cp = pitches[0].commitmentPoint;
     expect(cp).toBeDefined();
-    expect(cp![1]).toBeCloseTo(23.8, 5);
+    expect(cp![1]).toBeLessThan(23.8);  // the frame is a lead time, not a fixed plane
   });
 });
 
