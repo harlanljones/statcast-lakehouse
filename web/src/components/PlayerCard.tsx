@@ -214,8 +214,16 @@ export default function PlayerCard(props: PlayerCardProps): JSX.Element {
                         style={{ display: "block", height: "100%", width: `${Math.max(m.share * 100, 2)}%`, background: rgb(m.type), "border-radius": "3px" }}
                       />
                     </span>
-                    <span style={{ width: "76px", "text-align": "right", "white-space": "nowrap", ...muted }}>
+                    <span
+                      style={{ width: "132px", "text-align": "right", "white-space": "nowrap", ...muted }}
+                      title={
+                        m.spinRate == null
+                          ? "no measured spin on these pitches"
+                          : `mean spin ${Math.round(m.spinRate)} rpm over this pitcher\'s ${m.type} pitches in view`
+                      }
+                    >
                       {Math.round(m.share * 100)}% ({m.count})
+                      {m.spinRate == null ? "" : ` · ${Math.round(m.spinRate)} rpm`}
                     </span>
                   </div>
                 )}

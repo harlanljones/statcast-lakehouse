@@ -272,6 +272,26 @@ describe("pitchResult", () => {
   });
 });
 
+describe("pitcher mix spin", () => {
+  const p = (over: Partial<PitchDatum>): PitchDatum =>
+    pitch({ pitcherId: 1, pitchType: "FF", ...over });
+
+  it("reports the mean spin per pitch type, null when none was measured", () => {
+    const group = [
+      p({ spinRate: 2400 }),
+      p({ spinRate: 2600 }),
+      p({ pitchType: "SL", spinRate: 2000 }),
+      p({ pitchType: "CH" }),
+    ];
+    const s = summarizePitcher(group, 1)!;
+    expect(s.mix.find((m) => m.type === "FF")!.spinRate).toBe(2500);
+    expect(s.mix.find((m) => m.type === "SL")!.spinRate).toBe(2000);
+    // CH reported no spin at all — the mean must be null, never 0.
+    expect(s.mix.find((m) => m.type === "CH")!.spinRate).toBeNull();
+    expect(s.mix.find((m) => m.type === "FF")!.count).toBe(2);
+  });
+});
+
 describe("comparisonAgainst", () => {
   const group = [
     pitch({ pitcherId: 1, pitcherName: "Ace One", batterId: 10, batterName: "Bat Ten", isSwing: 1, isWhiff: 1 }),

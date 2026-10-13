@@ -47,7 +47,9 @@ export interface RoleStats {
   swingRate: number | null;
   /** Whiffs per swing; null when none of those pitches drew a swing. */
   whiffRate: number | null;
-  mix: { type: string; count: number; share: number }[];
+  /** Per pitch type, biggest first. `spinRate` is the mean over the pitches that
+   * reported one (null when none did) — the arsenal's spin, shown per type. */
+  mix: { type: string; count: number; share: number; spinRate: number | null }[];
   /** Contact on those pitches; null when none was measured. */
   contact: ContactSummary | null;
 }
@@ -70,6 +72,8 @@ interface Tally {
   exitVelocity: number;
   hardHit: number;
   byType: Map<string, number>;
+  spinSum: Map<string, number>;
+  spinCount: Map<string, number>;
   byBattedBall: Map<string, number>;
 }
 
@@ -84,6 +88,8 @@ function tallyFor(pitches: readonly PitchDatum[], matches: (p: PitchDatum) => bo
     exitVelocity: 0,
     hardHit: 0,
     byType: new Map(),
+    spinSum: new Map(),
+    spinCount: new Map(),
     byBattedBall: new Map(),
   };
   for (const p of pitches) {
@@ -95,6 +101,10 @@ function tallyFor(pitches: readonly PitchDatum[], matches: (p: PitchDatum) => bo
       if (p.isWhiff) t.whiffs++;
     }
     t.byType.set(p.pitchType, (t.byType.get(p.pitchType) ?? 0) + 1);
+    if (p.spinRate != null && !isNaN(p.spinRate)) {
+      t.spinSum.set(p.pitchType, (t.spinSum.get(p.pitchType) ?? 0) + p.spinRate);
+      t.spinCount.set(p.pitchType, (t.spinCount.get(p.pitchType) ?? 0) + 1);
+    }
     if (p.launchSpeed != null) {
       t.measured++;
       t.exitVelocity += p.launchSpeed;
@@ -128,7 +138,12 @@ function finish(t: Tally): RoleStats {
     swingRate: t.swings ? t.swings / t.count : null,
     whiffRate: t.swings ? t.whiffs / t.swings : null,
     mix: [...t.byType.entries()]
-      .map(([type, n]) => ({ type, count: n, share: n / t.count }))
+      .map(([type, n]) => ({
+        type,
+        count: n,
+        share: n / t.count,
+        spinRate: (t.spinCount.get(type) ?? 0) > 0 ? t.spinSum.get(type)! / t.spinCount.get(type)! : null,
+      }))
       .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type)),
     contact,
   };
